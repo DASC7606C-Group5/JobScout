@@ -1,0 +1,1 @@
+"""JobScout backend application package."""
