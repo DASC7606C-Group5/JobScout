@@ -4,18 +4,54 @@ JobScout 是个性化岗位发现与推荐 Agent 原型。本仓库当前是供�
 
 ## 环境准备
 
-建议团队统一使用 **Python 3.11**。它适合作为当前 LangGraph 项目的保守基线；当团队确认后端框架及其他依赖后，再在 `pyproject.toml` 等项目配置中正式声明支持的 Python 版本范围。
+项目使用 uv 管理 Python 环境和依赖。
 
-在仓库根目录 `JobScout/` 创建并启用虚拟环境，然后安装当前已确定的依赖：
+先按 [uv 官方安装说明](https://docs.astral.sh/uv/getting-started/installation/) 安装 uv，然后在仓库根目录 `JobScout/` 执行：
 
 ```powershell
-py -3.11 -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+uv sync --locked
 ```
 
-目前依赖清单只包含 LangGraph；安装依赖不代表应用已有启动命令或业务功能。各组开始实现后，应在本 README 更新可运行步骤和测试命令。
+这条命令会准备 Python 3.14、创建 `.venv` 并安装依赖。使用 VS Code 时，选择 `.venv` 中的 Python 解释器即可。
+
+### Python 开发命令
+
+提交代码前，在仓库根目录运行全部检查：
+
+```powershell
+uv run --locked python scripts/check.py
+```
+
+命令会依次检查代码问题、格式和类型，再运行测试。失败时，终端会显示需要修改的位置；全部通过后会显示 `All checks passed.`。
+
+需要整理代码格式时，运行：
+
+```powershell
+uv run --locked ruff check --fix .
+uv run --locked ruff format .
+```
+
+这两条命令会修改文件。查看修改结果后，再运行一次全部检查。单独运行测试、排查类型错误等操作见 [Python 开发说明](docs/python-development.md)。
+
+如果希望每次提交时自动检查代码，可执行一次：
+
+```powershell
+uv run --locked pre-commit install
+```
+
+提交时会自动检查格式、代码问题和类型；测试仍通过上面的全部检查命令运行。
+
+### 更新依赖
+
+```powershell
+uv add package-name                 # 新增运行时依赖
+uv add --dev package-name           # 新增开发工具
+uv remove package-name             # 删除依赖
+uv lock --upgrade-package langgraph # 有意升级单个依赖
+uv sync --locked                    # 按锁文件同步环境
+```
+
+更新依赖后，运行全部检查，并将 `pyproject.toml` 和 `uv.lock` 一起提交。拉取队友的依赖更新后，运行 `uv sync --locked`。
 
 ## 按小组开始
 
@@ -24,17 +60,17 @@ python -m pip install -r requirements.txt
 | 小组                | 主责代码文件与目录                                                                                                                                                                                                                                                                                                                                                                          | 交付与协作                                                                            |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | 第 1 组：前端与交互       | `frontend/index.html`、`frontend/styles.css`、`frontend/app.js`                                                                                                                                                                                                                                                                                                                      | 交付输入、追问、加载/错误/空结果状态及推荐结果展示；按冻结的 Session API 和 JSON 契约收发数据，并用 Mock 验证正常与失败流程。 |
-| 第 2 组：用户画像与确认     | `backend/app/services/profile_service.py`、`backend/app/graph/nodes/profile.py`、`backend/app/graph/nodes/clarification.py`、`backend/tests/test_profile_service.py`                                                                                                                                                                                                                  | 交付画像提取/更新、缺失信息识别和追问处理，并测试完整、缺失及矛盾输入；若采用外部模型或简历解析服务，负责搜寻候选方案、用脱敏样例验证质量、隐私要求、限制和成本，再提交团队评估。与第 3 组对齐状态及回答更新契约。 |
-| 第 3 组：整体 Workflow | `backend/app/main.py`、`backend/app/config.py`、`backend/app/api/sessions.py`、`backend/app/graph/state.py`、`backend/app/graph/builder.py`、`backend/app/graph/routing.py`、`backend/app/schemas/profile.py`、`backend/app/schemas/job.py`、`backend/app/schemas/search.py`、`backend/app/schemas/recommendation.py`、`backend/app/schemas/errors.py`、`backend/tests/test_graph_routing.py` | 交付 Session API、可运行的图编排及流程路由测试；集中维护配置和共享 schema，组织接口冻结与端到端集成。各业务组负责提出并验证本组契约/配置需求；外部服务由使用它的业务组调研，新增依赖及其配置、安全和成本由团队确认。 |
-| 第 4 组：岗位检索        | `backend/app/services/job_search_service.py`、`backend/app/graph/nodes/search.py`                                                                                                                                                                                                                                                                                                   | 负责搜寻岗位数据 API/来源并比较覆盖范围、可访问性、字段、更新时效、限流及使用条件；用样例请求验证响应和失败行为，提交候选方案、字段映射及限制供团队选型。交付按 `SearchRequest` 查询并返回带来源、链接和抓取时间的原始岗位，供第 5 组处理。 |
-| 第 5 组：岗位理解与数据质量   | `backend/app/services/job_processing_service.py`、`backend/app/graph/nodes/process_jobs.py`、`backend/tests/test_job_processing_service.py`                                                                                                                                                                                                                                          | 交付原始岗位到统一 `JobPosting` 的字段转换、去重和时效状态处理，并测试缺失字段、重复及未知状态；与第 4 组确认来源字段，与第 6 组确认岗位输入契约。 |
-| 第 6 组：匹配与推荐       | `backend/app/services/recommendation_service.py`、`backend/app/graph/nodes/recommend.py`                                                                                                                                                                                                                                                                                            | 交付符合契约的总体 Top 5、匹配理由、技能差距和准备建议，并验证排序及边界输入；若采用外部模型或推荐工具，负责搜寻候选方案并测试效果、稳定性、延迟、成本和数据要求，提交评估供团队决定是否引入；输出交第 1 组展示。 |
+| 第 2 组：用户画像与确认     | `src/jobscout/services/profile_service.py`、`src/jobscout/graph/nodes/profile.py`、`src/jobscout/graph/nodes/clarification.py`、`tests/test_profile_service.py`                                                                                                                                                                                                                  | 交付画像提取/更新、缺失信息识别和追问处理，并测试完整、缺失及矛盾输入；若采用外部模型或简历解析服务，负责搜寻候选方案、用脱敏样例验证质量、隐私要求、限制和成本，再提交团队评估。与第 3 组对齐状态及回答更新契约。 |
+| 第 3 组：整体 Workflow | `src/jobscout/main.py`、`src/jobscout/config.py`、`src/jobscout/api/sessions.py`、`src/jobscout/graph/state.py`、`src/jobscout/graph/builder.py`、`src/jobscout/graph/routing.py`、`src/jobscout/schemas/profile.py`、`src/jobscout/schemas/job.py`、`src/jobscout/schemas/search.py`、`src/jobscout/schemas/recommendation.py`、`src/jobscout/schemas/errors.py`、`tests/test_graph_routing.py` | 交付 Session API、可运行的图编排及流程路由测试；集中维护配置和共享 schema，组织接口冻结与端到端集成。各业务组负责提出并验证本组契约/配置需求；外部服务由使用它的业务组调研，新增依赖及其配置、安全和成本由团队确认。 |
+| 第 4 组：岗位检索        | `src/jobscout/services/job_search_service.py`、`src/jobscout/graph/nodes/search.py`                                                                                                                                                                                                                                                                                                   | 负责搜寻岗位数据 API/来源并比较覆盖范围、可访问性、字段、更新时效、限流及使用条件；用样例请求验证响应和失败行为，提交候选方案、字段映射及限制供团队选型。交付按 `SearchRequest` 查询并返回带来源、链接和抓取时间的原始岗位，供第 5 组处理。 |
+| 第 5 组：岗位理解与数据质量   | `src/jobscout/services/job_processing_service.py`、`src/jobscout/graph/nodes/process_jobs.py`、`tests/test_job_processing_service.py`                                                                                                                                                                                                                                          | 交付原始岗位到统一 `JobPosting` 的字段转换、去重和时效状态处理，并测试缺失字段、重复及未知状态；与第 4 组确认来源字段，与第 6 组确认岗位输入契约。 |
+| 第 6 组：匹配与推荐       | `src/jobscout/services/recommendation_service.py`、`src/jobscout/graph/nodes/recommend.py`                                                                                                                                                                                                                                                                                            | 交付符合契约的总体 Top 5、匹配理由、技能差距和准备建议，并验证排序及边界输入；若采用外部模型或推荐工具，负责搜寻候选方案并测试效果、稳定性、延迟、成本和数据要求，提交评估供团队决定是否引入；输出交第 1 组展示。 |
 
 #### 共享文件的归属说明
 
-- `backend/app/schemas/` 下的 `profile.py`、`job.py`、`search.py`、`recommendation.py` 和 `errors.py` 是跨组数据契约，不按业务消费者拆成多人各自维护。所有相关小组共同确认字段和兼容性；建议由第 3 组集中维护文件，各业务组负责提出并评审与自身模块相关的变更。契约冻结前应先达成共同约定。
-- `backend/app/config.py` 由第 3 组主责，配置项需与使用该配置的业务组确认。
-- `backend/tests/test_graph_routing.py` 由第 3 组主责；`test_profile_service.py` 由第 2 组主责；`test_job_processing_service.py` 由第 5 组主责；`test_recommendation_service.py` 由第 6 组主责。跨组端到端和集成测试由第 3 组组织，各组共同修复自身模块问题。
+- `src/jobscout/schemas/` 下的 `profile.py`、`job.py`、`search.py`、`recommendation.py` 和 `errors.py` 是跨组数据契约，不按业务消费者拆成多人各自维护。所有相关小组共同确认字段和兼容性；建议由第 3 组集中维护文件，各业务组负责提出并评审与自身模块相关的变更。契约冻结前应先达成共同约定。
+- `src/jobscout/config.py` 由第 3 组主责，配置项需与使用该配置的业务组确认。
+- `tests/test_graph_routing.py` 由第 3 组主责；`test_profile_service.py` 由第 2 组主责；`test_job_processing_service.py` 由第 5 组主责；`test_recommendation_service.py` 由第 6 组主责。跨组端到端和集成测试由第 3 组组织，各组共同修复自身模块问题。
 - 上述主责是建议的代码维护归属，不改变开发指南中“所有小组共同参与集成”的约定。`main.py` 和 `api/sessions.py` 的实现仍以团队确认 Session API 和后端框架为前提。
 
 ### 共同开工步骤
@@ -53,7 +89,7 @@ python -m pip install -r requirements.txt
 - `README.md`：项目的快速说明书。新成员可以从这里了解项目要做什么、代码大致放在哪里、各组如何协作，以及从哪里开始开发。
 - `.gitignore`：告诉 Git 哪些文件不需要提交，例如 Python 自动生成的缓存、虚拟环境、个人本地配置和临时文件，避免把无关文件或私密内容放进版本库。
 - `.env.example`：环境变量的示例清单，说明运行项目时可能需要配置哪些名称，例如 API 密钥或服务地址。这里只写变量名和非敏感示例，不能放真实密钥；具体项目确认后再补充。
-- `requirements.txt`：Python 依赖清单，列出项目运行需要安装的库。目前只列已确定使用的 LangGraph；Web API 框架、LLM 服务和简历解析工具等依赖要等方案确认后再加入。
+- `pyproject.toml`：Python 项目元数据、运行时/开发依赖、包构建配置，以及 Ruff、mypy 和 pytest 的统一配置。
 
 ### `frontend/`
 
@@ -61,7 +97,7 @@ python -m pip install -r requirements.txt
 - `styles.css`：网页的外观设置，例如布局、颜色、字体、间距，以及手机和电脑屏幕上的显示方式。
 - `app.js`：网页的交互逻辑，例如读取用户输入、显示加载或错误提示、把请求发送给后端 Session API，再把返回的追问或岗位推荐显示出来。它按双方约定的 JSON 格式收发数据，不在浏览器里实现画像提取或推荐算法。
 
-### `backend/app/`
+### `src/jobscout/`
 
 - `main.py`：后端程序启动入口。它可能负责创建 Web 应用、加载配置、挂载 API 路由并准备 LangGraph；具体写法取决于团队最后选择的后端框架。
 - `config.py`：集中读取程序运行所需的设置，例如外部 API 密钥、模型名称、服务地址和超时。它应从本地环境变量读取敏感值，不应把密钥直接写进代码；不同小组需要的配置项由它们提出，再由维护者统一加入。
@@ -87,8 +123,9 @@ python -m pip install -r requirements.txt
   - `job_processing_service.py`：把来源各异的原始岗位整理成统一的 `JobPosting`，处理字段缺失、重复记录和岗位状态；无法确认是否仍有效时应保留 `unknown`，而不是猜测。
   - `recommendation_service.py`：比较用户画像与岗位要求，整理匹配理由、技能差距和准备建议，并按项目约定产生总体 Top 5；匹配方法和模型调用方式由团队后续确定。
 
-### `backend/tests/`
+### `tests/`
 
+- `test_environment.py`：检查包安装与 LangGraph 基础运行环境，不调用外部服务。
 - `test_graph_routing.py`：用小型测试输入检查流程分支是否正确，例如资料不足时会进入追问、资料齐全时会进入岗位搜索。
 - `test_profile_service.py`：检查画像处理是否能应对完整、缺失或互相矛盾的用户资料，并产出符合约定的结果。
 - `test_job_processing_service.py`：检查岗位字段整理、重复岗位合并和 `active`、`expired`、`unknown` 状态标记是否符合预期。

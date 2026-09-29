@@ -1,0 +1,43 @@
+[project]
+name = "jobscout"
+version = "0.1.0"
+description = "Personalized job discovery and recommendation workflow"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = ["langgraph>=1,<2"]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19,<2",
+    "pre-commit>=4,<5",
+    "pytest>=9,<10",
+    "ruff>=0.15,<0.16",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "src"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["src"]
+extend-exclude = [".uv-cache", ".uv-python"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.14"
+files = ["src", "tests", "scripts"]
+strict = true
+warn_unreachable = true
+show_error_codes = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+strict = true
+addopts = ["--import-mode=importlib", "-ra"]

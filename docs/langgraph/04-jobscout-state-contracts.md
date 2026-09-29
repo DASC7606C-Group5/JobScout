@@ -2,7 +2,7 @@
 
 [返回学习入口](README.md) · 适用：全员，尤其第 2、3、6 组 · 前置：[State、Node、Edge 与路由](03-state-nodes-routing.md)
 
-业务对象描述业务领域；`AgentState` 描述 workflow 当前运行需要什么。不要把二者混成一个万能 State。正式契约定义在[开发指南第 4 节](../JobScout_Development_Guide.md#4-共享数据接口)，共享 schema 位于 `backend/app/schemas/`，graph 状态位于 `backend/app/graph/state.py`。
+业务对象描述业务领域；`AgentState` 描述 workflow 当前运行需要什么。不要把二者混成一个万能 State。正式契约定义在[开发指南第 4 节](../JobScout_Development_Guide.md#4-共享数据接口)，共享 schema 位于 `src/jobscout/schemas/`，graph 状态位于 `src/jobscout/graph/state.py`。
 
 以下仅为结构关系示意，不是可复制使用的正式 schema：
 

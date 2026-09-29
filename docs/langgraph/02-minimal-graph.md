@@ -2,13 +2,13 @@
 
 [返回学习入口](README.md) · 适用：全员 · 前置：[LangGraph 解决什么问题](01-langgraph-basics.md)
 
-安装基础包：
+在仓库根目录安装锁定的依赖（包括 LangGraph）：
 
 ```bash
-pip install langgraph
+uv sync --locked
 ```
 
-下面的 graph 把输入字符串转为大写：
+下面的 graph 把输入字符串转为大写。保存为 Python 文件后，用 `uv run 文件名.py` 运行：
 
 ```python
 from typing import TypedDict

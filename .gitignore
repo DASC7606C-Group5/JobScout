@@ -4,6 +4,14 @@ __pycache__/
 venv/
 .env
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.uv-cache/
+.uv-python/
+.pre-commit-cache/
+dist/
+build/
+*.egg-info/
 .coverage
 htmlcov/
 .DS_Store
