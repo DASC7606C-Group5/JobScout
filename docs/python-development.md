@@ -2,6 +2,24 @@
 
 首次安装与日常提交步骤见 [README](../README.md)。以下命令在仓库根目录执行。
 
+## 启动后端
+
+后端使用 FastAPI 和 Uvicorn，默认通过 SQLite 文件运行。需要使用 PostgreSQL 时，在 `.env` 中设置 `DATABASE_URL`；变量名称和默认值见 [.env.example](../.env.example)。
+
+在仓库根目录启动开发服务器：
+
+```powershell
+uv run --locked uvicorn jobscout.main:app --reload
+```
+
+基础健康检查接口：
+
+```text
+GET http://127.0.0.1:8000/api/v1/health
+```
+
+当前数据库配置只负责初始化和关闭 Tortoise ORM 连接，尚未包含业务模型、迁移或 Session CRUD。
+
 ## 单独运行检查
 
 | 目的 | 命令 |

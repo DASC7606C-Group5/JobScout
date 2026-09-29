@@ -1,4 +1,15 @@
-"""Backend entry point.
+"""FastAPI application entry point."""
 
-TODO: Initialize the selected web framework and connect the Session API to the graph.
-"""
+from fastapi import FastAPI
+
+from jobscout.api.sessions import router as sessions_router
+from jobscout.database import database_lifespan
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="JobScout API", lifespan=database_lifespan)
+    app.include_router(sessions_router)
+    return app
+
+
+app = create_app()

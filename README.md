@@ -41,6 +41,18 @@ uv run --locked pre-commit install
 
 提交时会自动检查格式、代码问题和类型；测试仍通过上面的全部检查命令运行。
 
+### 后端开发
+
+后端使用 FastAPI 和 Uvicorn，数据库层使用 Tortoise ORM。默认数据库为项目根目录下的 SQLite 文件；需要使用 PostgreSQL 时，在 `.env` 中设置 `DATABASE_URL`。环境变量名称见 [.env.example](.env.example)。
+
+启动开发服务器：
+
+```powershell
+uv run --locked uvicorn jobscout.main:app --reload
+```
+
+基础健康检查接口为 `GET /api/v1/health`。当前后端只提供应用生命周期、数据库连接和健康检查脚手架，Session CRUD、业务模型和数据库迁移仍需按团队确认的契约继续实现。
+
 ### 更新依赖
 
 ```powershell
@@ -73,7 +85,7 @@ bun run dev
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | 第 1 组：前端与交互       | `web/src/routes/`、`web/src/styles.css`、`web/src/main.tsx`                                                                                                                                                                                                                                                                                                                      | 交付输入、追问、加载/错误/空结果状态及推荐结果展示；按冻结的 Session API 和 JSON 契约收发数据，并用 Mock 验证正常与失败流程。 |
 | 第 2 组：用户画像与确认     | `src/jobscout/services/profile_service.py`、`src/jobscout/graph/nodes/profile.py`、`src/jobscout/graph/nodes/clarification.py`、`tests/test_profile_service.py`                                                                                                                                                                                                                  | 交付画像提取/更新、缺失信息识别和追问处理，并测试完整、缺失及矛盾输入；若采用外部模型或简历解析服务，负责搜寻候选方案、用脱敏样例验证质量、隐私要求、限制和成本，再提交团队评估。与第 3 组对齐状态及回答更新契约。 |
-| 第 3 组：整体 Workflow | `src/jobscout/main.py`、`src/jobscout/config.py`、`src/jobscout/api/sessions.py`、`src/jobscout/graph/state.py`、`src/jobscout/graph/builder.py`、`src/jobscout/graph/routing.py`、`src/jobscout/schemas/profile.py`、`src/jobscout/schemas/job.py`、`src/jobscout/schemas/search.py`、`src/jobscout/schemas/recommendation.py`、`src/jobscout/schemas/errors.py`、`tests/test_graph_routing.py` | 交付 Session API、可运行的图编排及流程路由测试；集中维护配置和共享 schema，组织接口冻结与端到端集成。各业务组负责提出并验证本组契约/配置需求；外部服务由使用它的业务组调研，新增依赖及其配置、安全和成本由团队确认。 |
+| 第 3 组：整体 Workflow | `src/jobscout/main.py`、`src/jobscout/config.py`、`src/jobscout/database.py`、`src/jobscout/api/sessions.py`、`src/jobscout/graph/state.py`、`src/jobscout/graph/builder.py`、`src/jobscout/graph/routing.py`、`src/jobscout/schemas/profile.py`、`src/jobscout/schemas/job.py`、`src/jobscout/schemas/search.py`、`src/jobscout/schemas/recommendation.py`、`src/jobscout/schemas/errors.py`、`tests/test_graph_routing.py`、`tests/test_web_scaffold.py` | 交付后端应用与数据库脚手架、Session API、可运行的图编排及流程路由测试；集中维护配置和共享 schema，组织接口冻结与端到端集成。各业务组负责提出并验证本组契约/配置需求；外部服务由使用它的业务组调研，新增依赖及其配置、安全和成本由团队确认。 |
 | 第 4 组：岗位检索        | `src/jobscout/services/job_search_service.py`、`src/jobscout/graph/nodes/search.py`                                                                                                                                                                                                                                                                                                   | 负责搜寻岗位数据 API/来源并比较覆盖范围、可访问性、字段、更新时效、限流及使用条件；用样例请求验证响应和失败行为，提交候选方案、字段映射及限制供团队选型。交付按 `SearchRequest` 查询并返回带来源、链接和抓取时间的原始岗位，供第 5 组处理。 |
 | 第 5 组：岗位理解与数据质量   | `src/jobscout/services/job_processing_service.py`、`src/jobscout/graph/nodes/process_jobs.py`、`tests/test_job_processing_service.py`                                                                                                                                                                                                                                          | 交付原始岗位到统一 `JobPosting` 的字段转换、去重和时效状态处理，并测试缺失字段、重复及未知状态；与第 4 组确认来源字段，与第 6 组确认岗位输入契约。 |
 | 第 6 组：匹配与推荐       | `src/jobscout/services/recommendation_service.py`、`src/jobscout/graph/nodes/recommend.py`                                                                                                                                                                                                                                                                                            | 交付符合契约的总体 Top 5、匹配理由、技能差距和准备建议，并验证排序及边界输入；若采用外部模型或推荐工具，负责搜寻候选方案并测试效果、稳定性、延迟、成本和数据要求，提交评估供团队决定是否引入；输出交第 1 组展示。 |
@@ -83,7 +95,7 @@ bun run dev
 - `src/jobscout/schemas/` 下的 `profile.py`、`job.py`、`search.py`、`recommendation.py` 和 `errors.py` 是跨组数据契约，不按业务消费者拆成多人各自维护。所有相关小组共同确认字段和兼容性；建议由第 3 组集中维护文件，各业务组负责提出并评审与自身模块相关的变更。契约冻结前应先达成共同约定。
 - `src/jobscout/config.py` 由第 3 组主责，配置项需与使用该配置的业务组确认。
 - `tests/test_graph_routing.py` 由第 3 组主责；`test_profile_service.py` 由第 2 组主责；`test_job_processing_service.py` 由第 5 组主责；`test_recommendation_service.py` 由第 6 组主责。跨组端到端和集成测试由第 3 组组织，各组共同修复自身模块问题。
-- 上述主责是建议的代码维护归属，不改变开发指南中“所有小组共同参与集成”的约定。`main.py` 和 `api/sessions.py` 的实现仍以团队确认 Session API 和后端框架为前提。
+- 上述主责是建议的代码维护归属，不改变开发指南中“所有小组共同参与集成”的约定。`main.py` 和 `api/sessions.py` 已采用 FastAPI 脚手架；具体 Session API 仍以团队确认的契约为前提。
 
 ### 共同开工步骤
 
@@ -92,7 +104,7 @@ bun run dev
 3. 第 3 组先用 Mock nodes 串流程，第 1 组同时用 Mock 结果完成页面。
 4. 契约稳定后替换真实模块，再按开发指南的最低测试场景做端到端验收。
 
-每组交付模块入口、输入/输出说明、Mock 示例、测试和集成说明。后端框架、Session API、简历格式、岗位来源及持久化仍待团队确认；确认前不要将它们当作已冻结的实现约束。
+每组交付模块入口、输入/输出说明、Mock 示例、测试和集成说明。Session API、简历格式、岗位来源、业务数据模型及 session 持久化行为仍待团队确认；确认前不要将这些业务约定当作已冻结的实现约束。
 
 ## 目录与文件职责
 
@@ -109,9 +121,10 @@ React + TypeScript 前端，使用 Bun 管理依赖。详细见[前端开发说�
 
 ### `src/jobscout/`
 
-- `main.py`：后端程序启动入口。它可能负责创建 Web 应用、加载配置、挂载 API 路由并准备 LangGraph；具体写法取决于团队最后选择的后端框架。
-- `config.py`：集中读取程序运行所需的设置，例如外部 API 密钥、模型名称、服务地址和超时。它应从本地环境变量读取敏感值，不应把密钥直接写进代码；不同小组需要的配置项由它们提出，再由维护者统一加入。
-- `api/sessions.py`：定义前端使用的 Session API，例如创建或继续一次求职会话、提交用户回答、取得追问或推荐结果。这里处理 HTTP 请求和响应，再把工作交给 Workflow；具体接口和框架仍待团队确认。
+- `main.py`：FastAPI 程序启动入口，负责创建应用、挂载 API 路由并接入数据库生命周期。
+- `config.py`：集中读取程序运行所需的设置，例如数据库地址、外部 API 密钥、模型名称、服务地址和超时。它应从本地环境变量读取敏感值，不应把密钥直接写进代码；不同小组需要的配置项由它们提出，再由维护者统一加入。
+- `database.py`：配置 Tortoise ORM 并管理应用启动和关闭时的数据库连接。当前不包含业务模型；默认使用 SQLite，也支持通过 `DATABASE_URL` 配置 PostgreSQL。
+- `api/sessions.py`：预留前端使用的 Session API 路由，目前提供基础健康检查。具体的会话创建、恢复、回答提交和推荐结果接口，需要按团队确认的契约实现。
 - `graph/state.py`：定义 LangGraph 流程中共享的“工作记录”`AgentState`。它可能保存会话标识、对话消息、用户画像、搜索任务、岗位列表和当前阶段，让图中的不同节点能接续前一步的结果。
 - `graph/builder.py`：把各个节点连接成完整流程并编译成可运行的图。这里会说明流程从哪里开始、节点按什么顺序执行，以及哪些情况下要走不同分支；不应把简历解析或岗位匹配等业务细节都塞进来。
 - `graph/routing.py`：集中放流程分支判断，例如必要资料是否齐全、接下来该追问还是搜索。它根据画像或状态作决定，但具体提取和更新画像的工作交给相应 service 或节点。
@@ -136,6 +149,7 @@ React + TypeScript 前端，使用 Bun 管理依赖。详细见[前端开发说�
 ### `tests/`
 
 - `test_environment.py`：检查包安装与 LangGraph 基础运行环境，不调用外部服务。
+- `test_web_scaffold.py`：检查 FastAPI 应用、数据库生命周期和基础健康检查，不包含业务 API 测试。
 - `test_graph_routing.py`：用小型测试输入检查流程分支是否正确，例如资料不足时会进入追问、资料齐全时会进入岗位搜索。
 - `test_profile_service.py`：检查画像处理是否能应对完整、缺失或互相矛盾的用户资料，并产出符合约定的结果。
 - `test_job_processing_service.py`：检查岗位字段整理、重复岗位合并和 `active`、`expired`、`unknown` 状态标记是否符合预期。
@@ -151,7 +165,7 @@ React + TypeScript 前端，使用 Bun 管理依赖。详细见[前端开发说�
 2. 第三组先用 Mock nodes 串起完整 LangGraph；真实模块就绪后替换节点依赖，不随意改变 State 契约。
 3. 缺少必要信息时追问，收到回答后恢复流程；确认必要信息后直接搜索。
 4. 最终推荐为所有目标方向合并后的总体 Top 5。无法确认岗位时效时标记 `unknown`，不得假装 active。
-5. 后端框架、Session API 细节、简历文件格式、岗位来源和 session 持久化均待团队确认。本骨架不预设这些决策。
+5. Session API、简历文件格式、岗位来源、业务数据模型和 session 持久化行为仍待团队确认；本骨架只提供 FastAPI 应用和数据库连接脚手架。
 6. 所有 API keys、真实简历和受限数据只存放在本地环境中，不提交到版本库。
 
 ## 建议开发顺序
