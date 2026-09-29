@@ -1,0 +1,7 @@
+@import 'tailwindcss' source('.');
+
+@source '../index.html';
+
+@plugin 'daisyui' {
+  themes: cupcake --default;
+}

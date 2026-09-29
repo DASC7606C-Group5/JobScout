@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.tanstack/
+*.local
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+coverage/

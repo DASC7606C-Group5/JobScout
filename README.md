@@ -53,13 +53,25 @@ uv sync --locked                    # 按锁文件同步环境
 
 更新依赖后，运行全部检查，并将 `pyproject.toml` 和 `uv.lock` 一起提交。拉取队友的依赖更新后，运行 `uv sync --locked`。
 
+### 前端开发
+
+安装 [Bun](https://bun.sh/docs/installation)，然后在仓库根目录执行：
+
+```sh
+cd web
+bun install --frozen-lockfile
+bun run dev
+```
+
+在浏览器中打开终端显示的地址。提交前运行 `bun run check`，详细见[前端开发说明](web/README.md)。
+
 ## 按小组开始
 
 先阅读[开发指南](docs/JobScout_Development_Guide.md)中的本组职责、共享接口和验收场景；Workflow 相关概念可参考[分组 LangGraph 学习路线](docs/langgraph/README.md)。表中路径是建议的代码入口，不代表所有文件都已创建。
 
 | 小组                | 主责代码文件与目录                                                                                                                                                                                                                                                                                                                                                                          | 交付与协作                                                                            |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| 第 1 组：前端与交互       | `frontend/index.html`、`frontend/styles.css`、`frontend/app.js`                                                                                                                                                                                                                                                                                                                      | 交付输入、追问、加载/错误/空结果状态及推荐结果展示；按冻结的 Session API 和 JSON 契约收发数据，并用 Mock 验证正常与失败流程。 |
+| 第 1 组：前端与交互       | `web/src/routes/`、`web/src/styles.css`、`web/src/main.tsx`                                                                                                                                                                                                                                                                                                                      | 交付输入、追问、加载/错误/空结果状态及推荐结果展示；按冻结的 Session API 和 JSON 契约收发数据，并用 Mock 验证正常与失败流程。 |
 | 第 2 组：用户画像与确认     | `src/jobscout/services/profile_service.py`、`src/jobscout/graph/nodes/profile.py`、`src/jobscout/graph/nodes/clarification.py`、`tests/test_profile_service.py`                                                                                                                                                                                                                  | 交付画像提取/更新、缺失信息识别和追问处理，并测试完整、缺失及矛盾输入；若采用外部模型或简历解析服务，负责搜寻候选方案、用脱敏样例验证质量、隐私要求、限制和成本，再提交团队评估。与第 3 组对齐状态及回答更新契约。 |
 | 第 3 组：整体 Workflow | `src/jobscout/main.py`、`src/jobscout/config.py`、`src/jobscout/api/sessions.py`、`src/jobscout/graph/state.py`、`src/jobscout/graph/builder.py`、`src/jobscout/graph/routing.py`、`src/jobscout/schemas/profile.py`、`src/jobscout/schemas/job.py`、`src/jobscout/schemas/search.py`、`src/jobscout/schemas/recommendation.py`、`src/jobscout/schemas/errors.py`、`tests/test_graph_routing.py` | 交付 Session API、可运行的图编排及流程路由测试；集中维护配置和共享 schema，组织接口冻结与端到端集成。各业务组负责提出并验证本组契约/配置需求；外部服务由使用它的业务组调研，新增依赖及其配置、安全和成本由团队确认。 |
 | 第 4 组：岗位检索        | `src/jobscout/services/job_search_service.py`、`src/jobscout/graph/nodes/search.py`                                                                                                                                                                                                                                                                                                   | 负责搜寻岗位数据 API/来源并比较覆盖范围、可访问性、字段、更新时效、限流及使用条件；用样例请求验证响应和失败行为，提交候选方案、字段映射及限制供团队选型。交付按 `SearchRequest` 查询并返回带来源、链接和抓取时间的原始岗位，供第 5 组处理。 |
@@ -91,11 +103,9 @@ uv sync --locked                    # 按锁文件同步环境
 - `.env.example`：环境变量的示例清单，说明运行项目时可能需要配置哪些名称，例如 API 密钥或服务地址。这里只写变量名和非敏感示例，不能放真实密钥；具体项目确认后再补充。
 - `pyproject.toml`：Python 项目元数据、运行时/开发依赖、包构建配置，以及 Ruff、mypy 和 pytest 的统一配置。
 
-### `frontend/`
+### `web/`
 
-- `index.html`：网页的骨架，放用户能看到的页面元素，例如简历或求职目标输入框、追问区域、提交按钮和推荐结果区域。它主要描述页面结构，不负责分析简历或计算推荐。
-- `styles.css`：网页的外观设置，例如布局、颜色、字体、间距，以及手机和电脑屏幕上的显示方式。
-- `app.js`：网页的交互逻辑，例如读取用户输入、显示加载或错误提示、把请求发送给后端 Session API，再把返回的追问或岗位推荐显示出来。它按双方约定的 JSON 格式收发数据，不在浏览器里实现画像提取或推荐算法。
+React + TypeScript 前端，使用 Bun 管理依赖。详细见[前端开发说明](web/README.md)。
 
 ### `src/jobscout/`
 
