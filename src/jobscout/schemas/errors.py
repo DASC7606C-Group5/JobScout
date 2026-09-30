@@ -1,4 +1,12 @@
-"""Shared error response contract for API, workflow, and services.
+"""Shared error contract for workflow and HTTP responses."""
 
-TODO: Define code, message, stage, and optional details fields.
-"""
+from pydantic import BaseModel, ConfigDict
+
+
+class WorkflowError(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    message: str
+    stage: str
+    details: dict[str, str | int | float | bool | None] | None = None
