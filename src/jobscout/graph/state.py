@@ -1,6 +1,7 @@
 """Shared state contract for one JobScout graph session."""
 
-from typing import Literal, NotRequired, TypedDict
+import operator
+from typing import Annotated, Literal, NotRequired, TypedDict
 
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import JobPosting
@@ -33,5 +34,5 @@ class AgentState(TypedDict):
     normalized_jobs: NotRequired[list[JobPosting]]
     recommendation: NotRequired[RecommendationResult | None]
     current_stage: NotRequired[WorkflowStage]
-    errors: NotRequired[list[WorkflowError]]
-    warnings: NotRequired[list[str]]
+    errors: NotRequired[Annotated[list[WorkflowError], operator.add]]
+    warnings: NotRequired[Annotated[list[str], operator.add]]

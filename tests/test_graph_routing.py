@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command
 
 from jobscout.graph.builder import build_mock_graph
@@ -205,6 +206,36 @@ def test_mock_graph_routes_errors_to_failed_and_preserves_them() -> None:
 
     assert result["current_stage"] == "failed"
     assert result["errors"] == [error]
+
+
+def test_graph_accumulates_warnings_and_errors_from_multiple_nodes() -> None:
+    first_error = WorkflowError(
+        code="first_error",
+        message="First node failed softly.",
+        stage="profile",
+    )
+    second_error = WorkflowError(
+        code="second_error",
+        message="Second node failed softly.",
+        stage="process_jobs",
+    )
+    graph = StateGraph(AgentState)
+    graph.add_node(
+        "first",
+        lambda state: {"warnings": ["first warning"], "errors": [first_error]},
+    )
+    graph.add_node(
+        "second",
+        lambda state: {"warnings": ["second warning"], "errors": [second_error]},
+    )
+    graph.add_edge(START, "first")
+    graph.add_edge("first", "second")
+    graph.add_edge("second", END)
+
+    result = graph.compile().invoke(make_state())
+
+    assert result["warnings"] == ["first warning", "second warning"]
+    assert result["errors"] == [first_error, second_error]
 
 
 def test_mock_graph_pauses_for_missing_profile_fields() -> None:

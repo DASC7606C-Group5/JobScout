@@ -150,10 +150,10 @@ def mock_clarification_node(state: AgentState) -> MockNodeUpdate:
 
 
 def mock_completed_node(state: AgentState) -> MockNodeUpdate:
-    warnings = list(state.get("warnings", []))
+    update: MockNodeUpdate = {"current_stage": "completed"}
     if not state.get("raw_jobs") and not state.get("normalized_jobs"):
-        warnings.append("No jobs were found.")
-    return {"warnings": warnings, "current_stage": "completed"}
+        update["warnings"] = ["No jobs were found."]
+    return update
 
 
 def mock_failed_node(state: AgentState) -> MockNodeUpdate:
