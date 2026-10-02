@@ -22,6 +22,7 @@ Missing-field handling follows the contract decision confirmed on 2026-09-30:
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -115,7 +116,9 @@ _SKILL_LEXICON = (
 _REQUIRED_TEXT_FIELDS = ("title", "company", "source_url", "location", "target_direction")
 
 _BULLET_PREFIX = re.compile(r"^\s*(?:[-*•·▪◦‣·]|\d+[.)])\s+")
-_NON_ALNUM = re.compile(r"[^a-z0-9]+")
+# Unicode-aware: keeps CJK and other non-ASCII letters/digits so Chinese
+# (company, title, location) triples do not collapse into empty dedup keys.
+_NON_ALNUM = re.compile(r"[\W_]+")
 
 
 class ProcessingResult(NamedTuple):
@@ -198,7 +201,10 @@ def _parse_datetime(value: object) -> datetime | None:
 def _dedup_key_part(value: str | None) -> str:
     if value is None:
         return ""
-    return _NON_ALNUM.sub(" ", value.casefold()).strip()
+    # NFKC folds full-width/half-width variants (e.g. "Ａｃｍｅ" → "Acme")
+    # before case folding, so equivalent forms share one dedup key.
+    normalized = unicodedata.normalize("NFKC", value)
+    return _NON_ALNUM.sub(" ", normalized.casefold()).strip()
 
 
 def _is_header_line(line: str, headers: tuple[str, ...]) -> bool:

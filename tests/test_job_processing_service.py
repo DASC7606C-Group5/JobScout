@@ -221,6 +221,67 @@ def test_does_not_merge_different_locations_or_titles() -> None:
     assert len(result.jobs) == 3
 
 
+def test_does_not_merge_different_chinese_jobs() -> None:
+    first = make_raw(job_id="a", company="腾讯科技", title="数据分析师", location="深圳")
+    second = make_raw(job_id="b", company="阿里巴巴", title="产品经理", location="杭州")
+
+    result = process_jobs([first, second], now=NOW)
+
+    assert len(result.jobs) == 2
+
+
+def test_merges_chinese_duplicates_across_sources_and_keeps_all_links() -> None:
+    first = make_raw(
+        job_id="a",
+        source="zhaopin",
+        source_url="https://zhaopin.example.com/post/1",
+        source_links=["https://zhaopin.example.com/post/1"],
+        company="腾讯科技",
+        title="数据分析师",
+        location="深圳",
+    )
+    second = make_raw(
+        job_id="b",
+        source="liepin",
+        source_url="https://liepin.example.com/job/9",
+        source_links=["https://liepin.example.com/job/9"],
+        company="腾讯科技",
+        title="数据分析师",
+        location="深圳",
+    )
+
+    result = process_jobs([first, second], now=NOW)
+
+    assert len(result.jobs) == 1
+    job = result.jobs[0]
+    assert job.source == "zhaopin, liepin"
+    assert job.source_links == [
+        "https://zhaopin.example.com/post/1",
+        "https://liepin.example.com/job/9",
+    ]
+
+
+def test_does_not_merge_chinese_titles_sharing_latin_prefix() -> None:
+    backend = make_raw(job_id="a", title="Java后端开发工程师")
+    frontend = make_raw(job_id="b", title="Java前端开发工程师")
+
+    result = process_jobs([backend, frontend], now=NOW)
+
+    assert len(result.jobs) == 2
+
+
+def test_generated_ids_differ_for_distinct_chinese_jobs() -> None:
+    first = make_raw(job_id=None, company="腾讯科技", title="数据分析师", location="深圳")
+    second = make_raw(job_id=None, company="阿里巴巴", title="产品经理", location="杭州")
+
+    result = process_jobs([first, second], now=NOW)
+
+    assert len(result.jobs) == 2
+    ids = {job.job_id for job in result.jobs}
+    assert all(job_id.startswith("gen-") for job_id in ids)
+    assert len(ids) == 2
+
+
 def test_freshness_expired_when_expiry_passed() -> None:
     job = process_jobs([make_raw(expiry_at="2026-09-01T00:00:00Z")], now=NOW).jobs[0]
 
