@@ -1,32 +1,11 @@
 import type { RecommendationItem } from '../lib/contracts'
+import { dateLabel, safeSourceUrl } from '../lib/job-display'
 import { Icon } from './icon'
 
 const statusLabels = {
   active: { label: '招聘中', style: 'bg-primary/20 text-primary-content' },
   unknown: { label: '时效待确认', style: 'bg-accent/40 text-accent-content' },
   expired: { label: '已过期', style: 'bg-base-200 text-base-content/65' },
-}
-
-function dateLabel(value: string | null) {
-  if (!value) return '未提供'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime())
-    ? '未提供'
-    : new Intl.DateTimeFormat('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        timeZone: 'Asia/Hong_Kong',
-      }).format(date)
-}
-
-export function safeSourceUrl(value: string): string | null {
-  try {
-    const url = new URL(value)
-    return ['https:', 'http:'].includes(url.protocol) ? url.href : null
-  } catch {
-    return null
-  }
 }
 
 export function JobCard({

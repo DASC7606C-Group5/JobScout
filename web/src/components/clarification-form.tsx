@@ -1,32 +1,60 @@
-import { useState } from 'react'
+import { useEffect, useMemo } from 'react'
+import { useForm } from 'react-hook-form'
 
 import type { ClarificationMessage } from '../lib/contracts'
+import { useScoutStore } from '../state/scout-context'
 import { Icon } from './icon'
 
-export function ClarificationForm({
-  questions,
-  answers,
-  onChange,
-  onSubmit,
-}: {
-  questions: ClarificationMessage[]
-  answers: Record<string, string>
-  onChange: (answers: Record<string, string>) => void
-  onSubmit: (answers: Record<string, string>) => void
-}) {
-  const [error, setError] = useState('')
-  const pending = questions.filter((question) => question.status === 'pending')
+type AnswerValues = { responses: { value: string }[] }
+
+export function ClarificationForm({ questions }: { questions: ClarificationMessage[] }) {
+  const store = useScoutStore()
+  const pending = useMemo(
+    () => questions.filter((question) => question.status === 'pending'),
+    [questions],
+  )
+  const {
+    register,
+    subscribe,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<AnswerValues>({
+    defaultValues: {
+      responses: pending.map((question) => ({
+        value: store.getState().answers[question.field] ?? '',
+      })),
+    },
+  })
+  // Use indexed fields: API field identifiers contain dots and must remain flat keys.
+  function toAnswers(values: AnswerValues) {
+    return Object.fromEntries(
+      pending.map((question, index) => [question.field, values.responses[index]?.value ?? '']),
+    )
+  }
+  useEffect(
+    () =>
+      subscribe({
+        formState: { values: true },
+        callback: ({ values }) =>
+          store
+            .getState()
+            .saveAnswers(
+              Object.fromEntries(
+                pending.map((question, index) => [
+                  question.field,
+                  values.responses[index]?.value ?? '',
+                ]),
+              ),
+            ),
+      }),
+    [subscribe, store, pending],
+  )
   return (
     <form
       className="card border border-base-300 bg-base-100 p-5 sm:p-7"
+      noValidate
       onSubmit={(event) => {
-        event.preventDefault()
-        if (pending.some((question) => question.required && !answers[question.field]?.trim())) {
-          setError('请先回答所有必填问题，帮助我们明确搜索条件。')
-          return
-        }
-        setError('')
-        onSubmit(answers)
+        void handleSubmit((values) => store.getState().answer(toAnswers(values)))(event)
       }}
     >
       <div className="mb-6 flex items-start gap-3">
@@ -57,19 +85,24 @@ export function ClarificationForm({
               className="input w-full rounded-xl border border-base-300 bg-base-200/25"
               required={question.required}
               maxLength={500}
-              aria-describedby={`reason-${index}`}
-              value={answers[question.field] ?? ''}
-              onChange={(event) => onChange({ ...answers, [question.field]: event.target.value })}
+              aria-describedby={`reason-${index} answer-error-${index}`}
+              aria-invalid={Boolean(errors.responses?.[index]?.value)}
+              {...register(`responses.${index}.value`, {
+                validate: (value) =>
+                  !question.required || Boolean(value.trim()) || '请填写此必填项。',
+              })}
               placeholder="在这里填写你的想法"
             />
+            <p
+              id={`answer-error-${index}`}
+              role="alert"
+              className="mt-2 text-xs text-error-content"
+            >
+              {errors.responses?.[index]?.value?.message}
+            </p>
           </div>
         ))}
       </div>
-      {error && (
-        <p role="alert" className="mt-4 text-sm text-error-content">
-          {error}
-        </p>
-      )}
       <div className="mt-7 flex justify-end border-t border-base-300 pt-5">
         <button className="btn rounded-xl border-0 btn-primary" type="submit">
           确认并继续
