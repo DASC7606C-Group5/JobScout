@@ -41,21 +41,64 @@ def mock_profile_node(state: AgentState) -> MockNodeUpdate:
         return {"current_stage": "profile"}
 
     input_data = state.get("input_data", {})
+    preferences_data = input_data.get("preferences", {})
+    preferences_data = preferences_data if isinstance(preferences_data, dict) else {}
+    resume_data = input_data.get("resume")
+    resume_data = resume_data if isinstance(resume_data, dict) else {}
+    description = input_data.get("description", "")
+    directions_data = input_data.get("target_directions", [])
+    directions = (
+        [
+            direction.strip()
+            for direction in directions_data
+            if isinstance(direction, str) and direction.strip()
+        ]
+        if isinstance(directions_data, list)
+        else []
+    )
+    location = preferences_data.get("location")
+    employment_type = preferences_data.get("employment_type")
+    location_unrestricted = preferences_data.get("location_unrestricted") is True
+    has_session_input = any(
+        field in input_data
+        for field in ("description", "resume", "target_directions", "preferences")
+    )
+
     requested_fields = input_data.get("mock_missing_fields", [])
     missing_fields = (
         [field for field in requested_fields if isinstance(field, str)]
         if isinstance(requested_fields, list)
         else []
     )
+    if has_session_input:
+        if not directions:
+            missing_fields.append("target_directions")
+        if not location and not location_unrestricted:
+            missing_fields.append("preferences.location")
+        if not employment_type:
+            missing_fields.append("preferences.employment_type")
+
+    if not has_session_input:
+        directions = ["data analyst"]
+        location = "Hong Kong"
+        employment_type = "internship"
+
     profile = UserProfile(
         profile_id="profile-1",
-        source=ProfileSource(description=True),
-        target_directions=[] if "target_directions" in missing_fields else ["data analyst"],
+        source=ProfileSource(
+            resume=bool(resume_data.get("text")),
+            description=isinstance(description, str) and bool(description.strip()),
+        ),
+        target_directions=[] if "target_directions" in missing_fields else directions,
         preferences=ProfilePreferences(
-            location=None if "preferences.location" in missing_fields else "Hong Kong",
+            location=None if "preferences.location" in missing_fields else location,
+            location_unrestricted=location_unrestricted,
             employment_type=(
-                None if "preferences.employment_type" in missing_fields else "internship"
+                None if "preferences.employment_type" in missing_fields else employment_type
             ),
+            salary_range=preferences_data.get("salary_range"),
+            work_mode=preferences_data.get("work_mode"),
+            industry=preferences_data.get("industry"),
         ),
         missing_required_fields=missing_fields,
     )
