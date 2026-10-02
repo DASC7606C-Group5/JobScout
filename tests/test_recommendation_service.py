@@ -1,4 +1,399 @@
-"""Tests for overall Top 5 selection and recommendation fields.
+"""Group 6 acceptance tests with fixed profiles and normalized jobs."""
 
-TODO: Cover multiple target directions and required result fields.
-"""
+import json
+from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, cast
+
+import pytest
+from langgraph.graph import END, START, StateGraph
+
+from jobscout.graph.nodes.recommend import recommend_node
+from jobscout.graph.state import AgentState
+from jobscout.schemas.errors import WorkflowError
+from jobscout.schemas.job import FreshnessStatus, JobPosting
+from jobscout.schemas.profile import ProfilePreferences, ProfileSource, UserProfile
+from jobscout.schemas.recommendation import RecommendationResult
+from jobscout.services.recommendation_service import RecommendationError, recommend_jobs
+
+NOW = datetime(2026, 10, 2, tzinfo=UTC)
+
+
+def make_profile() -> UserProfile:
+    return UserProfile(
+        profile_id="profile-group6",
+        source=ProfileSource(description=True),
+        skills=["Python", "SQL"],
+        education=["Bachelor in Computer Science"],
+        target_directions=["Data Analyst", "Backend Developer"],
+        preferences=ProfilePreferences(location="Hong Kong", employment_type="internship"),
+        confirmed_fields=["preferences.location", "preferences.employment_type"],
+    )
+
+
+def make_job(
+    job_id: str,
+    *,
+    skills: list[str] | None = None,
+    direction: str = "Data Analyst",
+    status: FreshnessStatus = FreshnessStatus.ACTIVE,
+    location: str = "Hong Kong",
+    title: str = "Data Analyst Intern",
+    responsibilities: list[str] | None = None,
+) -> JobPosting:
+    return JobPosting(
+        job_id=job_id,
+        source="mock-group6",
+        source_url=f"https://example.com/jobs/{job_id}",
+        source_links=[f"https://example.com/jobs/{job_id}", f"https://example.org/jobs/{job_id}"],
+        title=title,
+        company=f"Example {job_id}",
+        location=location,
+        salary="HKD 10,000/month",
+        target_direction=direction,
+        required_skills=["Python", "SQL"] if skills is None else skills,
+        responsibilities=["Analyse data"] if responsibilities is None else responsibilities,
+        posted_at=NOW - timedelta(days=1),
+        fetched_at=NOW,
+        freshness_status=status,
+    )
+
+
+def run(profile: UserProfile, jobs: list[JobPosting]) -> RecommendationResult:
+    return recommend_jobs(profile, jobs, session_id="session-group6", now=NOW)
+
+
+def test_overall_top_five_and_complete_schema_fields() -> None:
+    jobs = [
+        make_job(f"job-{i}", direction="Backend Developer" if i % 2 else "Data Analyst")
+        for i in range(8)
+    ]
+    result = run(make_profile(), list(reversed(jobs)))
+    assert [item.job.job_id for item in result.jobs] == [f"job-{i}" for i in range(5)]
+    assert {item.job.target_direction for item in result.jobs} == {
+        "Data Analyst",
+        "Backend Developer",
+    }
+    assert result.session_id == "session-group6"
+    assert result.generated_at == NOW
+    assert all(item.preparation_suggestions for item in result.jobs)
+    assert all(item.missing_skills == [] for item in result.jobs)
+    assert [item.job for item in result.jobs] == jobs[:5]
+    assert RecommendationResult.model_validate_json(result.model_dump_json()) == result
+    assert set(result.model_dump()) == {"session_id", "generated_at", "jobs", "warnings"}
+    assert set(result.jobs[0].model_dump()) == {"job", "missing_skills", "preparation_suggestions"}
+
+
+def test_skill_coverage_ranks_a_better_match_first() -> None:
+    result = run(make_profile(), [make_job("a", skills=["Python", "SQL", "R"]), make_job("z")])
+    assert [item.job.job_id for item in result.jobs] == ["z", "a"]
+    assert result.jobs[1].missing_skills == ["R"]
+    assert any("R" in text for text in result.jobs[1].preparation_suggestions)
+
+
+@pytest.mark.parametrize("field", ["internships", "projects"])
+def test_background_affects_ranking_without_claiming_a_skill(field: str) -> None:
+    profile = make_profile()
+    profile.skills = []
+    setattr(profile, field, ["Built a Python dashboard"])
+    result = run(profile, [make_job("a", skills=["SQL"]), make_job("z", skills=["Python"])])
+    assert [item.job.job_id for item in result.jobs] == ["z", "a"]
+    assert result.jobs[0].missing_skills == ["Python"]
+    assert any(
+        "Python" in text and "证据" in text for text in result.jobs[0].preparation_suggestions
+    )
+
+
+def test_education_is_compared_to_explicit_job_requirements() -> None:
+    result = run(
+        make_profile(),
+        [
+            make_job("a", responsibilities=["Master's degree required"]),
+            make_job("z", responsibilities=["Bachelor's degree required"]),
+        ],
+    )
+    assert [item.job.job_id for item in result.jobs] == ["z", "a"]
+    assert any("未证明" in text for text in result.jobs[1].preparation_suggestions)
+
+
+def test_degree_alternatives_accept_the_lower_stated_degree() -> None:
+    result = run(
+        make_profile(), [make_job("a", responsibilities=["Bachelor's or Master's degree required"])]
+    )
+    assert any("对应的教育经历" in text for text in result.jobs[0].preparation_suggestions)
+
+
+def test_years_of_experience_are_not_invented_from_projects() -> None:
+    profile = make_profile()
+    profile.projects = ["Python project, 3 years"]
+    result = run(profile, [make_job("a", responsibilities=["Minimum 3 years of work experience"])])
+    assert any("经验年限" in text for text in result.jobs[0].preparation_suggestions)
+
+
+def test_expired_is_excluded_and_unknown_preserved_after_active() -> None:
+    result = run(
+        make_profile(),
+        [
+            make_job("expired", status=FreshnessStatus.EXPIRED),
+            make_job("unknown", status=FreshnessStatus.UNKNOWN),
+            make_job("active", skills=["Rust"]),
+        ],
+    )
+    assert [item.job.job_id for item in result.jobs] == ["active", "unknown"]
+    assert result.jobs[1].job.freshness_status == FreshnessStatus.UNKNOWN
+    assert any("unknown" in warning for warning in result.warnings)
+
+
+def test_off_direction_jobs_are_excluded() -> None:
+    result = run(make_profile(), [make_job("a", direction="Sales"), make_job("b")])
+    assert [item.job.job_id for item in result.jobs] == ["b"]
+
+
+def test_confirmed_location_filters_mismatches_but_keeps_unknown() -> None:
+    result = run(
+        make_profile(),
+        [
+            make_job("a", location="Shanghai"),
+            make_job("b", location="Hong Kong SAR"),
+            make_job("c", location="unknown"),
+        ],
+    )
+    assert {item.job.job_id for item in result.jobs} == {"b", "c"}
+    assert any("c" in warning and "地点未知" in warning for warning in result.warnings)
+
+
+def test_unconfirmed_preferences_are_not_used_as_filters() -> None:
+    profile = make_profile()
+    profile.confirmed_fields = []
+    assert (
+        len(run(profile, [make_job("a", location="Shanghai", title="Full-time Analyst")]).jobs) == 1
+    )
+
+
+def test_confirmed_unrestricted_location_does_not_filter() -> None:
+    profile = make_profile()
+    profile.preferences.location = None
+    profile.preferences.location_unrestricted = True
+    profile.confirmed_fields = ["preferences.location_unrestricted"]
+    assert len(run(profile, [make_job("a", location="Shanghai")]).jobs) == 1
+
+
+def test_confirmed_employment_filters_mismatch_and_warns_on_unknown() -> None:
+    result = run(
+        make_profile(),
+        [
+            make_job("a", title="Full-time Analyst"),
+            make_job("b", title="Data Analyst"),
+            make_job("c", title="Data Analyst Internship"),
+        ],
+    )
+    assert {item.job.job_id for item in result.jobs} == {"b", "c"}
+    assert any("b" in warning and "工作类型" in warning for warning in result.warnings)
+
+
+def test_employment_label_is_used_but_colleague_mentions_are_not() -> None:
+    result = run(
+        make_profile(),
+        [
+            make_job("a", title="Analyst", responsibilities=["Employment type: full-time"]),
+            make_job("b", title="Analyst", responsibilities=["Work with full-time colleagues"]),
+            make_job("c", title="Analyst", responsibilities=["工作类型：实习"]),
+        ],
+    )
+    assert {item.job.job_id for item in result.jobs} == {"b", "c"}
+    assert any("b" in warning and "工作类型" in warning for warning in result.warnings)
+
+
+def test_unverifiable_optional_preferences_are_reported() -> None:
+    profile = make_profile()
+    profile.preferences.salary_range = "HKD 12,000/month or more"
+    profile.preferences.work_mode = "remote"
+    profile.preferences.industry = "finance"
+    profile.confirmed_fields.extend(
+        ["preferences.salary_range", "preferences.work_mode", "preferences.industry"]
+    )
+    result = run(profile, [make_job("a")])
+    assert len(result.jobs) == 1
+    assert all(
+        any(field in warning for warning in result.warnings)
+        for field in ("salary_range", "work_mode", "industry")
+    )
+
+
+def test_skill_aliases_whitespace_case_and_original_missing_labels() -> None:
+    profile = make_profile()
+    profile.skills = [" javascript ", "K8S", "POSTGRES", "Ｃ＋＋"]
+    result = run(
+        profile, [make_job("a", skills=["JS", "Kubernetes", "PostgreSQL", "C++", " R ", "r"])]
+    )
+    assert result.jobs[0].missing_skills == ["R"]
+
+
+def test_skill_names_do_not_match_substrings_or_other_languages() -> None:
+    profile = make_profile()
+    profile.skills = ["JavaScript", "C++", "C#"]
+    profile.projects = ["JavaScript and C++ project"]
+    result = run(profile, [make_job("a", skills=["Java", "C", "C#"])])
+    assert result.jobs[0].missing_skills == ["Java", "C"]
+    assert not any(
+        "相关的项目或实习证据" in text for text in result.jobs[0].preparation_suggestions
+    )
+
+
+def test_chinese_evidence_location_and_education() -> None:
+    profile = make_profile()
+    profile.preferences.location = "上海"
+    profile.education = ["计算机科学本科"]
+    profile.projects = ["使用Python构建数据分析项目"]
+    result = run(
+        profile, [make_job("a", location="上海市", responsibilities=["学历要求：本科及以上"])]
+    )
+    assert len(result.jobs) == 1
+    assert any(
+        "Python" in text and "证据" in text for text in result.jobs[0].preparation_suggestions
+    )
+    assert any("教育经历" in text for text in result.jobs[0].preparation_suggestions)
+
+
+def test_missing_job_skills_do_not_claim_a_perfect_match() -> None:
+    result = run(make_profile(), [make_job("a", skills=[]), make_job("z")])
+    assert [item.job.job_id for item in result.jobs] == ["z", "a"]
+    assert any("技能匹配依据不足" in text for text in result.warnings)
+
+
+@pytest.mark.parametrize("jobs", [[], [make_job("expired", status=FreshnessStatus.EXPIRED)]])
+def test_empty_or_fully_filtered_input_returns_empty_result(jobs: list[JobPosting]) -> None:
+    result = run(make_profile(), jobs)
+    assert result.jobs == []
+    assert any("没有符合" in warning for warning in result.warnings)
+
+
+def test_fewer_than_five_jobs_are_not_padded() -> None:
+    assert len(run(make_profile(), [make_job("a"), make_job("b")]).jobs) == 2
+
+
+def test_duplicate_id_does_not_occupy_multiple_slots_or_merge_here() -> None:
+    first = make_job("a")
+    result = run(make_profile(), [first, make_job("a", skills=["Rust"])])
+    assert len(result.jobs) == 1
+    assert result.jobs[0].job == first
+    assert any("岗位处理模块" in warning for warning in result.warnings)
+
+
+def test_stable_order_and_no_mutation_or_shared_result_objects() -> None:
+    profile = make_profile()
+    jobs = [make_job("c"), make_job("a"), make_job("b")]
+    before = [job.model_dump_json() for job in jobs]
+    before_profile = profile.model_dump_json()
+    result = run(profile, jobs)
+    assert result == run(profile, list(reversed(jobs)))
+    assert [job.model_dump_json() for job in jobs] == before
+    assert profile.model_dump_json() == before_profile
+    result.jobs[0].job.required_skills.append("Rust")
+    assert [job.model_dump_json() for job in jobs] == before
+
+
+@pytest.mark.parametrize("field", ["missing_required_fields", "conflicts", "target_directions"])
+def test_unready_profile_raises_a_shared_error(field: str) -> None:
+    profile = make_profile()
+    setattr(profile, field, [] if field == "target_directions" else ["needs confirmation"])
+    with pytest.raises(RecommendationError) as exc:
+        run(profile, [make_job("a")])
+    assert exc.value.error.code == "recommendation_profile_not_ready"
+    assert exc.value.error.stage == "recommend"
+    assert WorkflowError.model_validate_json(exc.value.error.model_dump_json()) == exc.value.error
+
+
+def test_invalid_session_and_naive_timestamp_raise_shared_errors() -> None:
+    with pytest.raises(RecommendationError, match="session_id"):
+        recommend_jobs(make_profile(), [], session_id=" ", now=NOW)
+    with pytest.raises(RecommendationError) as exc:
+        recommend_jobs(make_profile(), [], session_id="s", now=NOW.replace(tzinfo=None))
+    assert exc.value.error.code == "recommendation_invalid_time"
+
+
+def test_injected_time_is_converted_to_utc() -> None:
+    result = recommend_jobs(
+        make_profile(), [], session_id="s", now=NOW.astimezone(timezone(timedelta(hours=8)))
+    )
+    assert result.generated_at == NOW
+    assert result.generated_at.tzinfo == UTC
+
+
+def test_node_forwards_warnings_without_duplicating_reducer_entries() -> None:
+    state: AgentState = {
+        "session_id": "s",
+        "profile": make_profile(),
+        "normalized_jobs": [make_job("a", status=FreshnessStatus.UNKNOWN)],
+        "warnings": ["upstream warning"],
+    }
+    update = recommend_node(state)
+    result = update["recommendation"]
+    assert result is not None
+    assert update["current_stage"] == "recommend"
+    assert result.generated_at.utcoffset() == timedelta(0)
+    assert result.warnings[0] == "upstream warning"
+    assert "upstream warning" not in update["warnings"]
+    assert state["warnings"] == ["upstream warning"]
+
+
+def test_node_returns_empty_result_for_no_jobs() -> None:
+    update = recommend_node({"session_id": "s", "profile": make_profile(), "normalized_jobs": []})
+    assert update["current_stage"] == "recommend"
+    result = update["recommendation"]
+    assert result is not None and result.jobs == []
+
+
+def test_node_missing_profile_clears_old_result_and_reports_error() -> None:
+    update = recommend_node(
+        {"session_id": "s", "recommendation": run(make_profile(), [make_job("a")])}
+    )
+    assert update["recommendation"] is None
+    assert update["current_stage"] == "failed"
+    assert update["errors"][0].code == "recommendation_missing_profile"
+
+
+def test_node_converts_service_exception_into_workflow_error() -> None:
+    profile = make_profile()
+    profile.conflicts = ["skills conflict"]
+    update = recommend_node({"session_id": "s", "profile": profile})
+    assert update["current_stage"] == "failed"
+    assert update["errors"][0].code == "recommendation_profile_not_ready"
+
+
+def test_node_runs_with_real_state_reducers_in_an_isolated_graph() -> None:
+    graph = StateGraph(AgentState)
+    graph.add_node("recommend", cast(Any, recommend_node))
+    graph.add_edge(START, "recommend")
+    graph.add_edge("recommend", END)
+    state: AgentState = {
+        "session_id": "s",
+        "profile": make_profile(),
+        "normalized_jobs": [make_job("a")],
+        "warnings": ["upstream warning"],
+    }
+    result = graph.compile().invoke(state)
+    assert result["recommendation"].warnings == ["upstream warning"]
+    assert result["warnings"] == ["upstream warning"]
+    assert result["current_stage"] == "recommend"
+
+
+def test_group6_mock_json_is_reproducible() -> None:
+    directory = Path(__file__).resolve().parents[1] / "data" / "group6"
+    example = json.loads((directory / "mock_recommendation_input.json").read_text(encoding="utf-8"))
+    result = recommend_jobs(
+        UserProfile.model_validate(example["profile"]),
+        [JobPosting.model_validate(job) for job in example["jobs"]],
+        session_id=example["session_id"],
+        now=datetime.fromisoformat(example["now"]),
+        warnings=example["warnings"],
+    )
+    expected = RecommendationResult.model_validate_json(
+        (directory / "mock_recommendation_result.json").read_text(encoding="utf-8")
+    )
+    assert result == expected
+    assert len(result.jobs) == 5
+    assert {item.job.target_direction for item in result.jobs} == {
+        "Data Analyst",
+        "Backend Developer",
+    }
