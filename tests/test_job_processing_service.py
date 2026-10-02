@@ -2,6 +2,12 @@
 
 All inputs are fixed, self-made Mock records (plus the shared
 ``data/mock_jobs.json`` sample); no external service is called.
+
+Coverage follows the ten acceptance scenarios: normal conversion, cross-source
+fields, absent salary, evidence-based JD extraction, duplicate merging, distinct
+seniority, expired/unknown status, diagnostics, and empty input. Group 4 maps
+website-specific field names to common top-level keys before calling Group 5.
+New acceptance tests remain ordinary tests so unsupported behavior is visible.
 """
 
 import json
@@ -57,6 +63,8 @@ def test_normalizes_complete_record_and_preserves_provenance() -> None:
     assert job.target_direction == "Data Analyst"
     assert job.responsibilities == ["Build dashboards"]
     assert job.required_skills == ["SQL", "Python"]
+    assert job.posted_at == datetime(2026, 9, 20, tzinfo=UTC)
+    assert job.expiry_at == datetime(2026, 10, 20, tzinfo=UTC)
     assert job.freshness_status is FreshnessStatus.ACTIVE  # expiry_at is in the future
     assert job.source_url == "https://jobsdb.example.com/post/1"
     assert job.source_links == ["https://jobsdb.example.com/post/1"]
@@ -93,6 +101,74 @@ def test_whitespace_is_normalized_in_text_fields() -> None:
     assert job.company == "Acme Ltd"
 
 
+@pytest.mark.parametrize(
+    ("source", "raw_payload"),
+    [
+        pytest.param(
+            "zhaopin",
+            {"name": "Data Analyst", "companyName": "Acme Ltd", "workCity": "Hong Kong"},
+            id="zhaopin-native-fields",
+        ),
+        pytest.param(
+            "liepin",
+            {
+                "job": {"title": "Data Analyst", "dq": "Hong Kong"},
+                "comp": {"compName": "Acme Ltd"},
+            },
+            id="liepin-native-fields",
+        ),
+        pytest.param(
+            "jobsdb",
+            {
+                "title": "Data Analyst",
+                "advertiser": {"description": "Acme Ltd"},
+                "locations": [{"label": "Hong Kong"}],
+            },
+            id="jobsdb-native-fields",
+        ),
+    ],
+)
+def test_normalizes_group4_records_with_different_native_payloads(
+    source: str, raw_payload: dict[str, Any]
+) -> None:
+    # Mirror Group 4's RawJob output, without Group 5-only helper defaults.
+    # Native field mapping belongs to retrieval; raw_payload remains diagnostic.
+    record: dict[str, Any] = {
+        "source": source,
+        "source_job_id": "native-1",
+        "source_url": f"https://{source}.example.com/jobs/native-1",
+        "fetched_at": "2026-09-28T08:00:00Z",
+        "target_direction": "Data Analyst",
+        "title": "  Data   Analyst  ",
+        "company": " Acme Ltd ",
+        "location": " Hong Kong ",
+        "salary": "HKD 20,000/month",
+        "description": "Responsibilities:\n- Build dashboards\nRequirements:\n- SQL\n",
+        "posted_at": "2026-09-20T00:00:00Z",
+        "expiry_at": "2026-10-20T00:00:00Z",
+        "raw_payload": raw_payload,
+    }
+
+    result = process_jobs([record], now=NOW)
+
+    assert result.warnings == []
+    assert len(result.jobs) == 1
+    job = result.jobs[0]
+    assert job.job_id
+    assert job.source == source
+    assert (job.title, job.company, job.location) == ("Data Analyst", "Acme Ltd", "Hong Kong")
+    assert job.salary == "HKD 20,000/month"
+    assert job.target_direction == "Data Analyst"
+    assert job.responsibilities == ["Build dashboards"]
+    assert job.required_skills == ["SQL"]
+    assert job.source_url == record["source_url"]
+    assert job.source_links == [record["source_url"]]
+    assert job.fetched_at == datetime(2026, 9, 28, 8, tzinfo=UTC)
+    assert job.posted_at == datetime(2026, 9, 20, tzinfo=UTC)
+    assert job.expiry_at == datetime(2026, 10, 20, tzinfo=UTC)
+    assert job.freshness_status is FreshnessStatus.ACTIVE
+
+
 def test_parses_responsibilities_and_skills_from_description() -> None:
     description = (
         "We are hiring.\n"
@@ -118,6 +194,60 @@ def test_lexicon_fallback_when_description_has_no_skills_section() -> None:
     job = process_jobs([record], now=NOW).jobs[0]
 
     assert job.required_skills == ["Python", "SQL", "Tableau"]
+
+
+def test_does_not_invent_responsibilities_or_skills_from_unrelated_description() -> None:
+    record = make_raw(
+        responsibilities=[],
+        required_skills=[],
+        description="We offer a friendly workplace and flexible hours.",
+    )
+
+    result = process_jobs([record], now=NOW)
+
+    assert len(result.jobs) == 1
+    assert result.jobs[0].responsibilities == []
+    assert result.jobs[0].required_skills == []
+    assert any("no responsibilities or required skills" in warning for warning in result.warnings)
+
+
+def test_jd_extraction_keeps_benefits_out_of_responsibilities_and_skills() -> None:
+    description = (
+        "Responsibilities:\n- Maintain reports\n"
+        "Requirements:\n- SQL\n"
+        "Benefits:\n- Free lunch\n- Optional Python training\n"
+    )
+    record = make_raw(responsibilities=[], required_skills=[], description=description)
+
+    job = process_jobs([record], now=NOW).jobs[0]
+
+    assert job.responsibilities == ["Maintain reports"]
+    assert job.required_skills == ["SQL"]
+
+
+def test_parses_chinese_responsibilities_and_skills_from_description() -> None:
+    description = "岗位职责：\n- 维护业务报表\n任职要求：\n- 熟悉 SQL\n- 熟悉 Python\n"
+    record = make_raw(responsibilities=[], required_skills=[], description=description)
+
+    job = process_jobs([record], now=NOW).jobs[0]
+
+    assert job.responsibilities == ["维护业务报表"]
+    assert job.required_skills == ["熟悉 SQL", "熟悉 Python"]
+
+
+def test_parses_html_description_and_preserves_section_boundaries() -> None:
+    description = (
+        "<h2>Responsibilities:</h2>"
+        "<ul><li>Build dashboards &amp; reports</li><li>Maintain data pipelines</li></ul>"
+        "<h2>Requirements:</h2><ul><li>SQL</li><li>Python</li></ul>"
+        "<h2>Benefits:</h2><p>Free lunch</p>"
+    )
+    record = make_raw(responsibilities=[], required_skills=[], description=description)
+
+    job = process_jobs([record], now=NOW).jobs[0]
+
+    assert job.responsibilities == ["Build dashboards & reports", "Maintain data pipelines"]
+    assert job.required_skills == ["SQL", "Python"]
 
 
 @pytest.mark.parametrize(
@@ -153,6 +283,37 @@ def test_missing_optional_fields_keep_job_with_warnings() -> None:
     assert any("missing expiry_at" in warning for warning in result.warnings)
 
 
+@pytest.mark.parametrize("salary", [None, "", "   "], ids=["missing-key", "empty", "blank"])
+def test_missing_or_blank_salary_never_becomes_zero(salary: str | None) -> None:
+    record = make_raw(salary=salary)
+    if salary is None:
+        # A missing key is a separate input case from the existing salary=None test.
+        del record["salary"]
+
+    result = process_jobs([record], now=NOW)
+
+    assert len(result.jobs) == 1
+    assert result.jobs[0].salary is None
+    assert any("salary" in warning for warning in result.warnings)
+
+
+@pytest.mark.parametrize("field", ["posted_at", "expiry_at"])
+def test_unparseable_optional_dates_keep_record_and_warn(field: str) -> None:
+    record = make_raw(job_id="bad-date", **{field: "not-a-date"})
+
+    result = process_jobs([record], now=NOW)
+
+    assert len(result.jobs) == 1
+    job = result.jobs[0]
+    assert getattr(job, field) is None
+    assert any("bad-date" in warning and field in warning for warning in result.warnings)
+    if field == "expiry_at":
+        assert job.freshness_status is FreshnessStatus.UNKNOWN
+    else:
+        assert job.expiry_at == datetime(2026, 10, 20, tzinfo=UTC)
+        assert job.freshness_status is FreshnessStatus.ACTIVE
+
+
 def test_missing_source_falls_back_to_unknown_with_warning() -> None:
     result = process_jobs([make_raw(source=None)], now=NOW)
 
@@ -178,6 +339,7 @@ def test_merges_cross_source_duplicates_and_keeps_all_links() -> None:
         source="jobsdb",
         source_url="https://jobsdb.example.com/post/1",
         source_links=["https://jobsdb.example.com/post/1"],
+        responsibilities=["Build dashboards"],
         required_skills=["SQL"],
         fetched_at="2026-09-27T08:00:00Z",
     )
@@ -186,6 +348,7 @@ def test_merges_cross_source_duplicates_and_keeps_all_links() -> None:
         source="linkedin",
         source_url="https://linkedin.example.com/jobs/99",
         source_links=["https://linkedin.example.com/jobs/99"],
+        responsibilities=["Maintain pipelines", "build dashboards"],
         required_skills=["Python", "sql"],
         fetched_at="2026-09-28T09:00:00Z",
     )
@@ -200,6 +363,7 @@ def test_merges_cross_source_duplicates_and_keeps_all_links() -> None:
         "https://linkedin.example.com/jobs/99",
     ]
     assert job.required_skills == ["SQL", "Python"]
+    assert job.responsibilities == ["Build dashboards", "Maintain pipelines"]
     assert job.fetched_at == datetime(2026, 9, 28, 9, 0, tzinfo=UTC)
 
 
@@ -219,6 +383,89 @@ def test_does_not_merge_different_locations_or_titles() -> None:
     result = process_jobs([make_raw(job_id="a"), other_location, other_title], now=NOW)
 
     assert len(result.jobs) == 3
+
+
+@pytest.mark.parametrize("other_title", ["Senior Data Analyst", "Data Analyst Intern"])
+def test_does_not_merge_similar_titles_with_different_seniority(other_title: str) -> None:
+    first = make_raw(job_id="regular")
+    second = make_raw(job_id="other-level", title=other_title)
+
+    result = process_jobs([first, second], now=NOW)
+
+    assert len(result.jobs) == 2
+    assert {job.title for job in result.jobs} == {"Data Analyst", other_title}
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        pytest.param({"company": "乙公司"}, id="different-company"),
+        pytest.param({"title": "商业分析实习生"}, id="different-title"),
+        pytest.param({"location": "北京"}, id="different-location"),
+        pytest.param({"title": "高级数据分析实习生"}, id="different-seniority"),
+        pytest.param(
+            {"company": "乙公司", "title": "商业分析实习生", "location": "北京"},
+            id="all-fields-differ",
+        ),
+    ],
+)
+def test_does_not_merge_distinct_chinese_jobs(overrides: dict[str, str]) -> None:
+    first = make_raw(
+        job_id="cn-1",
+        company="甲公司",
+        title="数据分析实习生",
+        location="上海",
+        source_url="https://example.com/cn-1",
+        source_links=["https://example.com/cn-1"],
+    )
+    second = {
+        **first,
+        **overrides,
+        "job_id": "cn-2",
+        "source_url": "https://example.com/cn-2",
+        "source_links": ["https://example.com/cn-2"],
+    }
+
+    result = process_jobs([first, second], now=NOW)
+
+    assert len(result.jobs) == 2
+    jobs_by_id = {job.job_id: job for job in result.jobs}
+    assert set(jobs_by_id) == {"cn-1", "cn-2"}
+    for raw in (first, second):
+        job = jobs_by_id[raw["job_id"]]
+        assert (job.company, job.title, job.location) == (
+            raw["company"],
+            raw["title"],
+            raw["location"],
+        )
+        assert job.source_links == [raw["source_url"]]
+
+
+def test_merges_same_chinese_job_across_sources_and_keeps_links() -> None:
+    first = make_raw(
+        job_id="cn-a",
+        source="zhaopin",
+        company="甲公司",
+        title="数据分析实习生",
+        location="上海",
+        source_url="https://zhaopin.example.com/cn-a",
+        source_links=["https://zhaopin.example.com/cn-a"],
+    )
+    second = {
+        **first,
+        "job_id": "cn-b",
+        "source": "liepin",
+        "source_url": "https://liepin.example.com/cn-b",
+        "source_links": ["https://liepin.example.com/cn-b"],
+    }
+
+    result = process_jobs([first, second], now=NOW)
+
+    assert len(result.jobs) == 1
+    job = result.jobs[0]
+    assert (job.company, job.title, job.location) == ("甲公司", "数据分析实习生", "上海")
+    assert job.source == "zhaopin, liepin"
+    assert job.source_links == [first["source_url"], second["source_url"]]
 
 
 def test_does_not_merge_different_chinese_jobs() -> None:
@@ -326,6 +573,54 @@ def test_expiry_beats_explicit_active_status() -> None:
     assert job.freshness_status is FreshnessStatus.EXPIRED
 
 
+@pytest.mark.parametrize(
+    ("expiry_at", "source_status", "expected_status"),
+    [
+        pytest.param(
+            "2026-09-01T00:00:00Z", "active", FreshnessStatus.EXPIRED, id="past-but-active"
+        ),
+        pytest.param(
+            "2026-10-20T00:00:00Z", "expired", FreshnessStatus.ACTIVE, id="future-but-expired"
+        ),
+    ],
+)
+def test_warns_when_expiry_conflicts_with_explicit_source_status(
+    expiry_at: str, source_status: str, expected_status: FreshnessStatus
+) -> None:
+    record = make_raw(expiry_at=expiry_at, freshness_status=source_status)
+
+    result = process_jobs([record], now=NOW)
+
+    assert len(result.jobs) == 1
+    # Keep the documented expiry-first rule; acceptance additionally needs a warning.
+    assert result.jobs[0].freshness_status is expected_status
+    assert any(
+        "raw-1" in warning and "expiry_at" in warning and "freshness_status" in warning
+        for warning in result.warnings
+    )
+
+
+def test_conflicting_duplicate_statuses_are_expired_and_reported() -> None:
+    first = make_raw(job_id="active-source", expiry_at=None, freshness_status="active")
+    second = make_raw(job_id="expired-source", expiry_at=None, freshness_status="expired")
+
+    result = process_jobs([first, second], now=NOW)
+
+    assert len(result.jobs) == 1
+    assert result.jobs[0].freshness_status is FreshnessStatus.EXPIRED
+    # Missing-date warnings do not count as a status-conflict warning.
+    assert any("freshness_status" in warning for warning in result.warnings)
+
+
+@pytest.mark.parametrize("source_status", [None, "unknown", "not-a-status"])
+def test_unreliable_source_status_without_dates_stays_unknown(source_status: str | None) -> None:
+    record = make_raw(posted_at=None, expiry_at=None, freshness_status=source_status)
+
+    job = process_jobs([record], now=NOW).jobs[0]
+
+    assert job.freshness_status is FreshnessStatus.UNKNOWN
+
+
 def test_generates_stable_job_id_when_missing() -> None:
     first = process_jobs([make_raw(job_id=None)], now=NOW).jobs[0]
     second = process_jobs([make_raw(job_id=None)], now=NOW).jobs[0]
@@ -355,7 +650,12 @@ def test_shared_mock_sample_stays_unknown_and_keeps_provenance() -> None:
     assert any("missing expiry_at" in warning for warning in result.warnings)
 
 
-def test_node_reads_raw_jobs_and_writes_state_update() -> None:
+def test_node_reads_raw_jobs_and_writes_state_update(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Exercise the real service with the same fixed clock as the service tests.
+    monkeypatch.setattr(
+        "jobscout.services.job_processing_service.process_jobs",
+        lambda raw_jobs: process_jobs(raw_jobs, now=NOW),
+    )
     state: AgentState = {"session_id": "test-session", "raw_jobs": [make_raw()]}
 
     update = process_jobs_node(state)
@@ -363,6 +663,20 @@ def test_node_reads_raw_jobs_and_writes_state_update() -> None:
     assert len(update["normalized_jobs"]) == 1
     assert update["normalized_jobs"][0].title == "Data Analyst"
     assert update["warnings"] == []
+    assert update["errors"] == []
+    assert update["current_stage"] == "process_jobs"
+
+
+def test_node_forwards_service_warnings_for_missing_salary() -> None:
+    record = make_raw()
+    del record["salary"]
+    state: AgentState = {"session_id": "test-session", "raw_jobs": [record]}
+
+    update = process_jobs_node(state)
+
+    assert len(update["normalized_jobs"]) == 1
+    assert len(update["warnings"]) == 1
+    assert "salary" in update["warnings"][0]
     assert update["errors"] == []
     assert update["current_stage"] == "process_jobs"
 

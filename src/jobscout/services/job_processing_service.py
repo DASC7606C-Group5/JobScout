@@ -26,6 +26,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
+from html.parser import HTMLParser
 from typing import Any, NamedTuple
 
 from jobscout.schemas.job import FreshnessStatus, JobPosting
@@ -39,6 +40,9 @@ _RESPONSIBILITY_HEADERS = (
     "your role",
     "duties",
     "key responsibilities",
+    "岗位职责",
+    "工作职责",
+    "職位職責",
 )
 _SKILL_HEADERS = (
     "requirements",
@@ -50,6 +54,9 @@ _SKILL_HEADERS = (
     "what we're looking for",
     "what we are looking for",
     "preferred qualifications",
+    "任职要求",
+    "岗位要求",
+    "任職要求",
 )
 
 # Fallback lexicon used only when the JD has no recognizable skills section.
@@ -140,10 +147,51 @@ def _clean_text(value: object) -> str | None:
     return cleaned or None
 
 
+_HTML_BLOCK_TAGS = frozenset(
+    {"br", "p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6"}
+)
+
+
+class _DescriptionParser(HTMLParser):
+    """Decode HTML text while preserving blocks and excluding scripts/styles."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.hidden_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag in {"script", "style"}:
+            self.hidden_depth += 1
+        if not self.hidden_depth and tag in _HTML_BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"script", "style"} and self.hidden_depth:
+            self.hidden_depth -= 1
+        if not self.hidden_depth and tag in _HTML_BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self.hidden_depth:
+            self.parts.append(data)
+
+
+def _html_description_text(value: str) -> str:
+    if not re.search(r"</?[a-zA-Z][^>]*>", value):
+        return value
+    parser = _DescriptionParser()
+    parser.feed(value)
+    parser.close()
+    # Adjacent block tags should not create blank lines ending a section.
+    return re.sub(r"\n\s*\n", "\n", "".join(parser.parts))
+
+
 def _clean_description(value: object) -> str | None:
     """Like :func:`_clean_text` but keeps line structure for section parsing."""
     if not isinstance(value, str):
         return None
+    value = _html_description_text(value)
     lines = [" ".join(line.split()) for line in value.splitlines()]
     cleaned = "\n".join(lines).strip("\n")
     return cleaned or None
@@ -208,11 +256,13 @@ def _dedup_key_part(value: str | None) -> str:
 
 
 def _is_header_line(line: str, headers: tuple[str, ...]) -> bool:
+    line = line.rstrip().removesuffix("：")
     text = line.strip().rstrip(":").strip().casefold()
     return text in headers
 
 
 def _looks_like_header(line: str) -> bool:
+    line = line.replace("：", ":")
     text = line.strip()
     return text.endswith(":") and len(text.split()) <= 5
 
@@ -301,6 +351,29 @@ def _classify_freshness(
     return FreshnessStatus.UNKNOWN
 
 
+def _record_quality_warnings(raw: dict[str, Any], label: str, now: datetime) -> list[str]:
+    """Report source quality and conflicts without changing normalization rules."""
+    warnings: list[str] = []
+    expiry = _parse_datetime(raw.get("expiry_at"))
+    status = _normalize_status(raw.get("freshness_status"))
+    if expiry is not None and status in (FreshnessStatus.ACTIVE, FreshnessStatus.EXPIRED):
+        if status is not _classify_freshness(expiry, [], now):
+            warnings.append(
+                f"Record {label}: expiry_at conflicts with freshness_status "
+                f"{status.value}; expiry_at takes precedence."
+            )
+    return warnings
+
+
+def _status_conflict_warnings(job_id: str, statuses: list[FreshnessStatus]) -> list[str]:
+    if {FreshnessStatus.ACTIVE, FreshnessStatus.EXPIRED}.issubset(statuses):
+        return [
+            f"Merged job {job_id}: conflicting freshness_status values across sources; "
+            "expiry_at takes precedence, otherwise expired wins."
+        ]
+    return []
+
+
 @dataclass
 class _Group:
     """Mutable accumulator for one dedup group of raw records."""
@@ -376,6 +449,8 @@ def process_jobs(
                 f"Record {label} ({title} @ {company}): missing expiry_at; kept as None."
             )
 
+        warnings.extend(_record_quality_warnings(raw, label, reference_now))
+
         location = _clean_text(raw.get("location"))
         key = (_dedup_key_part(company), _dedup_key_part(title), _dedup_key_part(location))
         group = groups.get(key)
@@ -429,6 +504,8 @@ def process_jobs(
         job_id = _clean_text(first.get("job_id"))
         if job_id is None:
             job_id = "gen-" + sha256("|".join(key).encode("utf-8")).hexdigest()[:16]
+
+        warnings.extend(_status_conflict_warnings(job_id, groups[key].raw_statuses))
 
         title = _clean_text(first.get("title")) or ""
         company = _clean_text(first.get("company")) or ""
