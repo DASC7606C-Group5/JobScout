@@ -1,4 +1,24 @@
-"""Graph node entry points for search planning and retrieval.
+"""Thin search node; Group 3 owns routing and the complete graph."""
 
-TODO: Delegate retrieval to job_search_service for each target direction.
-"""
+from typing import TypedDict
+
+from jobscout.graph.state import AgentState
+from jobscout.schemas.errors import WorkflowError
+from jobscout.services.job_search_service import JobSearchService
+
+
+class SearchUpdate(TypedDict):
+    raw_jobs: list[dict[str, object]]
+    errors: list[WorkflowError]
+    warnings: list[str]
+
+
+def search_node(state: AgentState, *, service: JobSearchService | None = None) -> SearchUpdate:
+    result = (service or JobSearchService()).search_many(state.get("search_requests", []))
+    # AgentState has no append reducers: preserve previous diagnostics.
+    # Replace raw_jobs on rerun; do not append old results or choose routing.
+    return {
+        "raw_jobs": [job.model_dump(mode="json") for job in result.raw_jobs],
+        "errors": [*state.get("errors", []), *result.errors],
+        "warnings": [*state.get("warnings", []), *result.warnings],
+    }

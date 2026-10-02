@@ -1,0 +1,501 @@
+{
+  "mode": "live",
+  "generated_at": "2026-10-02T03:17:06.493848+00:00",
+  "elapsed_seconds": 23.6493,
+  "requests": [
+    {
+      "target_direction": "Data Analyst",
+      "keywords": [],
+      "location": "上海",
+      "location_unrestricted": false,
+      "employment_type": "internship",
+      "salary_range": null,
+      "work_mode": null,
+      "sources": []
+    },
+    {
+      "target_direction": "Business Analyst",
+      "keywords": [],
+      "location": "上海",
+      "location_unrestricted": false,
+      "employment_type": "internship",
+      "salary_range": null,
+      "work_mode": null,
+      "sources": []
+    },
+    {
+      "target_direction": "Data Analyst",
+      "keywords": [],
+      "location": "Hong Kong",
+      "location_unrestricted": false,
+      "employment_type": "internship",
+      "salary_range": null,
+      "work_mode": null,
+      "sources": []
+    }
+  ],
+  "returned_count": 31,
+  "errors": [],
+  "warnings": [
+    "zhaopin/Data Analyst: demand-driven source search; hard location/type checked locally; unknown types excluded. Relevance/ranking belongs to Group 6.",
+    "zhaopin/Data Analyst: retrieval bound reached; results are not exhaustive (pages=1, candidates=6).",
+    "zhaopin/Data Analyst: excluded 1 candidates without lexical keyword evidence in available title/description; this conservative check may miss synonyms.",
+    "liepin/Data Analyst: demand-driven source search; hard location/type checked locally; unknown types excluded. Relevance/ranking belongs to Group 6.",
+    "liepin/Data Analyst: 85786219: description unavailable; null retained.",
+    "liepin/Data Analyst: 85887055: description unavailable; null retained.",
+    "liepin/Data Analyst: 83917991: description unavailable; null retained.",
+    "liepin/Data Analyst: retrieval bound reached; results are not exhaustive (pages=1, candidates=7).",
+    "liepin/Data Analyst: detail budget=3; some descriptions may be missing/excerpts.",
+    "liepin/Data Analyst: excluded 1 candidates without lexical keyword evidence in available title/description; this conservative check may miss synonyms.",
+    "shixiseng/Data Analyst: demand-driven source search; hard location/type checked locally; unknown types excluded. Relevance/ranking belongs to Group 6.",
+    "shixiseng/Data Analyst: inn_wxjuburrfdqd: description unavailable; null retained.",
+    "shixiseng/Data Analyst: inn_wooajuc25dzq: description unavailable; null retained.",
+    "shixiseng/Data Analyst: retrieval bound reached; results are not exhaustive (pages=2, candidates=22).",
+    "shixiseng/Data Analyst: detail budget=3; some descriptions may be missing/excerpts.",
+    "shixiseng/Data Analyst: excluded 2 candidates with mismatching/unknown hard filters.",
+    "shixiseng/Data Analyst: omitted 15 unreadable-title cards after bounded detail retrieval; coverage is incomplete, increase detail_limit to request more details.",
+    "zhaopin/Business Analyst: demand-driven source search; hard location/type checked locally; unknown types excluded. Relevance/ranking belongs to Group 6.",
+    "zhaopin/Business Analyst: retrieval bound reached; results are not exhaustive (pages=2, candidates=40).",
+    "zhaopin/Business Analyst: excluded 2 candidates with mismatching/unknown hard filters.",
+    "zhaopin/Business Analyst: excluded 35 candidates without lexical keyword evidence in available title/description; this conservative check may miss synonyms.",
+    "liepin/Business Analyst: demand-driven source search; hard location/type checked locally; unknown types excluded. Relevance/ranking belongs to Group 6.",
+    "liepin/Business Analyst: 85581959: description unavailable; null retained.",
+    "liepin/Business Analyst: 84054907: description unavailable; null retained.",
+    "liepin/Business Analyst: retrieval bound reached; results are not exhaustive (pages=1, candidates=6).",
+    "liepin/Business Analyst: detail budget=3; some descriptions may be missing/excerpts.",
+    "liepin/Business Analyst: excluded 1 candidates with mismatching/unknown hard filters.",
+    "liepin/Business Analyst: 2 candidates have unverified keyword evidence because description is missing/an excerpt; downstream review required.",
+    "shixiseng/Business Analyst: demand-driven source search; hard location/type checked locally; unknown types excluded. Relevance/ranking belongs to Group 6.",
+    "shixiseng/Business Analyst: retrieval bound reached; results are not exhaustive (pages=2, candidates=40).",
+    "shixiseng/Business Analyst: detail budget=3; some descriptions may be missing/excerpts.",
+    "shixiseng/Business Analyst: excluded 4 candidates with mismatching/unknown hard filters.",
+    "shixiseng/Business Analyst: omitted 33 unreadable-title cards after bounded detail retrieval; coverage is incomplete, increase detail_limit to request more details.",
+    "jobsdb/Data Analyst: demand-driven source search; hard location/type checked locally; unknown types excluded. Relevance/ranking belongs to Group 6.",
+    "jobsdb/Data Analyst: retrieval bound reached; results are not exhaustive (pages=1, candidates=7).",
+    "jobsdb/Data Analyst: detail budget=3; some descriptions may be missing/excerpts.",
+    "jobsdb/Data Analyst: excluded 1 candidates with mismatching/unknown hard filters.",
+    "jobsdb/Data Analyst: excluded 1 candidates without lexical keyword evidence in available title/description; this conservative check may miss synonyms.",
+    "jobsdb/Data Analyst: 3 candidates have unverified keyword evidence because description is missing/an excerpt; downstream review required."
+  ],
+  "outcomes": [
+    {
+      "request_index": 0,
+      "target_direction": "Data Analyst",
+      "source": "zhaopin",
+      "candidate_count": 6,
+      "returned_count": 5,
+      "incomplete_count": 0,
+      "excerpt_count": 0,
+      "elapsed_seconds": 0.4434,
+      "status": "ok"
+    },
+    {
+      "request_index": 0,
+      "target_direction": "Data Analyst",
+      "source": "liepin",
+      "candidate_count": 7,
+      "returned_count": 5,
+      "incomplete_count": 3,
+      "excerpt_count": 0,
+      "elapsed_seconds": 1.3884,
+      "status": "ok"
+    },
+    {
+      "request_index": 0,
+      "target_direction": "Data Analyst",
+      "source": "shixiseng",
+      "candidate_count": 22,
+      "returned_count": 5,
+      "incomplete_count": 2,
+      "excerpt_count": 0,
+      "elapsed_seconds": 2.6679,
+      "status": "ok"
+    },
+    {
+      "request_index": 1,
+      "target_direction": "Business Analyst",
+      "source": "zhaopin",
+      "candidate_count": 40,
+      "returned_count": 3,
+      "incomplete_count": 0,
+      "excerpt_count": 0,
+      "elapsed_seconds": 0.6888,
+      "status": "ok"
+    },
+    {
+      "request_index": 1,
+      "target_direction": "Business Analyst",
+      "source": "liepin",
+      "candidate_count": 6,
+      "returned_count": 5,
+      "incomplete_count": 2,
+      "excerpt_count": 0,
+      "elapsed_seconds": 1.4776,
+      "status": "ok"
+    },
+    {
+      "request_index": 1,
+      "target_direction": "Business Analyst",
+      "source": "shixiseng",
+      "candidate_count": 40,
+      "returned_count": 3,
+      "incomplete_count": 0,
+      "excerpt_count": 0,
+      "elapsed_seconds": 2.7077,
+      "status": "ok"
+    },
+    {
+      "request_index": 2,
+      "target_direction": "Data Analyst",
+      "source": "jobsdb",
+      "candidate_count": 7,
+      "returned_count": 5,
+      "incomplete_count": 0,
+      "excerpt_count": 3,
+      "elapsed_seconds": 14.2743,
+      "status": "ok"
+    }
+  ],
+  "bounds": {
+    "max_pages": 2,
+    "page_size": 20,
+    "candidate_limit": 60,
+    "result_limit": 5,
+    "detail_limit": 3
+  },
+  "field_counts": {
+    "missing_title": 0,
+    "missing_url": 0,
+    "missing_company": 0,
+    "missing_description": 7,
+    "excerpts": 3,
+    "unverified_keywords": 5
+  },
+  "note": "2026-10-02 review acceptance: bounded raw candidates, not semantic ranking or freshness verification. Full output outside repository.",
+  "records": [
+    {
+      "source": "zhaopin",
+      "source_url": "https://jobs.zhaopin.com/CC365329130J40882073301.htm",
+      "source_job_id": "40882073301",
+      "fetched_at": "2026-10-02T03:16:43.286545Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "zhaopin",
+      "source_url": "https://jobs.zhaopin.com/CCL1492019410J40919865603.htm",
+      "source_job_id": "40919865603",
+      "fetched_at": "2026-10-02T03:16:43.286545Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "zhaopin",
+      "source_url": "https://jobs.zhaopin.com/CC469217510J40823723901.htm",
+      "source_job_id": "40823723901",
+      "fetched_at": "2026-10-02T03:16:43.286545Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "zhaopin",
+      "source_url": "https://jobs.zhaopin.com/CC346077610J40902438113.htm",
+      "source_job_id": "40902438113",
+      "fetched_at": "2026-10-02T03:16:43.286545Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "zhaopin",
+      "source_url": "https://jobs.zhaopin.com/CCL1500953700J40871449009.htm",
+      "source_job_id": "40871449009",
+      "fetched_at": "2026-10-02T03:16:43.286545Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "liepin",
+      "source_url": "https://www.liepin.com/job/1969562869.shtml",
+      "source_job_id": "69562869",
+      "fetched_at": "2026-10-02T03:16:43.814693Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "liepin",
+      "source_url": "https://www.liepin.com/job/1973288613.shtml",
+      "source_job_id": "73288613",
+      "fetched_at": "2026-10-02T03:16:43.814693Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "liepin",
+      "source_url": "https://www.liepin.com/job/1985786219.shtml",
+      "source_job_id": "85786219",
+      "fetched_at": "2026-10-02T03:16:43.814693Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [
+        "description"
+      ],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "liepin",
+      "source_url": "https://www.liepin.com/job/1985887055.shtml",
+      "source_job_id": "85887055",
+      "fetched_at": "2026-10-02T03:16:43.814693Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [
+        "description"
+      ],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "liepin",
+      "source_url": "https://www.liepin.com/job/1983917991.shtml",
+      "source_job_id": "83917991",
+      "fetched_at": "2026-10-02T03:16:43.814693Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [
+        "description"
+      ],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "shixiseng",
+      "source_url": "https://www.shixiseng.com/intern/inn_vxtw8gb4l8on",
+      "source_job_id": "inn_vxtw8gb4l8on",
+      "fetched_at": "2026-10-02T03:16:45.344476Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "shixiseng",
+      "source_url": "https://www.shixiseng.com/intern/inn_3f2odvsuq803",
+      "source_job_id": "inn_3f2odvsuq803",
+      "fetched_at": "2026-10-02T03:16:45.344476Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "shixiseng",
+      "source_url": "https://www.shixiseng.com/intern/inn_1myzejmp7mkn",
+      "source_job_id": "inn_1myzejmp7mkn",
+      "fetched_at": "2026-10-02T03:16:45.344476Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "shixiseng",
+      "source_url": "https://www.shixiseng.com/intern/inn_wxjuburrfdqd",
+      "source_job_id": "inn_wxjuburrfdqd",
+      "fetched_at": "2026-10-02T03:16:45.344476Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [
+        "description"
+      ],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "shixiseng",
+      "source_url": "https://www.shixiseng.com/intern/inn_wooajuc25dzq",
+      "source_job_id": "inn_wooajuc25dzq",
+      "fetched_at": "2026-10-02T03:16:47.337500Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [
+        "description"
+      ],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "zhaopin",
+      "source_url": "https://jobs.zhaopin.com/CC365329130J40882073301.htm",
+      "source_job_id": "40882073301",
+      "fetched_at": "2026-10-02T03:16:48.030218Z",
+      "target_direction": "Business Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "zhaopin",
+      "source_url": "https://jobs.zhaopin.com/CCL1427221190J40830775505.htm",
+      "source_job_id": "40830775505",
+      "fetched_at": "2026-10-02T03:16:48.030218Z",
+      "target_direction": "Business Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "zhaopin",
+      "source_url": "https://jobs.zhaopin.com/CC174400120J40775958116.htm",
+      "source_job_id": "40775958116",
+      "fetched_at": "2026-10-02T03:16:48.030218Z",
+      "target_direction": "Business Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "liepin",
+      "source_url": "https://www.liepin.com/job/1983917967.shtml",
+      "source_job_id": "83917967",
+      "fetched_at": "2026-10-02T03:16:48.545066Z",
+      "target_direction": "Business Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "liepin",
+      "source_url": "https://www.liepin.com/job/1977604561.shtml",
+      "source_job_id": "77604561",
+      "fetched_at": "2026-10-02T03:16:48.545066Z",
+      "target_direction": "Business Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "liepin",
+      "source_url": "https://www.liepin.com/job/1975515915.shtml",
+      "source_job_id": "75515915",
+      "fetched_at": "2026-10-02T03:16:48.545066Z",
+      "target_direction": "Business Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "liepin",
+      "source_url": "https://www.liepin.com/job/1985581959.shtml",
+      "source_job_id": "85581959",
+      "fetched_at": "2026-10-02T03:16:48.545066Z",
+      "target_direction": "Business Analyst",
+      "missing_fields": [
+        "description"
+      ],
+      "description_is_excerpt": false,
+      "keyword_evidence": "unverified"
+    },
+    {
+      "source": "liepin",
+      "source_url": "https://www.liepin.com/job/1984054907.shtml",
+      "source_job_id": "84054907",
+      "fetched_at": "2026-10-02T03:16:48.545066Z",
+      "target_direction": "Business Analyst",
+      "missing_fields": [
+        "description"
+      ],
+      "description_is_excerpt": false,
+      "keyword_evidence": "unverified"
+    },
+    {
+      "source": "shixiseng",
+      "source_url": "https://www.shixiseng.com/intern/inn_bswne29nnp42",
+      "source_job_id": "inn_bswne29nnp42",
+      "fetched_at": "2026-10-02T03:16:50.329616Z",
+      "target_direction": "Business Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "shixiseng",
+      "source_url": "https://www.shixiseng.com/intern/inn_osamrzh7ducv",
+      "source_job_id": "inn_osamrzh7ducv",
+      "fetched_at": "2026-10-02T03:16:50.329616Z",
+      "target_direction": "Business Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "shixiseng",
+      "source_url": "https://www.shixiseng.com/intern/inn_9xvx6k2xne6w",
+      "source_job_id": "inn_9xvx6k2xne6w",
+      "fetched_at": "2026-10-02T03:16:50.329616Z",
+      "target_direction": "Business Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "jobsdb",
+      "source_url": "https://hk.jobsdb.com/job/94948014",
+      "source_job_id": "94948014",
+      "fetched_at": "2026-10-02T03:16:56.695903Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "jobsdb",
+      "source_url": "https://hk.jobsdb.com/job/94978906",
+      "source_job_id": "94978906",
+      "fetched_at": "2026-10-02T03:16:56.695903Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": false,
+      "keyword_evidence": "matched"
+    },
+    {
+      "source": "jobsdb",
+      "source_url": "https://hk.jobsdb.com/job/94927343",
+      "source_job_id": "94927343",
+      "fetched_at": "2026-10-02T03:16:56.695903Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": true,
+      "keyword_evidence": "unverified"
+    },
+    {
+      "source": "jobsdb",
+      "source_url": "https://hk.jobsdb.com/job/94769451",
+      "source_job_id": "94769451",
+      "fetched_at": "2026-10-02T03:16:56.695903Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": true,
+      "keyword_evidence": "unverified"
+    },
+    {
+      "source": "jobsdb",
+      "source_url": "https://hk.jobsdb.com/job/94832003",
+      "source_job_id": "94832003",
+      "fetched_at": "2026-10-02T03:16:56.695903Z",
+      "target_direction": "Data Analyst",
+      "missing_fields": [],
+      "description_is_excerpt": true,
+      "keyword_evidence": "unverified"
+    }
+  ]
+}
