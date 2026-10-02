@@ -17,10 +17,10 @@ function RootLayout() {
 function NotFound() {
   return (
     <main className="mx-auto max-w-xl px-6 py-20">
-      <h1 className="text-3xl font-semibold">Page not found</h1>
-      <p className="mt-3 mb-6">The page you are looking for does not exist.</p>
+      <h1 className="text-3xl font-semibold">页面不存在</h1>
+      <p className="mt-3 mb-6">回到首页，继续探索下一份机会吧。</p>
       <Link to="/" className="btn">
-        Back to JobScout
+        返回 JobScout
       </Link>
     </main>
   )

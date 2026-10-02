@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 3000",
+    "test": "bun test",
     "generate-routes": "tsr generate",
     "typecheck": "bun run generate-routes && tsc --noEmit",
     "lint": "oxlint --type-aware --deny-warnings",

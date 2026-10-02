@@ -5,3 +5,50 @@
 @plugin 'daisyui' {
   themes: cupcake --default;
 }
+
+@utility select {
+  /* Popup surfaces must not inherit a translucent trigger background. */
+  &::picker(select),
+  & select::picker(select) {
+    background-color: var(--color-base-100);
+    color: var(--color-base-content);
+  }
+}
+
+@layer base {
+  html {
+    font-family: 'Inter', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    scrollbar-gutter: stable;
+  }
+
+  button:not(:disabled),
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary-content);
+    outline-offset: 4px;
+  }
+
+  label:has(input[type='file']:focus-visible) {
+    outline: 2px solid var(--color-primary-content);
+    outline-offset: 4px;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
