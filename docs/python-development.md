@@ -18,20 +18,51 @@ uv run --locked uvicorn jobscout.main:app --reload
 GET http://127.0.0.1:8000/api/v1/health
 ```
 
-当前数据库配置只负责初始化和关闭 Tortoise ORM 连接，尚未包含业务模型、迁移或 Session CRUD。
+当前数据库配置负责初始化和关闭 Tortoise ORM 连接，尚未包含业务模型和迁移。Session API 已实现，会话使用内存 checkpoint，重启后不保留；入口和运行方式见[项目结构与协作](project-structure.md)。
+
+## 整理代码与提交钩子
+
+需要自动修复代码问题或整理格式时，运行：
+
+```powershell
+uv run --locked ruff check --fix .
+uv run --locked ruff format .
+```
+
+这些命令会修改文件，查看改动后重新运行全部检查。
+
+安装提交钩子可以在每次提交时自动检查代码问题、格式和类型：
+
+```powershell
+uv run --locked pre-commit install
+```
+
+提交钩子不会代替完整测试；提交前仍运行 `uv run --locked python scripts/check.py`。
+
+## 管理依赖
+
+| 操作             | 命令                                     |
+| ---------------- | ---------------------------------------- |
+| 新增运行时依赖   | `uv add package-name`                    |
+| 新增开发工具     | `uv add --dev package-name`              |
+| 删除依赖         | `uv remove package-name`                 |
+| 升级单个依赖     | `uv lock --upgrade-package package-name` |
+| 按锁文件同步环境 | `uv sync --locked`                       |
+
+变更依赖后运行全部检查，并将 `pyproject.toml` 和 `uv.lock` 一起提交。拉取队友的依赖更新后运行 `uv sync --locked`。使用 VS Code 时选择 `.venv` 中的 Python 解释器。
 
 ## 单独运行检查
 
-| 目的 | 命令 |
-| --- | --- |
-| 运行全部检查 | `uv run --locked python scripts/check.py` |
-| 检查代码问题与 import 顺序 | `uv run --locked ruff check .` |
-| 检查格式 | `uv run --locked ruff format --check .` |
-| 检查类型 | `uv run --locked mypy` |
-| 运行全部测试 | `uv run --locked pytest` |
-| 运行一个测试文件 | `uv run --locked pytest tests/test_environment.py` |
-| 手动运行提交钩子 | `uv run --locked pre-commit run --all-files` |
-| 构建源码包和 wheel | `uv build` |
+| 目的                       | 命令                                               |
+| -------------------------- | -------------------------------------------------- |
+| 运行全部检查               | `uv run --locked python scripts/check.py`          |
+| 检查代码问题与 import 顺序 | `uv run --locked ruff check .`                     |
+| 检查格式                   | `uv run --locked ruff format --check .`            |
+| 检查类型                   | `uv run --locked mypy`                             |
+| 运行全部测试               | `uv run --locked pytest`                           |
+| 运行一个测试文件           | `uv run --locked pytest tests/test_environment.py` |
+| 手动运行提交钩子           | `uv run --locked pre-commit run --all-files`       |
+| 构建源码包和 wheel         | `uv build`                                         |
 
 全部检查命令会运行每一项检查，并在最后列出失败项。它不会自动修改代码；只要有一项失败，命令就以非零状态退出。
 
