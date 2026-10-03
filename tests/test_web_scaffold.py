@@ -1,8 +1,13 @@
 """Tests for the web and database scaffolding only."""
 
+from datetime import UTC, datetime
+from typing import Any
+
 from fastapi.testclient import TestClient
 
+from jobscout.graph.nodes import search as search_module
 from jobscout.main import create_app
+from jobscout.services.job_retrieval.models import RawJob, SearchResult
 
 SESSION_PREFERENCES: dict[str, object] = {
     "location": "香港",
@@ -20,6 +25,26 @@ SESSION_INPUT: dict[str, object] = {
 }
 
 
+class StubSearchService:
+    def search_many(self, requests: object) -> SearchResult:
+        return SearchResult(
+            raw_jobs=[
+                RawJob(
+                    source="stub",
+                    source_url="https://example.test/jobs/1",
+                    fetched_at=datetime.now(UTC),
+                    target_direction="前端开发",
+                    source_job_id="1",
+                    title="React Engineer",
+                    company="Example",
+                    location="香港",
+                    description="Build React applications.",
+                    raw_payload={},
+                )
+            ]
+        )
+
+
 def test_health_endpoint() -> None:
     """The application exposes a stable infrastructure health endpoint."""
 
@@ -30,7 +55,8 @@ def test_health_endpoint() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_create_and_get_session() -> None:
+def test_create_and_get_session(monkeypatch: Any) -> None:
+    monkeypatch.setattr(search_module, "JobSearchService", StubSearchService)
     with TestClient(create_app()) as client:
         created = client.post("/api/v1/sessions", json=SESSION_INPUT)
         session_id = created.json()["session_id"]
@@ -38,13 +64,17 @@ def test_create_and_get_session() -> None:
 
     assert created.status_code == 201
     assert created.json()["outcome"] == "completed"
-    assert created.json()["state"]["input_data"] == SESSION_INPUT
+    assert created.json()["profile"]["target_directions"] == ["前端开发"]
+    assert created.json()["recommendation"] is not None
+    assert created.json()["errors"] == []
     assert fetched.status_code == 200
     assert fetched.json()["session_id"] == session_id
-    assert fetched.json()["state"]["current_stage"] == "completed"
+    assert fetched.json()["outcome"] == "completed"
+    assert fetched.json()["clarification_questions"] == []
 
 
-def test_session_can_pause_resume_and_delete() -> None:
+def test_session_can_pause_resume_and_delete(monkeypatch: Any) -> None:
+    monkeypatch.setattr(search_module, "JobSearchService", StubSearchService)
     incomplete_input = {
         **SESSION_INPUT,
         "target_directions": [],
@@ -82,7 +112,8 @@ def test_session_can_pause_resume_and_delete() -> None:
     assert missing.status_code == 404
 
 
-def test_resume_rejects_non_paused_session() -> None:
+def test_resume_rejects_non_paused_session(monkeypatch: Any) -> None:
+    monkeypatch.setattr(search_module, "JobSearchService", StubSearchService)
     with TestClient(create_app()) as client:
         created = client.post("/api/v1/sessions", json=SESSION_INPUT)
         session_id = created.json()["session_id"]
@@ -94,7 +125,8 @@ def test_resume_rejects_non_paused_session() -> None:
     assert response.status_code == 409
 
 
-def test_create_session_rejects_non_contract_fields() -> None:
+def test_create_session_rejects_non_contract_fields(monkeypatch: Any) -> None:
+    monkeypatch.setattr(search_module, "JobSearchService", StubSearchService)
     with TestClient(create_app()) as client:
         response = client.post(
             "/api/v1/sessions",

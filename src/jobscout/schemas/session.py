@@ -1,7 +1,11 @@
-from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from jobscout.schemas.errors import WorkflowError
+from jobscout.schemas.profile import UserProfile
+from jobscout.schemas.recommendation import RecommendationResult
+from jobscout.schemas.search import ClarificationMessage
 
 
 class ResumeInput(BaseModel):
@@ -42,4 +46,8 @@ class SessionResponse(BaseModel):
 
     session_id: str
     outcome: Literal["paused", "completed", "failed"]
-    state: Mapping[str, object]
+    profile: UserProfile | None = None
+    clarification_questions: list[ClarificationMessage] = Field(default_factory=list)
+    recommendation: RecommendationResult | None = None
+    errors: list[WorkflowError] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)

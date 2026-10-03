@@ -1,5 +1,3 @@
-"""Thin recommendation node; workflow wiring belongs to group 3."""
-
 from typing import TypedDict
 
 from jobscout.graph.state import AgentState, WorkflowStage
@@ -16,7 +14,6 @@ class RecommendationNodeUpdate(TypedDict, total=False):
 
 
 def recommend_node(state: AgentState) -> RecommendationNodeUpdate:
-    """Read normalized data and return a partial update, including error data."""
     profile = state.get("profile")
     if profile is None:
         return {
@@ -39,7 +36,6 @@ def recommend_node(state: AgentState) -> RecommendationNodeUpdate:
         )
     except RecommendationError as exc:
         return {"recommendation": None, "current_stage": "failed", "errors": [exc.error]}
-    # AgentState appends warnings via a reducer: emit only new recommendation warnings.
     existing_warnings = set(state.get("warnings", []))
     return {
         "recommendation": result,

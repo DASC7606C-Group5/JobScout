@@ -1,5 +1,3 @@
-"""Workflow routing decisions based on validated state."""
-
 from typing import Literal
 
 from jobscout.graph.state import AgentState
