@@ -15,10 +15,10 @@ class SearchUpdate(TypedDict):
 
 def search_node(state: AgentState, *, service: JobSearchService | None = None) -> SearchUpdate:
     result = (service or JobSearchService()).search_many(state.get("search_requests", []))
-    # AgentState has no append reducers: preserve previous diagnostics.
+    # Return only new diagnostics; append reducers preserve history.
     # Replace raw_jobs on rerun; do not append old results or choose routing.
     return {
         "raw_jobs": [job.model_dump(mode="json") for job in result.raw_jobs],
-        "errors": [*state.get("errors", []), *result.errors],
-        "warnings": [*state.get("warnings", []), *result.warnings],
+        "errors": result.errors,
+        "warnings": result.warnings,
     }
