@@ -265,8 +265,9 @@ HTTP 请求体构造后传给 `run_workflow(graph, session_id, input_data=...)`�
 | `target_directions` | `string[] \| string` | 字符串按 `,`、`，`、`、`、`;`、`；`、`/`、`\|` 拆分；条目去空白、去重、丢空值 |
 | `preferences` | `object \| null` | 未定义的键会报 `invalid_input`（`ProfilePreferences` 使用 `extra="forbid"`）；`null` 等价于全默认 |
 
-简历文本格式：MVP 只支持**纯文本**（前端 `readResume` 已限定 `.txt`、≤ 1 MB、UTF-8）。
-PDF/Word 需用户自行复制为文本，暂不做文件解析。
+画像模块仍接收**纯文本**。上传模块支持 PDF、DOCX 和 UTF-8 TXT（≤ 10 MB），PDF / DOCX 通过
+`POST /api/v1/resumes/parse` 提取文字后统一转换为 `{name, text}`，不改变本模块的输入契约。
+扫描版 PDF 需先进行 OCR。详见[简历上传模块](resume-upload-design.md)。
 
 `input_data` 中**未使用的键会被忽略**，便于第三组在同一字典里携带会话附加信息。
 
@@ -471,7 +472,7 @@ Mock 文本离线复现（§3.6、§11），`tests/test_profile_service.py` 亦�
 | A4 | 指南 §4.1 的 `UserProfile` 示例缺少 `preferences.location_unrestricted` | 与冻结的 Schema v1（`schemas/profile.py`、`schemas/README.md`）不一致，照 §4.1 实现的组会丢掉「不限地点」语义 | 第 3 组 / 契约 owner：修订共享文档示例 |
 | A5 | 节点函数名与指南 §3.1 建议名不同 | `extract_profile_node` vs `extract_profile`；无功能影响（图注册名 `profile` / `validate` / `clarify` 一致） | 团队：保持现状，或统一改名（需同步 builder 与测试） |
 | A6 | `profile_id = session_id` | 复用 session 主键，保证恢复后稳定；若 API 需要独立画像 ID 或跨 session 复用画像则不满足 | 团队 / 第 3 组：确认后本组只改 `extract_profile_node` 一处 |
-| A7 | 简历输入格式未冻结（MVP 只支持纯文本） | 前端 `readResume` 限 `.txt`、≤ 1 MB、UTF-8，不做 PDF/DOCX 解析；上传 PDF 会被前端拒绝，用户需自行粘贴文本 | 团队：确认简历格式；若支持 PDF/DOCX 需新增解析模块 |
+| A7 | 简历文件输入已支持 PDF / DOCX / TXT | 独立上传模块将文件转换为 `{name, text}`，画像模块继续使用纯文本；最大 10 MB，PDF 最多 50 页，扫描件需先 OCR | 接口见[简历上传模块](resume-upload-design.md) |
 
 **B. 实现层保留项与转交项**
 

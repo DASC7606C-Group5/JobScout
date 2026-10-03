@@ -6,7 +6,7 @@ export function DescriptionField() {
     name: 'description',
     rules: {
       validate: (value, values) =>
-        Boolean(value.trim() || values.resume) || '请填写个人介绍，或添加一份 TXT 简历。',
+        Boolean(value.trim() || values.resume) || '请填写个人介绍，或添加一份简历。',
     },
   })
   return (

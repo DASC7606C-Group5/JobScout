@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useFormContext, useWatch } from 'react-hook-form'
 
 import type { ProfileFormValues } from '../../lib/profile-form'
+import { RESUME_FILE_ACCEPT } from '../../lib/resume-client'
 import { Icon } from '../icon'
 import { useResumeUpload } from './use-resume-upload'
 
@@ -18,49 +19,86 @@ export function ResumeField({
   const { fileRef, attach, remove } = useResumeUpload(onReadingChange)
   return (
     <div>
-      <label
-        className={`relative flex cursor-pointer items-center gap-4 rounded-xl border border-dashed p-4 transition-colors ${dragging ? 'border-primary-content bg-primary/15' : 'border-base-content/20 bg-base-200/20 hover:bg-base-200/45'}`}
+      <input
+        ref={fileRef}
+        type="file"
+        accept={RESUME_FILE_ACCEPT}
+        hidden
+        disabled={reading}
+        onChange={(event) => {
+          void attach(event.target.files?.[0])
+        }}
+      />
+      <button
+        type="button"
+        disabled={reading}
+        aria-label={resume ? `移除简历：${resume.name}` : '添加 PDF、DOCX 或 TXT 简历'}
+        aria-describedby="profile-error"
+        className={`group flex w-full cursor-pointer items-center gap-4 rounded-xl border border-dashed p-4 text-left transition-colors disabled:cursor-wait ${resume ? 'border-base-content/20 bg-base-200/20 hover:border-error hover:bg-error/10 hover:text-error focus-visible:border-error focus-visible:bg-error/10 focus-visible:text-error' : dragging ? 'border-primary-content bg-primary/15' : 'border-base-content/20 bg-base-200/20 hover:bg-base-200/45'}`}
+        onClick={() => {
+          if (resume) remove()
+          else fileRef.current?.click()
+        }}
+        onDragOver={(event) => {
+          event.preventDefault()
+          if (!resume && !reading) setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault()
+          setDragging(false)
+          if (!resume && !reading) void attach(event.dataTransfer.files[0])
+        }}
       >
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".txt,text/plain"
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-          aria-label="添加 TXT 简历"
-          aria-describedby="profile-error"
-          disabled={reading}
-          onDragOver={(event) => {
-            event.preventDefault()
-            setDragging(true)
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(event) => {
-            event.preventDefault()
-            setDragging(false)
-            if (!reading) void attach(event.dataTransfer.files[0])
-          }}
-          onChange={(event) => {
-            void attach(event.target.files?.[0])
-          }}
-        />
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-base-100">
-          <Icon name={resume ? 'file' : 'upload'} />
+        <span
+          className={`flex size-10 shrink-0 items-center justify-center rounded-full bg-base-100 transition-colors ${resume ? 'group-hover:bg-error/10 group-focus-visible:bg-error/10' : ''}`}
+        >
+          {resume ? (
+            <>
+              <Icon name="file" className="group-hover:hidden group-focus-visible:hidden" />
+              <Icon name="close" className="hidden group-hover:block group-focus-visible:block" />
+            </>
+          ) : (
+            <Icon name="upload" />
+          )}
         </span>
-        <span className="min-w-0">
+        <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">
-            {reading ? '正在读取简历…' : resume?.name || '添加简历，或者拖到这里'}
+            {reading ? (
+              '正在解析简历…'
+            ) : resume ? (
+              <>
+                <span className="block truncate group-hover:hidden group-focus-visible:hidden">
+                  {resume.name}
+                </span>
+                <span className="hidden group-hover:block group-focus-visible:block">移除简历</span>
+              </>
+            ) : (
+              '添加简历，或者拖到这里'
+            )}
           </span>
-          <span className="mt-1 block text-xs text-base-content/55">
-            TXT · UTF-8 · 最大 1 MB · 可选
+          <span
+            className={`mt-1 block truncate text-xs text-base-content/55 ${resume ? 'group-hover:text-error group-focus-visible:text-error' : ''}`}
+          >
+            {resume ? (
+              <>
+                <span className="group-hover:hidden group-focus-visible:hidden">简历已添加</span>
+                <span className="hidden truncate group-hover:block group-focus-visible:block">
+                  {resume.name}
+                </span>
+              </>
+            ) : (
+              'PDF / DOCX / TXT · 最大 10 MB · 可选'
+            )}
           </span>
         </span>
-        {resume && <Icon name="check" className="ml-auto shrink-0 text-primary-content" />}
-      </label>
-      {resume && (
-        <button type="button" className="btn mt-2 btn-ghost btn-xs" onClick={remove}>
-          移除简历
-        </button>
-      )}
+        {resume && (
+          <Icon
+            name="check"
+            className="shrink-0 text-primary-content group-hover:hidden group-focus-visible:hidden"
+          />
+        )}
+      </button>
     </div>
   )
 }

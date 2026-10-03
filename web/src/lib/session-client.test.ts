@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import { createProfileFixture } from '../../tests/fixtures'
 import type { ScoutSession } from './contracts'
 import { toScoutInput } from './profile-form'
-import { createSessionClient, readResume, SessionHttpError } from './session-client'
+import { createSessionClient, SessionHttpError } from './session-client'
 
 const input = toScoutInput(createProfileFixture())
 const completed: ScoutSession = {
@@ -138,28 +138,5 @@ describe('Session HTTP API', () => {
       .get('session-1', controller.signal)
       .catch((cause: unknown) => cause)
     expect(error).toBe(controller.signal.reason)
-  })
-})
-
-describe('local resume input', () => {
-  test('reads UTF-8 text into the API resume payload', async () => {
-    expect(await readResume(new File([' React 开发经历 '], 'resume.TXT'))).toEqual({
-      name: 'resume.TXT',
-      text: 'React 开发经历',
-    })
-  })
-
-  test('rejects unsupported, empty, binary and oversized files', async () => {
-    const cases: [File, string][] = [
-      [new File(['sample'], 'resume.pdf'), 'TXT'],
-      [new File(['  '], 'resume.txt'), '没有文字'],
-      [new File(['bad\u0000text'], 'resume.txt'), 'UTF-8'],
-      [new File([new Uint8Array(1024 * 1024 + 1)], 'resume.txt'), '1 MB'],
-    ]
-    for (const [file, message] of cases) {
-      const error: unknown = await readResume(file).catch((cause: unknown) => cause)
-      expect(error).toBeInstanceOf(Error)
-      expect(error).toHaveProperty('message', expect.stringContaining(message))
-    }
   })
 })

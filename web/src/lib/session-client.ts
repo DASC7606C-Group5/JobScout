@@ -1,4 +1,4 @@
-import type { ScoutInput, ScoutSession, SessionClient } from './contracts'
+import type { ScoutSession, SessionClient } from './contracts'
 
 export class SessionHttpError extends Error {
   constructor(
@@ -81,14 +81,3 @@ export function createSessionClient(
 }
 
 export const sessionClient = createSessionClient(import.meta.env?.VITE_API_BASE_URL || '/api/v1')
-
-export async function readResume(file: File): Promise<ScoutInput['resume']> {
-  if (!file.name.toLowerCase().endsWith('.txt'))
-    throw new Error('当前支持 TXT 文本简历；PDF / Word 请先复制文字到个人介绍中。')
-  if (file.size > 1024 * 1024) throw new Error('文件过大，请选择 1 MB 以内的 TXT 简历。')
-  const text = (await file.text()).trim()
-  if (!text) throw new Error('这份文件没有文字，请检查后重新选择。')
-  if (text.includes('\u0000') || text.includes('\uFFFD'))
-    throw new Error('无法读取文件编码，请使用 UTF-8 格式的 TXT 文件。')
-  return { name: file.name, text }
-}

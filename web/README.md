@@ -44,11 +44,14 @@ uv run --locked uvicorn jobscout.main:app --reload
 - `src/components/discovery/`：检索阶段、进度和加载/失败状态。
 - `src/components/profile/`：个人介绍、简历、求职方向和偏好字段。
 - `src/components/results/`：结果筛选、空态和提示；岗位卡片独立复用。
-- `src/lib/session-client.ts`：Session HTTP 请求、错误提示和 TXT 简历读取。
+- `src/lib/session-client.ts`：Session HTTP 请求和错误提示。
+- `src/lib/resume-client.ts`：TXT 本地读取和 PDF / DOCX 上传解析，统一返回 `{ name, text }`。
 - `src/lib/session-query.ts`：会话 Query key、查询和重试规则。
 - `src/state/`：Zustand 草稿和收藏、React Query 会话流程；`ScoutProvider` 可注入 `SessionClient`。
 
-React Hook Form 管理资料及追问表单的字段、校验和错误聚焦，通过订阅把草稿同步到 Zustand。Zustand 保留草稿、追问回答和收藏；服务端会话由 React Query 缓存管理。流程位于共享布局的 `ScoutProvider`，切换到收藏页不会中断请求。刷新页面后前端内存状态清空，不将简历写入浏览器持久存储；提交资料时，个人介绍和 TXT 简历文字会发送至后端。
+React Hook Form 管理资料及追问表单的字段、校验和错误聚焦，通过订阅把草稿同步到 Zustand。Zustand 保留草稿、追问回答和收藏；服务端会话由 React Query 缓存管理。流程位于共享布局的 `ScoutProvider`，切换到收藏页不会中断请求。刷新页面后前端内存状态清空，不将简历写入浏览器持久存储；提交资料时，个人介绍和简历文字会发送至后端。
+
+简历支持 PDF、DOCX 和 UTF-8 TXT，文件最大 10 MB、提取文字最多 100,000 字。TXT 在浏览器中读取；选择 PDF / DOCX 时以 `multipart/form-data` 上传至 `POST /api/v1/resumes/parse`，字段名为 `file`，解析成功后再写入草稿。Word 提取段落、表格和页眉页脚；PDF 最多 50 页，扫描件需先进行 OCR，加密文件需先移除密码。解析期间禁止提交，离开表单会取消上传，失败时保留已有资料。上传后显示文件名及成功标记，悬停时切换成红色的移除操作，点击后恢复上传入口。后端不保存原始文件到业务存储，也不调用外部解析服务。接口及模块设计见[简历上传说明](../docs/resume-upload-design.md)。
 
 资料字段通过 `useController` 绑定，保持输入框和表单状态同步。
 
