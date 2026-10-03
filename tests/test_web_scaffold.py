@@ -105,7 +105,9 @@ def test_create_session_rejects_non_contract_fields() -> None:
 
 
 def test_create_session_requires_all_preference_fields() -> None:
-    preferences = {key: value for key, value in SESSION_PREFERENCES.items() if key != "salary_range"}
+    preferences = {
+        key: value for key, value in SESSION_PREFERENCES.items() if key != "salary_range"
+    }
     with TestClient(create_app()) as client:
         response = client.post(
             "/api/v1/sessions",
