@@ -1,0 +1,320 @@
+{
+  "verification_date": "2026-10-01",
+  "timezone": "Asia/Shanghai",
+  "note": "First run fetched live APIs; subsequent runs used those real response snapshots from the six-hour cache. Not mock. No claims of job freshness or exhaustive market coverage.",
+  "initial_probes": [
+    {
+      "source": "remotive",
+      "http_status": 200,
+      "count": 16,
+      "elapsed_seconds": 1.34
+    },
+    {
+      "source": "arbeitnow",
+      "http_status": 200,
+      "count": 326,
+      "elapsed_seconds": 6.29
+    },
+    {
+      "source": "adzuna",
+      "http_status": 400,
+      "elapsed_seconds": 1.25,
+      "note": "No app_id/app_key; no successful retrieval verified."
+    }
+  ],
+  "runs": [
+    {
+      "mode": "live",
+      "generated_at": "2026-10-01T09:36:27.043652+00:00",
+      "elapsed_seconds": 8.2087,
+      "requests": [
+        {
+          "target_direction": "Frontend Developer",
+          "keywords": [
+            "Frontend"
+          ],
+          "location": null,
+          "location_unrestricted": true,
+          "employment_type": "full-time",
+          "salary_range": null,
+          "work_mode": "remote",
+          "sources": [
+            "remotive"
+          ]
+        },
+        {
+          "target_direction": "Data Analyst",
+          "keywords": [],
+          "location": "Cologne",
+          "location_unrestricted": false,
+          "employment_type": "full-time",
+          "salary_range": null,
+          "work_mode": null,
+          "sources": [
+            "arbeitnow"
+          ]
+        },
+        {
+          "target_direction": "Business Analyst",
+          "keywords": [],
+          "location": null,
+          "location_unrestricted": true,
+          "employment_type": "full-time",
+          "salary_range": null,
+          "work_mode": null,
+          "sources": [
+            "arbeitnow"
+          ]
+        }
+      ],
+      "returned_count": 2,
+      "errors": [],
+      "warnings": [
+        "remotive/Frontend Developer: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded.",
+        "remotive/Frontend Developer: remote-only source; retain Remotive attribution/link; source publication is delayed 24 hours.",
+        "arbeitnow/Data Analyst: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded.",
+        "arbeitnow/Data Analyst: Europe-focused feed; no guaranteed Hong Kong coverage.",
+        "arbeitnow/Data Analyst: page limit 2 reached; results are not exhaustive.",
+        "arbeitnow/Business Analyst: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded.",
+        "arbeitnow/Business Analyst: Europe-focused feed; no guaranteed Hong Kong coverage.",
+        "arbeitnow/Business Analyst: page limit 2 reached; results are not exhaustive."
+      ],
+      "outcomes": [
+        {
+          "request_index": 0,
+          "target_direction": "Frontend Developer",
+          "source": "remotive",
+          "candidate_count": 16,
+          "returned_count": 1,
+          "elapsed_seconds": 0.8999,
+          "status": "ok"
+        },
+        {
+          "request_index": 1,
+          "target_direction": "Data Analyst",
+          "source": "arbeitnow",
+          "candidate_count": 651,
+          "returned_count": 1,
+          "elapsed_seconds": 7.1915,
+          "status": "ok"
+        },
+        {
+          "request_index": 2,
+          "target_direction": "Business Analyst",
+          "source": "arbeitnow",
+          "candidate_count": 651,
+          "returned_count": 0,
+          "elapsed_seconds": 0.1164,
+          "status": "empty"
+        }
+      ],
+      "representative_jobs": [
+        {
+          "title": "Frontend Web Application Developer",
+          "source": "remotive",
+          "source_url": "https://remotive.com/remote-jobs/design/frontend-web-application-developer-2091141",
+          "location": "USA, Canada, Argentina, Mexico, Peru",
+          "fetched_at": "2026-10-01T09:36:19.729787Z",
+          "target_direction": "Frontend Developer"
+        },
+        {
+          "title": "Data Analyst (m/f/d)",
+          "source": "arbeitnow",
+          "source_url": "https://www.arbeitnow.com/jobs/companies/metycle/data-analyst-cologne-ger-271132",
+          "location": "Cologne (GER)",
+          "fetched_at": "2026-10-01T09:36:21.543838Z",
+          "target_direction": "Data Analyst"
+        }
+      ]
+    },
+    {
+      "mode": "live",
+      "generated_at": "2026-10-01T09:36:27.600828+00:00",
+      "elapsed_seconds": 0.3157,
+      "requests": [
+        {
+          "target_direction": "Data Analyst",
+          "keywords": [],
+          "location": null,
+          "location_unrestricted": true,
+          "employment_type": "full-time",
+          "salary_range": null,
+          "work_mode": null,
+          "sources": []
+        },
+        {
+          "target_direction": "Business Analyst",
+          "keywords": [],
+          "location": null,
+          "location_unrestricted": true,
+          "employment_type": "full-time",
+          "salary_range": null,
+          "work_mode": null,
+          "sources": []
+        }
+      ],
+      "returned_count": 2,
+      "errors": [],
+      "warnings": [
+        "remotive/Data Analyst: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded.",
+        "remotive/Data Analyst: remote-only source; retain Remotive attribution/link; source publication is delayed 24 hours.",
+        "remotive/Data Analyst: using cached page 1, fetched_at=2026-10-01T09:36:19.729787+00:00.",
+        "arbeitnow/Data Analyst: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded.",
+        "arbeitnow/Data Analyst: Europe-focused feed; no guaranteed Hong Kong coverage.",
+        "arbeitnow/Data Analyst: using cached page 1, fetched_at=2026-10-01T09:36:21.543838+00:00.",
+        "arbeitnow/Data Analyst: using cached page 2, fetched_at=2026-10-01T09:36:26.858266+00:00.",
+        "arbeitnow/Data Analyst: page limit 2 reached; results are not exhaustive.",
+        "remotive/Business Analyst: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded.",
+        "remotive/Business Analyst: remote-only source; retain Remotive attribution/link; source publication is delayed 24 hours.",
+        "remotive/Business Analyst: using cached page 1, fetched_at=2026-10-01T09:36:19.729787+00:00.",
+        "arbeitnow/Business Analyst: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded.",
+        "arbeitnow/Business Analyst: Europe-focused feed; no guaranteed Hong Kong coverage.",
+        "arbeitnow/Business Analyst: using cached page 1, fetched_at=2026-10-01T09:36:21.543838+00:00.",
+        "arbeitnow/Business Analyst: using cached page 2, fetched_at=2026-10-01T09:36:26.858266+00:00.",
+        "arbeitnow/Business Analyst: page limit 2 reached; results are not exhaustive."
+      ],
+      "outcomes": [
+        {
+          "request_index": 0,
+          "target_direction": "Data Analyst",
+          "source": "remotive",
+          "candidate_count": 16,
+          "returned_count": 0,
+          "elapsed_seconds": 0.0139,
+          "status": "empty"
+        },
+        {
+          "request_index": 0,
+          "target_direction": "Data Analyst",
+          "source": "arbeitnow",
+          "candidate_count": 651,
+          "returned_count": 2,
+          "elapsed_seconds": 0.1821,
+          "status": "ok"
+        },
+        {
+          "request_index": 1,
+          "target_direction": "Business Analyst",
+          "source": "remotive",
+          "candidate_count": 16,
+          "returned_count": 0,
+          "elapsed_seconds": 0.0044,
+          "status": "empty"
+        },
+        {
+          "request_index": 1,
+          "target_direction": "Business Analyst",
+          "source": "arbeitnow",
+          "candidate_count": 651,
+          "returned_count": 0,
+          "elapsed_seconds": 0.1142,
+          "status": "empty"
+        }
+      ],
+      "representative_jobs": [
+        {
+          "title": "Data Analyst (m/f/d)",
+          "source": "arbeitnow",
+          "source_url": "https://www.arbeitnow.com/jobs/companies/metycle/data-analyst-cologne-ger-271132",
+          "location": "Cologne (GER)",
+          "fetched_at": "2026-10-01T09:36:21.543838Z",
+          "target_direction": "Data Analyst"
+        },
+        {
+          "title": "Data Product Manager - F/H",
+          "source": "arbeitnow",
+          "source_url": "https://www.arbeitnow.fr/jobs/companies/hubvisory/data-product-manager-f-h-lille-123492",
+          "location": "Lille, Hauts-de-France, France",
+          "fetched_at": "2026-10-01T09:36:26.858266Z",
+          "target_direction": "Data Analyst"
+        }
+      ]
+    },
+    {
+      "mode": "live",
+      "generated_at": "2026-10-01T09:36:28.110590+00:00",
+      "elapsed_seconds": 0.2701,
+      "requests": [
+        {
+          "target_direction": "Data Analyst",
+          "keywords": [],
+          "location": "Hong Kong",
+          "location_unrestricted": false,
+          "employment_type": "internship",
+          "salary_range": null,
+          "work_mode": null,
+          "sources": []
+        },
+        {
+          "target_direction": "Business Analyst",
+          "keywords": [],
+          "location": "Hong Kong",
+          "location_unrestricted": false,
+          "employment_type": "internship",
+          "salary_range": null,
+          "work_mode": null,
+          "sources": []
+        }
+      ],
+      "returned_count": 0,
+      "errors": [],
+      "warnings": [
+        "remotive/Data Analyst: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded.",
+        "remotive/Data Analyst: remote-only source; retain Remotive attribution/link; source publication is delayed 24 hours.",
+        "remotive/Data Analyst: using cached page 1, fetched_at=2026-10-01T09:36:19.729787+00:00.",
+        "arbeitnow/Data Analyst: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded.",
+        "arbeitnow/Data Analyst: Europe-focused feed; no guaranteed Hong Kong coverage.",
+        "arbeitnow/Data Analyst: using cached page 1, fetched_at=2026-10-01T09:36:21.543838+00:00.",
+        "arbeitnow/Data Analyst: using cached page 2, fetched_at=2026-10-01T09:36:26.858266+00:00.",
+        "arbeitnow/Data Analyst: page limit 2 reached; results are not exhaustive.",
+        "remotive/Business Analyst: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded.",
+        "remotive/Business Analyst: remote-only source; retain Remotive attribution/link; source publication is delayed 24 hours.",
+        "remotive/Business Analyst: using cached page 1, fetched_at=2026-10-01T09:36:19.729787+00:00.",
+        "arbeitnow/Business Analyst: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded.",
+        "arbeitnow/Business Analyst: Europe-focused feed; no guaranteed Hong Kong coverage.",
+        "arbeitnow/Business Analyst: using cached page 1, fetched_at=2026-10-01T09:36:21.543838+00:00.",
+        "arbeitnow/Business Analyst: using cached page 2, fetched_at=2026-10-01T09:36:26.858266+00:00.",
+        "arbeitnow/Business Analyst: page limit 2 reached; results are not exhaustive."
+      ],
+      "outcomes": [
+        {
+          "request_index": 0,
+          "target_direction": "Data Analyst",
+          "source": "remotive",
+          "candidate_count": 16,
+          "returned_count": 0,
+          "elapsed_seconds": 0.006,
+          "status": "empty"
+        },
+        {
+          "request_index": 0,
+          "target_direction": "Data Analyst",
+          "source": "arbeitnow",
+          "candidate_count": 651,
+          "returned_count": 0,
+          "elapsed_seconds": 0.1433,
+          "status": "empty"
+        },
+        {
+          "request_index": 1,
+          "target_direction": "Business Analyst",
+          "source": "remotive",
+          "candidate_count": 16,
+          "returned_count": 0,
+          "elapsed_seconds": 0.0044,
+          "status": "empty"
+        },
+        {
+          "request_index": 1,
+          "target_direction": "Business Analyst",
+          "source": "arbeitnow",
+          "candidate_count": 651,
+          "returned_count": 0,
+          "elapsed_seconds": 0.1155,
+          "status": "empty"
+        }
+      ],
+      "representative_jobs": []
+    }
+  ]
+}
