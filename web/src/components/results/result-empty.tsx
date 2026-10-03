@@ -20,7 +20,7 @@ export function ResultEmpty({
       </h2>
       <p className="mt-3 max-w-sm text-sm leading-7 text-base-content/60">
         {savedOnly
-          ? '点击岗位卡片上的收藏图标，方便稍后比较。收藏在当前工作空间中保留，刷新后清空。'
+          ? '留住感兴趣的机会，慢慢比较。'
           : '试着放宽地点限制，或增加一个求职方向，再探索一次。'}
       </p>
       <button className="btn mt-7 rounded-xl border-0 btn-primary" onClick={onEdit}>

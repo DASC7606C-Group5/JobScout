@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test'
 
-import { createExampleDraft, createProfileDraft, toScoutInput } from './profile-form'
+import { createProfileFixture } from '../../tests/fixtures'
+import { createProfileDraft, toScoutInput } from './profile-form'
 
 test('normalizes form fields without changing the raw editable draft', () => {
-  const draft = createExampleDraft()
+  const draft = createProfileFixture()
   draft.description = '  开发经历  '
   draft.directions = ' 前端开发，数据分析、前端开发,, '
   draft.preferences.location_unrestricted = true

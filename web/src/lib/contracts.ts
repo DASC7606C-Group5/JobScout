@@ -69,7 +69,7 @@ export interface WorkflowError {
   details: Record<string, string | number | boolean | null> | null
 }
 
-// Frontend adapter models, NOT a frozen HTTP Session API contract.
+// Mirrors src/jobscout/schemas/session.py.
 export interface ScoutInput {
   description: string
   resume: { name: string; text: string } | null
@@ -77,23 +77,23 @@ export interface ScoutInput {
   preferences: ProfilePreferences
 }
 
-export type DemoScenario = 'normal' | 'clarify' | 'empty' | 'error'
-
 export interface ScoutSession {
   session_id: string
-  profile: UserProfile
-  current_stage: 'clarify' | 'completed' | 'failed'
+  profile: UserProfile | null
+  outcome: 'paused' | 'completed' | 'failed'
   clarification_questions: ClarificationMessage[]
   recommendation: RecommendationResult | null
   errors: WorkflowError[]
+  warnings: string[]
 }
 
 export interface SessionClient {
-  start: (input: ScoutInput, scenario: DemoScenario) => Promise<ScoutSession>
+  start: (input: ScoutInput, signal?: AbortSignal) => Promise<ScoutSession>
+  get: (sessionId: string, signal?: AbortSignal) => Promise<ScoutSession>
   answer: (
-    session: ScoutSession,
+    sessionId: string,
     answers: Record<string, string>,
-    scenario: DemoScenario,
+    signal?: AbortSignal,
   ) => Promise<ScoutSession>
-  retry: (session: ScoutSession) => Promise<ScoutSession>
+  delete: (sessionId: string, signal?: AbortSignal) => Promise<void>
 }

@@ -1,119 +1,148 @@
 import { describe, expect, test } from 'bun:test'
 
-import type { ScoutInput } from './contracts'
-import { createDemoClient, readResume } from './session-client'
+import { createProfileFixture } from '../../tests/fixtures'
+import type { ScoutSession } from './contracts'
+import { toScoutInput } from './profile-form'
+import { createSessionClient, readResume, SessionHttpError } from './session-client'
 
-const client = createDemoClient(0)
-const input: ScoutInput = {
-  description: '熟悉 React 的应届毕业生',
-  resume: null,
-  target_directions: ['前端开发'],
-  preferences: {
-    location: '香港',
-    location_unrestricted: false,
-    employment_type: 'full-time',
-    salary_range: null,
-    work_mode: null,
-    industry: null,
+const input = toScoutInput(createProfileFixture())
+const completed: ScoutSession = {
+  session_id: 'session-1',
+  outcome: 'completed',
+  profile: null,
+  clarification_questions: [],
+  recommendation: {
+    session_id: 'session-1',
+    generated_at: '2026-10-03T00:00:00Z',
+    jobs: [],
+    warnings: [],
   },
+  errors: [],
+  warnings: [],
 }
 
-describe('demo session integration', () => {
-  test('complete input returns an overall five jobs without inventing profile skills', async () => {
-    const session = await client.start(input, 'normal')
-    expect(session.current_stage).toBe('completed')
-    expect(session.recommendation?.jobs).toHaveLength(5)
-    expect(new Set(session.recommendation?.jobs.map((item) => item.job.job_id)).size).toBe(5)
-    expect(session.profile.skills).toEqual([])
-    expect(session.recommendation?.jobs[0]?.job.freshness_status).toBe('unknown')
-    expect(session.recommendation?.warnings.length).toBeGreaterThan(0)
-  })
+function createTransport(
+  handler: (url: string, init: RequestInit) => Response | Promise<Response>,
+) {
+  return (url: string, init: RequestInit) => Promise.resolve(handler(url, init))
+}
 
-  test('missing preferences pause; partial answers cannot bypass clarification', async () => {
-    const initial = await client.start(
-      {
-        ...input,
-        target_directions: [],
-        preferences: { ...input.preferences, location: null, employment_type: null },
-      },
-      'normal',
+async function expectFailure(request: Promise<unknown>, message: string) {
+  const error: unknown = await request.catch((cause: unknown) => cause)
+  expect(error).toBeInstanceOf(Error)
+  expect(error).toHaveProperty('message', expect.stringContaining(message))
+}
+
+describe('Session HTTP API', () => {
+  test('create/get/resume/delete use the backend paths and JSON contract', async () => {
+    const requests: { url: string; init: RequestInit }[] = []
+    const client = createSessionClient(
+      '/api/v1/',
+      createTransport((url, init) => {
+        requests.push({ url, init })
+        return init.method === 'DELETE'
+          ? new Response(null, { status: 204 })
+          : Response.json(completed, { status: init.method === 'POST' ? 201 : 200 })
+      }),
     )
-    expect(initial.current_stage).toBe('clarify')
-    expect(initial.clarification_questions).toHaveLength(3)
-    const partial = await client.answer(
-      initial,
-      { target_directions: '前端开发，数据分析', 'preferences.location': '  ' },
-      'normal',
-    )
-    expect(partial.current_stage).toBe('clarify')
-    expect(partial.profile.missing_required_fields).toEqual([
-      'preferences.location',
-      'preferences.employment_type',
+    const signal = new AbortController().signal
+    expect(await client.start(input, signal)).toEqual(completed)
+    expect(await client.get('session/1', signal)).toEqual(completed)
+    const answers = { 'preferences.location': '香港', target_directions: '前端开发' }
+    expect(await client.answer('session/1', answers, signal)).toEqual(completed)
+    await client.delete('session/1', signal)
+
+    expect(requests.map(({ url, init }) => [url, init.method])).toEqual([
+      ['/api/v1/sessions', 'POST'],
+      ['/api/v1/sessions/session%2F1', 'GET'],
+      ['/api/v1/sessions/session%2F1/resume', 'POST'],
+      ['/api/v1/sessions/session%2F1', 'DELETE'],
     ])
-    const complete = await client.answer(
-      partial,
-      { 'preferences.location': '不限', 'preferences.employment_type': '全职' },
-      'normal',
+    const startBody = requests[0]?.init.body
+    const answerBody = requests[2]?.init.body
+    if (typeof startBody !== 'string' || typeof answerBody !== 'string')
+      throw new Error('Expected JSON request bodies')
+    expect(JSON.parse(startBody)).toEqual(input)
+    expect(JSON.parse(answerBody)).toEqual({ answers })
+    expect(requests.every(({ init }) => init.signal === signal)).toBe(true)
+    expect(requests[0]?.init.headers).toHaveProperty('Content-Type', 'application/json')
+    expect(requests[1]?.init.body).toBeUndefined()
+    expect(requests[3]?.init.body).toBeUndefined()
+  })
+
+  test('paused and failed workflow outcomes remain successful HTTP responses', async () => {
+    for (const outcome of ['paused', 'failed'] as const) {
+      const response = { ...completed, outcome, recommendation: null, warnings: ['检索来源提示'] }
+      const client = createSessionClient(
+        '/api/v1',
+        createTransport(() => Response.json(response)),
+      )
+      expect(await client.start(input)).toEqual(response)
+    }
+  })
+
+  test('HTTP errors preserve status for recovery and show useful messages', async () => {
+    for (const [status, message] of [
+      [404, '会话已不存在'],
+      [409, '刷新会话'],
+      [422, '格式不正确'],
+      [503, '服务暂时不可用'],
+    ] as const) {
+      const client = createSessionClient(
+        '/api/v1',
+        createTransport(() => Response.json({ detail: 'Backend error' }, { status })),
+      )
+      const error: unknown = await client.get('session-1').catch((cause: unknown) => cause)
+      expect(error).toBeInstanceOf(SessionHttpError)
+      expect(error).toHaveProperty('status', status)
+      expect(error).toHaveProperty('message', expect.stringContaining(message))
+    }
+    const client = createSessionClient(
+      '/api/v1',
+      createTransport(() => new Response('Bad gateway', { status: 502 })),
     )
-    expect(complete.current_stage).toBe('completed')
-    expect(complete.session_id).toBe(initial.session_id)
-    expect(complete.profile.target_directions).toEqual(['前端开发', '数据分析'])
-    expect(complete.profile.preferences.location_unrestricted).toBe(true)
-    expect(complete.profile.preferences.location).toBeNull()
-    expect(complete.profile.preferences.employment_type).toBe('full-time')
-    expect(initial.profile.target_directions).toEqual([])
-    expect(initial.clarification_questions.every((question) => question.status === 'pending')).toBe(
-      true,
+    await expectFailure(client.get('session-1'), '服务暂时不可用')
+  })
+
+  test('network failures and invalid JSON produce readable errors', async () => {
+    const offline = createSessionClient(
+      '/api/v1',
+      createTransport(() => {
+        throw new TypeError('Failed to fetch')
+      }),
     )
-  })
-
-  test('separators alone are not a valid target direction', async () => {
-    const initial = await client.start({ ...input, target_directions: [] }, 'normal')
-    const next = await client.answer(initial, { target_directions: '，,、' }, 'normal')
-    expect(next.current_stage).toBe('clarify')
-    expect(next.profile.missing_required_fields).toContain('target_directions')
-  })
-
-  test('explicitly unrestricted location does not prompt for a city', async () => {
-    const session = await client.start(
-      {
-        ...input,
-        preferences: { ...input.preferences, location: null, location_unrestricted: true },
-      },
-      'normal',
+    await expectFailure(offline.start(input), '无法连接服务')
+    const invalidJson = createSessionClient(
+      '/api/v1',
+      createTransport(() => new Response('<html>Proxy misconfigured</html>')),
     )
-    expect(session.current_stage).toBe('completed')
+    await expectFailure(invalidJson.get('session-1'), '无法读取的数据')
+    const invalidSession = createSessionClient(
+      '/api/v1',
+      createTransport(() => Response.json({ session_id: 'session-1', outcome: 'running' })),
+    )
+    await expectFailure(invalidSession.get('session-1'), '会话格式不正确')
   })
 
-  test('forced clarification resumes with the answer and retains session identity', async () => {
-    const initial = await client.start(input, 'clarify')
-    const next = await client.answer(initial, { 'preferences.work_mode': '远程' }, 'clarify')
-    expect(next.current_stage).toBe('completed')
-    expect(next.profile.preferences.work_mode).toBe('remote')
-    expect(next.recommendation?.session_id).toBe(initial.session_id)
-  })
-
-  test('empty search is a successful result, not an error', async () => {
-    const session = await client.start(input, 'empty')
-    expect(session.current_stage).toBe('completed')
-    expect(session.recommendation?.jobs).toEqual([])
-    expect(session.errors).toEqual([])
-  })
-
-  test('search failure can recover without losing preferences or changing session', async () => {
-    const failed = await client.start(input, 'error')
-    expect(failed.current_stage).toBe('failed')
-    expect(failed.errors[0]?.code).toBe('SEARCH_UNAVAILABLE')
-    const recovered = await client.retry(failed)
-    expect(recovered.current_stage).toBe('completed')
-    expect(recovered.errors).toEqual([])
-    expect(recovered.profile.preferences).toEqual(input.preferences)
-    expect(recovered.session_id).toBe(failed.session_id)
+  test('aborted requests preserve the abort error', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const client = createSessionClient(
+      '/api/v1',
+      createTransport((_url, init) => {
+        init.signal?.throwIfAborted()
+        return Response.json(completed)
+      }),
+    )
+    const error: unknown = await client
+      .get('session-1', controller.signal)
+      .catch((cause: unknown) => cause)
+    expect(error).toBe(controller.signal.reason)
   })
 })
 
 describe('local resume input', () => {
-  test('reads UTF-8 text without uploading it', async () => {
+  test('reads UTF-8 text into the API resume payload', async () => {
     expect(await readResume(new File([' React 开发经历 '], 'resume.TXT'))).toEqual({
       name: 'resume.TXT',
       text: 'React 开发经历',

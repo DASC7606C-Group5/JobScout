@@ -22,9 +22,8 @@ export function WorkspaceLayout() {
           className="mx-auto max-w-7xl px-5 pt-8 pb-10 sm:px-8 sm:pt-10 xl:px-12"
         >
           <Outlet />
-          <footer className="mt-9 flex flex-wrap items-center justify-between gap-2 border-t border-base-300 pt-5 text-[10px] text-base-content/45">
-            <span>JobScout · 为你的下一步，找一点方向。</span>
-            <span>示例体验 · 所有岗位均为虚构数据</span>
+          <footer className="mt-9 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-5 text-[10px] text-base-content/45">
+            <span>岗位信息以来源页面为准</span>
           </footer>
         </main>
       </div>

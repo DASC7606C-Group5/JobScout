@@ -3,12 +3,14 @@ import { useForm } from 'react-hook-form'
 
 import type { ClarificationMessage } from '../lib/contracts'
 import { useScoutStore } from '../state/scout-context'
+import { useScoutSession } from '../state/session-context'
 import { Icon } from './icon'
 
 type AnswerValues = { responses: { value: string }[] }
 
 export function ClarificationForm({ questions }: { questions: ClarificationMessage[] }) {
   const store = useScoutStore()
+  const { answer } = useScoutSession()
   const pending = useMemo(
     () => questions.filter((question) => question.status === 'pending'),
     [questions],
@@ -54,7 +56,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
       className="card border border-base-300 bg-base-100 p-5 sm:p-7"
       noValidate
       onSubmit={(event) => {
-        void handleSubmit((values) => store.getState().answer(toAnswers(values)))(event)
+        void handleSubmit((values) => answer(toAnswers(values)))(event)
       }}
     >
       <div className="mb-6 flex items-start gap-3">

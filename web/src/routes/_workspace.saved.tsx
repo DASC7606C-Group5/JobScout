@@ -15,7 +15,7 @@ function SavedPage() {
       <PageHeading
         eyebrow="KEEP THE POSSIBILITIES"
         title="心动的机会，慢慢比较。"
-        description="留住值得关注的岗位，为下一步做好准备。收藏在当前工作空间中保留，刷新后清空。"
+        description="留住值得关注的岗位，为下一步做好准备。"
       />
       <Results
         result={null}

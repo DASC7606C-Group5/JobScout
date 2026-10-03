@@ -143,7 +143,6 @@ export function JobCard({
                   className="inline-flex items-center gap-1.5 text-xs text-primary-content underline-offset-4 hover:underline"
                 >
                   {linkIndex ? `其他来源 ${linkIndex}` : '查看来源'}
-                  {new URL(href).hostname === 'example.com' ? '（示例）' : ''}
                   <Icon name="external" size={12} />
                 </a>
               ))}

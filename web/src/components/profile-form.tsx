@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { FormProvider, useForm } from 'react-hook-form'
 
-import { createExampleDraft, toScoutInput, type ProfileFormValues } from '../lib/profile-form'
+import { toScoutInput, type ProfileFormValues } from '../lib/profile-form'
 import { useScoutStore } from '../state/scout-context'
+import { useScoutSession } from '../state/session-context'
 import { Icon } from './icon'
 import { DescriptionField } from './profile/description-field'
 import { DirectionField } from './profile/direction-field'
@@ -11,10 +12,10 @@ import { ResumeField } from './profile/resume-field'
 
 export function ProfileForm() {
   const store = useScoutStore()
+  const { start } = useScoutSession()
   const form = useForm<ProfileFormValues>({ defaultValues: store.getState().draft })
   const {
     subscribe,
-    reset,
     handleSubmit,
     formState: { errors },
   } = form
@@ -39,7 +40,7 @@ export function ProfileForm() {
             event.preventDefault()
             return
           }
-          void handleSubmit((values) => store.getState().start(toScoutInput(values)))(event)
+          void handleSubmit((values) => start(toScoutInput(values)))(event)
         }}
       >
         <div className="border-b border-base-300 px-5 py-5 sm:px-7">
@@ -53,15 +54,6 @@ export function ProfileForm() {
                 <p className="mt-1 text-xs text-base-content/60">你的经历，是发现好机会的起点</p>
               </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-ghost font-normal text-base-content/70 btn-sm"
-              onClick={() => reset(createExampleDraft())}
-              disabled={reading}
-            >
-              <Icon name="sparkles" size={15} />
-              填入示例
-            </button>
           </div>
         </div>
         <fieldset disabled={reading} className="min-w-0 space-y-6 p-5 sm:p-7">
@@ -77,12 +69,7 @@ export function ProfileForm() {
               </div>
             )}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-4 border-t border-base-300 pt-5">
-            <p className="max-w-64 text-xs leading-5 text-base-content/55">
-              资料仅在当前工作空间中使用，刷新后清空。
-              <br />
-              示例模式不会上传你的简历或个人信息。
-            </p>
+          <div className="flex flex-wrap items-center justify-end gap-4 border-t border-base-300 pt-5">
             <button
               type="submit"
               className="btn min-w-40 rounded-xl border-0 btn-primary"

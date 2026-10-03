@@ -62,6 +62,14 @@ const paths = {
       <path d="M12 7v5l3 2" />
     </>
   ),
+  footsteps: (
+    <>
+      <ellipse cx="7" cy="7" rx="2.5" ry="4" transform="rotate(-20 7 7)" />
+      <rect x="7" y="13" width="3" height="4" rx="1.5" transform="rotate(-20 8.5 15)" />
+      <ellipse cx="17" cy="12" rx="2.5" ry="4" transform="rotate(20 17 12)" />
+      <rect x="14" y="18" width="3" height="4" rx="1.5" transform="rotate(20 15.5 20)" />
+    </>
+  ),
   leaf: (
     <>
       <path d="M20 3C6 1 1 11 7 17S23 17 20 3ZM3 21 15 9" />

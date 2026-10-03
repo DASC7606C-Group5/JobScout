@@ -12,6 +12,14 @@ bun run dev
 
 打开终端显示的地址，默认是 http://localhost:3000。
 
+前端默认请求 `/api/v1`，Vite 的开发和预览服务器会将 `/api` 转发到 `http://127.0.0.1:8000`。另开一个终端，在仓库根目录启动后端：
+
+```sh
+uv run --locked uvicorn jobscout.main:app --reload
+```
+
+后端地址不同时，将 `.env.example` 复制为 `.env.local` 并修改 `API_PROXY_TARGET`；浏览器请求前缀由 `VITE_API_BASE_URL` 控制。修改后重启 Vite。部署时需要在 Web 服务器配置 `/api` 反向代理；Vite 开发代理不会进入构建文件。使用跨域的 `VITE_API_BASE_URL` 时，API 服务器需要允许前端域名的 CORS 请求。
+
 ## 日常开发
 
 以下命令均在 `web/` 中运行：
@@ -36,12 +44,27 @@ bun run dev
 - `src/components/discovery/`：检索阶段、进度和加载/失败状态。
 - `src/components/profile/`：个人介绍、简历、求职方向和偏好字段。
 - `src/components/results/`：结果筛选、空态和提示；岗位卡片独立复用。
-- `src/state/`：Zustand 工作空间状态和可注入 `SessionClient` 的 store。
+- `src/lib/session-client.ts`：Session HTTP 请求、错误提示和 TXT 简历读取。
+- `src/lib/session-query.ts`：会话 Query key、查询和重试规则。
+- `src/state/`：Zustand 草稿和收藏、React Query 会话流程；`ScoutProvider` 可注入 `SessionClient`。
 
-React Hook Form 管理资料及追问表单的字段、校验和错误聚焦，通过订阅把草稿同步到 Zustand。组件使用字段级订阅；Zustand 保留跨路由的草稿、会话、检索状态和收藏。切换路由不会中断检索，刷新后内存状态清空，不将简历写入浏览器持久存储。
+React Hook Form 管理资料及追问表单的字段、校验和错误聚焦，通过订阅把草稿同步到 Zustand。Zustand 保留草稿、追问回答和收藏；服务端会话由 React Query 缓存管理。流程位于共享布局的 `ScoutProvider`，切换到收藏页不会中断请求。刷新页面后前端内存状态清空，不将简历写入浏览器持久存储；提交资料时，个人介绍和 TXT 简历文字会发送至后端。
 
-资料字段通过 `useController` 绑定，确保开启 React Compiler 时，“填入示例”等程序化重置也能同步到输入框。
+资料字段通过 `useController` 绑定，保持输入框和表单状态同步。
 
-当前会话仍使用 `session-client.ts` 的本地示例适配器。会话命令由 store 统一执行并防止过期响应覆盖新草稿；此流程没有服务端查询缓存，因此不添加无效的 Query invalidation。保留的 TanStack Query 基础设施可用于后续真实 API 查询，接入时应明确服务端数据的唯一来源，避免与 store 重复保存。
+运行时的画像、追问、岗位、技能差距和准备建议均来自 Session API；后端失败或返回空结果时，页面显示相应错误或空态，不回退到固定岗位。单元测试的固定资料及岗位数据位于 `tests/fixtures.ts`，仅由 `.test.ts` 文件引用，不进入应用构建。收藏使用后端返回的岗位数据，目前仅保存在本地内存中；后端尚未提供收藏接口。
 
-`bun test` 覆盖示例适配器、表单数据转换、状态流转与失败重试；`bun run doctor -- --scope full` 可进行全量 React 检查。
+会话 API 与 `src/jobscout/schemas/session.py` 对齐：
+
+| 操作 | 请求                                        | 页面行为                                                    |
+| ---- | ------------------------------------------- | ----------------------------------------------------------- |
+| 创建 | `POST /api/v1/sessions`                     | 发送求职资料，按 `outcome` 显示追问、结果或业务失败         |
+| 查询 | `GET /api/v1/sessions/{session_id}`         | 刷新当前会话                                                |
+| 回答 | `POST /api/v1/sessions/{session_id}/resume` | 发送 `{ answers }`，保留包含点号的字段名                    |
+| 删除 | `DELETE /api/v1/sessions/{session_id}`      | “清除会话”删除服务端会话及其 Query 缓存，保留本地草稿和收藏 |
+
+创建、回答和删除使用 `useMutation`；`useQuery` 读取 `['sessions', session_id]`。创建及回答返回完整快照后直接写入缓存，避免重复 GET。GET 最多自动重试一次，4xx 不自动重试；POST/DELETE 均不自动重试。页面防止重复提交，取消查询时将 `AbortSignal` 传给 fetch，放弃的响应不会覆盖新会话。
+
+HTTP 404 提供重新调整入口，409 提供刷新入口，422 保留资料并提示检查格式，网络及服务错误可以手动重试原请求。后端没有失败会话的重跑接口，业务 `outcome: failed` 的重试会按已更新的草稿创建新会话。推荐及会话中的 warnings 都会展示。后端当前使用内存 checkpoint，重启后旧会话可能返回 404。
+
+`bun test` 覆盖 HTTP 路径与请求体、错误和取消、查询缓存、表单数据转换与草稿/收藏状态；`bun run doctor -- --scope full` 可进行全量 React 检查。

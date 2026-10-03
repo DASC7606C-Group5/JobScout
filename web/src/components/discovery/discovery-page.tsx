@@ -1,4 +1,4 @@
-import { useScout } from '../../state/scout-context'
+import { useScoutSession } from '../../state/session-context'
 import { Icon } from '../icon'
 import { JourneyAside } from '../journey-aside'
 import { PageHeading } from '../layout/page-heading'
@@ -7,16 +7,15 @@ import { WorkflowSteps } from './workflow-steps'
 
 const headings = {
   initial: '好机会，从认识你开始。',
-  clarify: '好机会，值得再聊一聊。',
+  paused: '好机会，值得再聊一聊。',
   completed: '下一站，从这些机会开始。',
   failed: '好机会，从认识你开始。',
 }
-const stageSteps = { initial: 0, clarify: 1, failed: 2, completed: 3 }
+const stageSteps = { initial: 0, paused: 1, failed: 2, completed: 3 }
 
 export function DiscoveryPage() {
-  const stage = useScout((state) => state.session?.current_stage ?? 'initial')
-  const busy = useScout((state) => state.busy)
-  const edit = useScout((state) => state.edit)
+  const { session, busy, edit } = useScoutSession()
+  const stage = session?.outcome ?? 'initial'
   const completed = stage === 'completed'
   return (
     <>

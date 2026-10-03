@@ -66,7 +66,6 @@ export function Sidebar() {
           </span>
           <div>
             <p className="text-xs font-medium">我的工作空间</p>
-            <p className="mt-1 text-[10px] text-base-content/45">本地体验 · 无需登录</p>
           </div>
         </div>
       </div>

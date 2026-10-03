@@ -15,7 +15,7 @@ export function SearchLoading() {
         <br />
         这段旅程，马上继续。
       </p>
-      <p className="mt-6 text-xs text-base-content/40">当前为示例流程</p>
+      <p className="mt-6 text-xs text-base-content/40">搜索可能需要一些时间，请稍候。</p>
     </section>
   )
 }
@@ -40,9 +40,6 @@ export function SearchFailure({
           </p>
         </div>
       ))}
-      <p className="mt-4 text-xs text-base-content/55">
-        当前为失败场景演示，重试后可查看恢复结果。
-      </p>
       <div className="mt-7">
         <button className="btn rounded-xl border-0 btn-primary" onClick={onRetry}>
           重新尝试

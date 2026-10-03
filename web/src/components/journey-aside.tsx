@@ -44,26 +44,8 @@ export function JourneyAside() {
           </p>
         </div>
       </section>
-      <section className="rounded-2xl border border-base-300 p-5 sm:p-6">
-        <h2 className="text-sm font-semibold">我们如何帮你找到机会</h2>
-        <ol className="mt-5 space-y-5">
-          {[
-            { number: '01', title: '了解你的经历', text: '整理背景、技能和求职偏好。' },
-            { number: '02', title: '一起明确方向', text: '有需要时，向你补充几个问题。' },
-            { number: '03', title: '发现值得关注的岗位', text: '汇总最多 5 个机会与准备建议。' },
-          ].map((step) => (
-            <li className="flex gap-3" key={step.number}>
-              <span className="pt-0.5 text-xs font-medium text-base-content/35">{step.number}</span>
-              <div>
-                <h3 className="text-xs font-semibold">{step.title}</h3>
-                <p className="mt-1.5 text-xs leading-5 text-base-content/60">{step.text}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </section>
       <p className="flex items-start gap-2 px-2 text-xs leading-5 text-base-content/50">
-        <Icon name="leaf" size={17} className="mt-0.5 shrink-0" />
+        <Icon name="footsteps" size={17} className="mt-0.5 shrink-0" />
         每个人都有自己的节奏。
         <br />
         先迈出一小步，也很好。

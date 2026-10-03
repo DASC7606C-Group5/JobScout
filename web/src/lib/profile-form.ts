@@ -18,23 +18,6 @@ export function createProfileDraft(): ProfileFormValues {
   }
 }
 
-export function createExampleDraft(): ProfileFormValues {
-  return {
-    description:
-      '我是计算机专业应届毕业生，熟悉 React、TypeScript 和 Python，做过校园活动网站与数据分析项目。希望找到能参与真实产品、与团队一起成长的初级岗位。',
-    resume: null,
-    directions: '前端开发，数据分析',
-    preferences: {
-      location: '香港',
-      location_unrestricted: false,
-      employment_type: 'full-time',
-      salary_range: 'HK$ 20,000–28,000 / 月',
-      work_mode: null,
-      industry: null,
-    },
-  }
-}
-
 export function parseDirections(value: string): string[] {
   return [
     ...new Set(
