@@ -1,11 +1,10 @@
-"""Graph node entry points for profile extraction, validation, and updates."""
-
 from collections.abc import Mapping
 from typing import TypedDict
 
 from jobscout.graph.state import AgentState
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.profile import UserProfile
+from jobscout.schemas.search import SearchRequest
 from jobscout.services.profile_service import (
     InputFormatError,
     build_profile,
@@ -15,28 +14,14 @@ from jobscout.services.profile_service import (
 
 
 class ProfileNodeUpdate(TypedDict, total=False):
-    """Partial ``AgentState`` update returned by the profile nodes."""
-
     profile: UserProfile
+    search_requests: list[SearchRequest]
     warnings: list[str]
     errors: list[WorkflowError]
     current_stage: str
 
 
 def extract_profile_node(state: AgentState) -> ProfileNodeUpdate:
-    """Extract a ``UserProfile`` from the standardized session input.
-
-    Re-running the node with an existing profile is a no-op, so graph retries and
-    interrupt resumes never overwrite profile data that is already confirmed.
-    A non-mapping ``input_data`` value is reported as ``invalid_input`` instead of
-    raising, so a malformed API payload fails the session instead of the process.
-
-    Args:
-        state: Current workflow state.
-
-    Returns:
-        A partial state update holding the profile, stage, and any warning/error.
-    """
     if state.get("profile") is not None:
         return {"current_stage": "profile"}
 
@@ -76,14 +61,6 @@ def extract_profile_node(state: AgentState) -> ProfileNodeUpdate:
 
 
 def validate_profile_node(state: AgentState) -> ProfileNodeUpdate:
-    """Recompute required-field gaps after clarification answers are written back.
-
-    Args:
-        state: Current workflow state.
-
-    Returns:
-        A partial state update with the revalidated profile and stage.
-    """
     profile = state.get("profile")
     if profile is None:
         return {
@@ -94,4 +71,26 @@ def validate_profile_node(state: AgentState) -> ProfileNodeUpdate:
     validated = profile.model_copy(
         update={"missing_required_fields": required_missing_fields(profile)}
     )
-    return {"profile": validated, "current_stage": "validate"}
+    update: ProfileNodeUpdate = {"profile": validated, "current_stage": "validate"}
+    if not validated.missing_required_fields and not validated.conflicts:
+        update["search_requests"] = _build_search_requests(validated)
+    return update
+
+
+def _build_search_requests(profile: UserProfile) -> list[SearchRequest]:
+    preferences = profile.preferences
+    employment_type = preferences.employment_type
+    if employment_type is None:
+        return []
+    return [
+        SearchRequest(
+            target_direction=direction,
+            keywords=list(profile.skills),
+            location=preferences.location,
+            location_unrestricted=preferences.location_unrestricted,
+            employment_type=employment_type,
+            salary_range=preferences.salary_range,
+            work_mode=preferences.work_mode,
+        )
+        for direction in profile.target_directions
+    ]

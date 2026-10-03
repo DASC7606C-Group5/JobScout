@@ -15,6 +15,22 @@ from jobscout.schemas.session import (
 router = APIRouter(prefix="/api/v1", tags=["session"])
 
 
+def _session_response(
+    session_id: str,
+    outcome: Literal["paused", "completed", "failed"],
+    state: Any,
+) -> SessionResponse:
+    return SessionResponse(
+        session_id=session_id,
+        outcome=outcome,
+        profile=state.get("profile"),
+        clarification_questions=state.get("clarification_questions", []),
+        recommendation=state.get("recommendation"),
+        errors=state.get("errors", []),
+        warnings=state.get("warnings", []),
+    )
+
+
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
@@ -41,7 +57,7 @@ async def create_session(request: Request, payload: SessionCreateRequest) -> Ses
         session_id=session_id,
         input_data=payload.model_dump(),
     )
-    return SessionResponse(
+    return _session_response(
         session_id=session_id,
         outcome=result["outcome"],
         state=result["state"],
@@ -59,7 +75,7 @@ async def get_session(request: Request, session_id: str) -> SessionResponse:
         outcome = "completed"
     else:
         outcome = "paused"
-    return SessionResponse(session_id=session_id, outcome=outcome, state=state)
+    return _session_response(session_id=session_id, outcome=outcome, state=state)
 
 
 @router.post("/sessions/{session_id}/resume", response_model=SessionResponse)
@@ -80,7 +96,7 @@ async def resume_session(
         session_id=session_id,
         answers=cast(dict[str, object], payload.answers),
     )
-    return SessionResponse(
+    return _session_response(
         session_id=session_id,
         outcome=result["outcome"],
         state=result["state"],

@@ -1,5 +1,3 @@
-"""Mock nodes for the initial workflow graph."""
-
 from datetime import UTC, datetime
 from typing import TypedDict
 

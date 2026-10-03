@@ -1,5 +1,3 @@
-"""Shared state contract for one JobScout graph session."""
-
 import operator
 from typing import Annotated, Literal, NotRequired, TypedDict
 
@@ -23,8 +21,6 @@ WorkflowStage = Literal[
 
 
 class AgentState(TypedDict):
-    """Serializable data passed between nodes for one workflow session."""
-
     session_id: str
     input_data: NotRequired[dict[str, object]]
     profile: NotRequired[UserProfile | None]

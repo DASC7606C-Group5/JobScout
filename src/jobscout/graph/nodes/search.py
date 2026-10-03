@@ -1,5 +1,3 @@
-"""Thin search node; Group 3 owns routing and the complete graph."""
-
 from typing import TypedDict
 
 from jobscout.graph.state import AgentState
@@ -15,8 +13,6 @@ class SearchUpdate(TypedDict):
 
 def search_node(state: AgentState, *, service: JobSearchService | None = None) -> SearchUpdate:
     result = (service or JobSearchService()).search_many(state.get("search_requests", []))
-    # Return only new diagnostics; append reducers preserve history.
-    # Replace raw_jobs on rerun; do not append old results or choose routing.
     return {
         "raw_jobs": [job.model_dump(mode="json") for job in result.raw_jobs],
         "errors": result.errors,

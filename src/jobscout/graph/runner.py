@@ -1,5 +1,3 @@
-"""Workflow execution entry points for the graph layer."""
-
 from typing import Any, Literal, TypedDict, cast
 
 from langgraph.types import Command
@@ -11,8 +9,6 @@ WorkflowOutcome = Literal["paused", "completed", "failed"]
 
 
 class WorkflowResult(TypedDict):
-    """Outcome and state returned by one graph execution."""
-
     outcome: WorkflowOutcome
     state: AgentState
 
@@ -23,7 +19,6 @@ def run_workflow(
     input_data: dict[str, object] | None = None,
     answers: dict[str, object] | None = None,
 ) -> WorkflowResult:
-    """Run or resume a workflow using session_id as the graph thread id."""
     config: dict[str, dict[str, str]] = {"configurable": {"thread_id": session_id}}
     try:
         if answers is None:

@@ -1,5 +1,3 @@
-"""Delegate raw job processing to the service and return workflow state updates."""
-
 from copy import deepcopy
 from typing import Literal, TypedDict, TypeGuard
 
@@ -21,11 +19,6 @@ class JobProcessingUpdate(TypedDict):
 
 
 def process_jobs_node(state: AgentState) -> JobProcessingUpdate:
-    """Read raw_jobs and call the service's process_jobs(raw_jobs) entry point.
-
-    The service returns (list[JobPosting], list[str]). Diagnostic updates contain
-    only this invocation's entries; AgentState's reducers append them to history.
-    """
     if "raw_jobs" not in state:
         return _failure("RAW_JOBS_MISSING", "Job processing requires raw_jobs.")
 
@@ -38,8 +31,6 @@ def process_jobs_node(state: AgentState) -> JobProcessingUpdate:
     if not raw_jobs:
         return _base_update()
 
-    # Resolve the service entry point at call time so a missing or broken
-    # entry point produces a node failure rather than an import-time failure.
     process_jobs: object = getattr(job_processing_service, "process_jobs", None)
     if not callable(process_jobs):
         return _failure(
