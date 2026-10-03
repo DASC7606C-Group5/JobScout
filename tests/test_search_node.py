@@ -17,7 +17,7 @@ class EmptyClient:
         )
 
 
-def test_node_preserves_existing_diagnostics_without_mutating_state() -> None:
+def test_node_returns_only_new_diagnostics_without_mutating_state() -> None:
     old = WorkflowError(code="UPSTREAM", stage="profile", message="example")
     state: AgentState = {
         "session_id": "fixture-session",
@@ -35,8 +35,10 @@ def test_node_preserves_existing_diagnostics_without_mutating_state() -> None:
     }
     update = search_node(state, service=JobSearchService(client=EmptyClient()))
     assert set(update) == {"raw_jobs", "errors", "warnings"}
-    assert update["raw_jobs"] == [] and update["errors"] == [old]
-    assert update["warnings"][0] == "upstream"
+    assert update["raw_jobs"] == []
+    assert update["errors"] == []
+    assert "upstream" not in update["warnings"]
+    assert state["errors"] == [old]
     assert state["raw_jobs"] == [{"old": True}] and state["warnings"] == ["upstream"]
 
 
