@@ -34,7 +34,7 @@ from jobscout.services.job_retrieval.models import (
     SourceOutcome,
     workflow_error,
 )
-from jobscout.services.llm_service import DeepSeekProvider, ToolCall, ToolTurn
+from jobscout.services.llm_service import ToolCall, ToolTurn, get_llm_provider
 from jobscout.services.location_service import CatalogEntry, LocationCatalog
 from jobscout.services.search_agent import SearchAgent
 
@@ -211,8 +211,9 @@ class PolicyProvider:
     def __init__(self, case: Json, mode: Mode, policy: str) -> None:
         self.case, self.mode, self.policy = case, mode, policy
         self.location_catalog = catalog()
-        self.delegate = DeepSeekProvider(get_settings()) if mode == "live" else None
+        self.delegate = get_llm_provider(get_settings()) if mode == "live" else None
         self.model = self.delegate.model if self.delegate else "authored-synthetic-replay"
+        self.cache_identity = self.delegate.cache_identity if self.delegate else self.model
         self.tool_calls: list[Json] = []
         self.decisions = 0
 
@@ -501,7 +502,9 @@ async def run_policy(case: Json, mode: Mode, policy: str, budget: float = 300) -
     provider = PolicyProvider(case, mode, policy)
     search = SnapshotSearch(case)
     profile = profile_for(case, provider.location_catalog)
-    assessment = JobAssessmentService(provider)
+    assessment = JobAssessmentService(
+        provider, decision_provider=provider.delegate.decision if provider.delegate else provider
+    )
     identity = f"evaluation-{case['id']}-{policy}"
     await assessment.begin_search(identity)
     started = time.monotonic()
@@ -532,7 +535,11 @@ async def run_policy(case: Json, mode: Mode, policy: str, budget: float = 300) -
         "scenario": case["id"],
         "policy": policy,
         "mode": mode,
-        "model": provider.model,
+        "models": (
+            provider.delegate.models
+            if provider.delegate
+            else {"semantic": provider.model, "decision": provider.model}
+        ),
         "stop_reason": state["stop_reason"],
         "error_code": state.get("agent_error_code"),
         "latency_seconds": round(time.monotonic() - started, 3),
@@ -597,7 +604,7 @@ async def evaluate(
             "first_analysis_seconds": "Time until the first visible job has complete or partial personal analysis.",
             "direction_coverage": "Confirmed requested directions represented by correct returned matches divided by requested directions.",
         },
-        "comparison": "Same production agent loop, assessment service, source snapshots, model, 12-decision and candidate budgets; isolated providers, catalog and caches. Fixed control searches two predetermined pages and never enriches details. Adaptive live arm uses native model tool decisions.",
+        "comparison": "Same production agent loop, assessment service, source snapshots, semantic and decision models, 12-decision and candidate budgets; isolated providers, catalog and caches. Fixed control searches two predetermined pages and never enriches details. Adaptive live arm uses native model tool decisions.",
         "budget_seconds_per_run": budget,
         "pairs": await asyncio.gather(*(paired(case) for case in cases)),
     }

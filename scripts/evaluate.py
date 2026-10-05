@@ -353,7 +353,8 @@ class RecordedProvider:
     def __init__(self, recording: JsonObject) -> None:
         if recording.get("provenance", {}).get("kind") != "live-synthetic-recording":
             raise ValueError("Recorded replay requires a labelled live synthetic recording")
-        self.model = str(recording["provenance"]["model"])
+        self.models = recording["provenance"]["models"]
+        self.model = str(self.models["semantic"])
         self.responses = {row["request_hash"]: row for row in recording["responses"]}
         self.calls = 0
 
@@ -372,9 +373,11 @@ class RecordedProvider:
 
 
 class RecordingProvider:
-    def __init__(self, provider: Any) -> None:
+    def __init__(self, provider: Any, *, role: str = "semantic") -> None:
         self.provider = provider
         self.model = str(provider.model)
+        self.role = role
+        self.cache_identity = provider.cache_identity
         self.responses: list[JsonObject] = []
         self.calls = 0
 
@@ -394,6 +397,8 @@ class RecordingProvider:
                     {"schema": schema.model_json_schema(), "messages": messages}
                 ),
                 "schema_name": schema.__name__,
+                "model_role": self.role,
+                "model": self.model,
                 "schema_hash": digest(schema.model_json_schema()),
                 "response": result.model_dump(mode="json"),
                 "observed_seconds": time.perf_counter() - started,
@@ -474,11 +479,13 @@ async def evaluate(
     jobs = {row.job.job_id: row.job for row in dataset.vacancies}
     fixture = read_json(DATA / "replay" / "authored.json") if mode == "authored-replay" else None
     shared: Any = None
+    shared_decision: Any = None
     if mode == "live":
         from jobscout.config import Settings
-        from jobscout.services.llm_service import DeepSeekProvider
+        from jobscout.services.llm_service import get_llm_provider
 
-        shared = RecordingProvider(DeepSeekProvider(Settings()))
+        shared = RecordingProvider(get_llm_provider(Settings()))
+        shared_decision = RecordingProvider(shared.provider.decision, role="decision")
     elif mode == "recorded-replay":
         if replay_path is None:
             raise ValueError("--replay is required for recorded-replay")
@@ -488,7 +495,9 @@ async def evaluate(
     started = time.perf_counter()
     for case in dataset.profiles:
         provider = AuthoredReplayProvider(fixture, case.profile_id) if fixture else shared
-        before_calls = provider.calls if provider else 0
+        before_calls = (provider.calls if provider else 0) + (
+            shared_decision.calls if shared_decision else 0
+        )
         case_started = time.perf_counter()
         row: JsonObject = {
             "profile_id": case.profile_id,
@@ -508,7 +517,9 @@ async def evaluate(
                 candidates = [jobs[jid].model_copy(deep=True) for jid in case.candidate_ids]
                 from jobscout.services.job_assessment_service import JobAssessmentService
 
-                assessment_service = JobAssessmentService(provider)
+                assessment_service = JobAssessmentService(
+                    provider, decision_provider=shared_decision
+                )
                 await assessment_service.begin_search(case.profile_id)
                 result = await assessment_service.assess(
                     case.expected_confirmed.model_copy(deep=True),
@@ -529,10 +540,22 @@ async def evaluate(
             # Record failure, not fabricated zero-quality output or secret-bearing exception text.
             row.update(status="failed", error_type=type(error).__name__)
         row["elapsed_seconds"] = time.perf_counter() - case_started
-        row["structured_calls"] = provider.calls - before_calls if provider else 0
+        row["structured_calls"] = (
+            provider.calls + (shared_decision.calls if shared_decision else 0) - before_calls
+            if provider
+            else 0
+        )
         calls += row["structured_calls"]
         rows.append(row)
     elapsed = time.perf_counter() - started
+    responses = [*shared.responses, *shared_decision.responses] if mode == "live" else []
+    models = (
+        shared.provider.models
+        if mode == "live"
+        else shared.models
+        if mode == "recorded-replay"
+        else {"semantic": AuthoredReplayProvider.model, "decision": AuthoredReplayProvider.model}
+    )
     report: JsonObject = {
         "schema_version": 1,
         "generated_at": datetime.now(UTC).isoformat(),
@@ -544,7 +567,7 @@ async def evaluate(
         "dataset_sha256": read_json(DATA / "manifest.json")["dataset_sha256"],
         "profile_schema_sha256": digest(UserProfile.model_json_schema()),
         "provider": "deepseek" if mode == "live" else "replay",
-        "model": str(getattr(shared, "model", AuthoredReplayProvider.model)),
+        "models": models,
         "measures_model_quality": mode in {"live", "recorded-replay"},
         "quality_caveat": "Synthetic machine annotations are unreviewed; no real-world quality claim.",
         "ranking_protocol": "Fixed candidate pool and annotation-confirmed profile for both arms; not end-to-end.",
@@ -553,9 +576,7 @@ async def evaluate(
             "elapsed_seconds": elapsed,
             "kind": "live_synthetic_components" if mode == "live" else "local_execution_only",
             "model_service_seconds": (
-                sum(item["observed_seconds"] for item in shared.responses)
-                if mode == "live"
-                else None
+                sum(item["observed_seconds"] for item in responses) if mode == "live" else None
             ),
             "includes_retrieval": False,
         },
@@ -574,13 +595,13 @@ async def evaluate(
             "provenance": {
                 "kind": "live-synthetic-recording",
                 "provider": "deepseek",
-                "model": shared.model,
+                "models": models,
                 "dataset_sha256": report["dataset_sha256"],
                 "captured_at": report["generated_at"],
                 "usage": report["usage"],
                 "contains_private_resumes": False,
             },
-            "responses": sorted(shared.responses, key=lambda row: row["request_hash"]),
+            "responses": sorted(responses, key=lambda row: row["request_hash"]),
         }
         await shared.provider.aclose()
     return report, recording

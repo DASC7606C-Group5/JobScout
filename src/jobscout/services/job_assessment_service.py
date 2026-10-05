@@ -21,7 +21,7 @@ from jobscout.schemas.recommendation import (
     RecommendationResult,
 )
 from jobscout.services.job_processing_service import select_candidates
-from jobscout.services.llm_service import LLMProvider, ModelServiceError
+from jobscout.services.llm_service import LLMProvider, ModelRouter, ModelServiceError
 from jobscout.services.location_service import get_location_catalog, within
 from jobscout.services.notice_service import finalize_recommendation, make_notice
 from jobscout.services.prompts import JOB_ANALYSIS_PROMPT, MATCHING_PROMPT
@@ -521,8 +521,16 @@ def _render(
 class JobAssessmentService:
     """Create one instance per session; cache JD extraction, never user matching."""
 
-    def __init__(self, provider: LLMProvider) -> None:
+    def __init__(
+        self, provider: LLMProvider, *, decision_provider: LLMProvider | None = None
+    ) -> None:
         self.provider = provider
+        if decision_provider is not None:
+            self.decision_provider = decision_provider
+        elif isinstance(provider, ModelRouter):
+            self.decision_provider = provider.decision
+        else:
+            self.decision_provider = provider
         self.catalog = getattr(provider, "location_catalog", None) or get_location_catalog()
         self.cache: dict[str, JobAnalysis] = {}
         self.diagnostics: dict[str, AssessmentDiagnostic] = {}
@@ -632,7 +640,11 @@ class JobAssessmentService:
             "instruction": JOB_ANALYSIS_PROMPT,
             "directions": sorted(set(directions)),
             "schema": JDAnalysisBatch.model_json_schema(),
-            "model": str(getattr(self.provider, "model", type(self.provider).__qualname__)),
+            "model": getattr(
+                self.provider,
+                "cache_identity",
+                str(getattr(self.provider, "model", type(self.provider).__qualname__)),
+            ),
             "documents": [
                 {"document_id": key, "text": value.text, "is_excerpt": value.is_excerpt}
                 for key, value in sorted(documents.items())
@@ -645,8 +657,9 @@ class JobAssessmentService:
     ) -> ResultT:
         self._ensure_open()
         instruction = JOB_ANALYSIS_PROMPT if schema is JDAnalysisBatch else MATCHING_PROMPT
+        provider = self.provider if schema is JDAnalysisBatch else self.decision_provider
         async with asyncio.timeout_at(deadline):
-            response = await self.provider.structured(
+            response = await provider.structured(
                 schema,
                 [
                     {"role": "system", "content": instruction},

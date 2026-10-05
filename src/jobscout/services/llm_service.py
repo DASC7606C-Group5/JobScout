@@ -6,7 +6,7 @@ import math
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -25,6 +25,7 @@ _ERROR_MESSAGES = {
     "model_output": "The model provider did not return valid structured output.",
 }
 _TRANSIENT_STATUS = {408, 425, 429}
+type ModelRole = Literal["semantic", "decision"]
 
 
 class ModelServiceError(RuntimeError):
@@ -81,16 +82,30 @@ class DeepSeekProvider:
     closed for each structured call, so providers need no application shutdown hook.
     """
 
-    def __init__(self, settings: Settings, *, client: httpx.AsyncClient | None = None) -> None:
-        self._base_url = settings.llm_base_url
-        self._api_key = settings.llm_api_key
+    provider_name = "deepseek"
+
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        role: ModelRole = "semantic",
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        if role not in {"semantic", "decision"}:
+            raise ModelServiceError("model_configuration")
+        self._base_url = getattr(settings, f"llm_{role}_base_url")
+        self._api_key = getattr(settings, f"llm_{role}_api_key")
         self._timeout = settings.llm_timeout
         self._max_tokens = settings.llm_max_tokens
         self._retry_delay = settings.llm_retry_delay
         self._client = client
         self._usage = ModelUsage()
         self._run_usage: ContextVar[ModelUsage | None] = ContextVar("run_model_usage", default=None)
-        self.model = settings.llm_model
+        self.model: str = getattr(settings, f"llm_{role}_model")
+
+    @property
+    def cache_identity(self) -> tuple[str, str, str]:
+        return (self.provider_name, self._base_url, self.model)
 
     async def aclose(self) -> None:
         """Lifecycle hook; per-call clients self-close and borrowed clients remain owned by caller."""
@@ -119,9 +134,9 @@ class DeepSeekProvider:
         return self._usage.model_copy()
 
     @contextmanager
-    def usage_scope(self) -> Iterator[ModelUsage]:
+    def usage_scope(self, usage: ModelUsage | None = None) -> Iterator[ModelUsage]:
         """Counters inherited by this run's child tasks, isolated from concurrent runs."""
-        usage = ModelUsage()
+        usage = usage if usage is not None else ModelUsage()
         token = self._run_usage.set(usage)
         try:
             yield usage
@@ -422,8 +437,76 @@ class DeepSeekProvider:
         return value if type(value) is int and value >= 0 else default
 
 
-def get_llm_provider(settings: Settings | None = None) -> LLMProvider:
+class ModelRouter:
+    """Semantic structured calls and decision tool calls share only their run counters."""
+
+    def __init__(self, semantic: DeepSeekProvider, decision: DeepSeekProvider) -> None:
+        self.semantic = semantic
+        self.decision = decision
+
+    @property
+    def model(self) -> str:
+        return self.semantic.model
+
+    @property
+    def models(self) -> dict[str, str]:
+        return {"semantic": self.semantic.model, "decision": self.decision.model}
+
+    @property
+    def cache_identity(self) -> tuple[str, str, str]:
+        return self.semantic.cache_identity
+
+    @property
+    def usage(self) -> ModelUsage:
+        semantic = self.semantic.usage
+        decision = self.decision.usage
+        return ModelUsage.model_validate(
+            {
+                field: getattr(semantic, field) + getattr(decision, field)
+                for field in ModelUsage.model_fields
+            }
+        )
+
+    @contextmanager
+    def usage_scope(self) -> Iterator[ModelUsage]:
+        usage = ModelUsage()
+        with self.semantic.usage_scope(usage), self.decision.usage_scope(usage):
+            yield usage
+
+    async def structured[SchemaT: BaseModel](
+        self,
+        schema: type[SchemaT],
+        messages: list[dict[str, str]],
+        *,
+        deadline: float | None = None,
+    ) -> SchemaT:
+        return await self.semantic.structured(schema, messages, deadline=deadline)
+
+    async def tool_turn(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        deadline: float | None = None,
+    ) -> ToolTurn:
+        return await self.decision.tool_turn(messages, tools, deadline=deadline)
+
+    async def aclose(self) -> None:
+        await self.semantic.aclose()
+        await self.decision.aclose()
+
+
+def get_llm_provider(settings: Settings | None = None) -> ModelRouter:
     active_settings = settings or get_settings()
-    if active_settings.llm_provider != "deepseek":
+    if any(
+        provider != "deepseek"
+        for provider in (
+            active_settings.llm_semantic_provider,
+            active_settings.llm_decision_provider,
+        )
+    ):
         raise ModelServiceError("model_configuration")
-    return DeepSeekProvider(active_settings)
+    return ModelRouter(
+        DeepSeekProvider(active_settings, role="semantic"),
+        DeepSeekProvider(active_settings, role="decision"),
+    )

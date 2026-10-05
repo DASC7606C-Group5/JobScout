@@ -13,6 +13,8 @@ from jobscout.config import Settings
 from jobscout.services.llm_service import (
     DeepSeekProvider,
     LLMProvider,
+    ModelRole,
+    ModelRouter,
     ModelServiceError,
     get_llm_provider,
 )
@@ -32,10 +34,14 @@ class AlternateAnswer(BaseModel):
 @pytest.fixture
 def settings() -> Settings:
     return Settings.model_construct(
-        llm_provider="deepseek",
-        llm_api_key="synthetic-test-token",
-        llm_base_url="https://model.example.invalid/v1",
-        llm_model="deepseek-flash",
+        llm_semantic_provider="deepseek",
+        llm_decision_provider="deepseek",
+        llm_semantic_api_key="synthetic-test-token",
+        llm_semantic_base_url="https://model.example.invalid/v1",
+        llm_semantic_model="deepseek-flash",
+        llm_decision_api_key="synthetic-decision-token",
+        llm_decision_base_url="https://decision.example.invalid/v2",
+        llm_decision_model="synthetic-decision-model",
         llm_timeout=2,
         llm_max_tokens=100,
         llm_retry_delay=0,
@@ -429,47 +435,40 @@ def test_concurrent_requests_keep_independent_retry_budgets(settings: Settings) 
     asyncio.run(scenario())
 
 
-def test_factory_and_configurable_model(settings: Settings) -> None:
-    settings.llm_model = "synthetic-alternate-model"
-    provider = get_llm_provider(settings)
-    assert isinstance(provider, DeepSeekProvider)
-    assert provider.model == "synthetic-alternate-model"
-    assert "synthetic-test-token" not in repr(settings)
-    assert "synthetic-test-token" not in repr(provider)
-
-
+@pytest.mark.parametrize("role", ["semantic", "decision"])
 @pytest.mark.parametrize("provider_name", ["demo", "openai_compatible", "synthetic unknown"])
 def test_factory_rejects_unknown_provider_without_fallback(
-    settings: Settings, provider_name: str
+    settings: Settings, provider_name: str, role: ModelRole
 ) -> None:
-    settings.llm_provider = provider_name
+    setattr(settings, f"llm_{role}_provider", provider_name)
     with pytest.raises(ModelServiceError) as caught:
         get_llm_provider(settings)
     assert caught.value.code == "model_configuration"
     assert provider_name not in str(caught.value)
 
 
+@pytest.mark.parametrize("role", ["semantic", "decision"])
 @pytest.mark.parametrize(
     "field,value",
     [
-        ("llm_api_key", ""),
-        ("llm_api_key", "   "),
-        ("llm_api_key", "synthetic\r\nsecret"),
-        ("llm_model", ""),
-        ("llm_base_url", ""),
-        ("llm_base_url", "http://model.example.invalid"),
-        ("llm_base_url", "https://user:secret@model.example.invalid"),
-        ("llm_base_url", "https://model.example.invalid?token=secret"),
-        ("llm_base_url", "https://model.example.invalid#secret"),
+        ("api_key", ""),
+        ("api_key", "   "),
+        ("api_key", "synthetic\r\nsecret"),
+        ("model", ""),
+        ("base_url", ""),
+        ("base_url", "http://model.example.invalid"),
+        ("base_url", "https://user:secret@model.example.invalid"),
+        ("base_url", "https://model.example.invalid?token=secret"),
+        ("base_url", "https://model.example.invalid#secret"),
     ],
 )
 def test_missing_or_unsafe_configuration_fails_before_io(
-    settings: Settings, field: str, value: str
+    settings: Settings, field: str, value: str, role: ModelRole
 ) -> None:
-    setattr(settings, field, value)
+    setattr(settings, f"llm_{role}_{field}", value)
 
     async def scenario() -> None:
-        provider = DeepSeekProvider(settings)
+        provider = DeepSeekProvider(settings, role=role)
         with pytest.raises(ModelServiceError) as caught:
             await provider.structured(Answer, messages())
         assert caught.value.code == "model_configuration"
@@ -481,9 +480,9 @@ def test_missing_or_unsafe_configuration_fails_before_io(
 
 
 def test_factory_missing_key_is_lazy_and_close_is_idempotent(settings: Settings) -> None:
-    settings.llm_api_key = ""
+    settings.llm_semantic_api_key = ""
     provider = get_llm_provider(settings)
-    assert isinstance(provider, DeepSeekProvider)
+    assert isinstance(provider, ModelRouter)
 
     async def scenario() -> None:
         await provider.aclose()
@@ -492,6 +491,26 @@ def test_factory_missing_key_is_lazy_and_close_is_idempotent(settings: Settings)
             await provider.structured(Answer, messages())
         assert caught.value.code == "model_configuration"
         assert provider.usage.requests == 0
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("role", ["semantic", "decision"])
+def test_missing_role_key_never_uses_the_other_roles_credentials(
+    settings: Settings, role: ModelRole
+) -> None:
+    setattr(settings, f"llm_{role}_api_key", "")
+    provider = get_llm_provider(settings)
+
+    async def scenario() -> None:
+        with pytest.raises(ModelServiceError) as caught:
+            if role == "semantic":
+                await provider.structured(Answer, messages())
+            else:
+                await provider.tool_turn(messages(), [{"type": "function"}])
+        assert caught.value.code == "model_configuration"
+        assert provider.usage.requests == 0
+        assert provider.usage.failed_calls == 1
 
     asyncio.run(scenario())
 
@@ -751,18 +770,25 @@ def test_usage_scopes_isolate_concurrent_runs_and_inherit_into_child_tasks(
             return reply(usage={"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5})
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = ModelRouter(
+                DeepSeekProvider(settings, role="semantic", client=client),
+                DeepSeekProvider(settings, role="decision", client=client),
+            )
 
             async def execute(count: int) -> tuple[int, int]:
                 with provider.usage_scope() as usage:
                     await asyncio.gather(
-                        *(provider.structured(Answer, messages()) for _ in range(count))
+                        *(
+                            model.structured(Answer, messages())
+                            for _ in range(count)
+                            for model in (provider.semantic, provider.decision)
+                        )
                     )
                 return usage.requests, usage.total_tokens
 
             first, second = await asyncio.gather(execute(1), execute(3))
-            assert first == (1, 5)
-            assert second == (3, 15)
-            assert provider.usage.requests == 4
+            assert first == (2, 10)
+            assert second == (6, 30)
+            assert provider.usage.requests == 8
 
     asyncio.run(scenario())
