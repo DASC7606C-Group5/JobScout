@@ -1,8 +1,7 @@
 """Normalize raw jobs, deduplicate postings, and classify freshness.
 
-Group 5 (job understanding & data quality) owns this module. It converts the
-raw job records returned by Group 4's retrieval into the frozen ``JobPosting``
-contract (``jobscout/schemas/job.py``, schema v1 maintained by Group 3),
+It converts raw retrieval records into the shared ``JobPosting`` contract,
+retains source-specific documents and all matched directions,
 merges cross-source duplicates while preserving every source link, and marks
 each posting as ``active`` / ``expired`` / ``unknown``. Freshness is never
 guessed: without explicit evidence a posting stays ``unknown``.
@@ -23,13 +22,17 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections import defaultdict, deque
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
 from html.parser import HTMLParser
 from typing import Any, NamedTuple
 
-from jobscout.schemas.job import FreshnessStatus, JobPosting
+from pydantic import ValidationError
+
+from jobscout.schemas.job import FreshnessStatus, JobPosting, SourceDocument
 
 # Section headers recognized when parsing a free-text job description (JD).
 _RESPONSIBILITY_HEADERS = (
@@ -501,6 +504,38 @@ def process_jobs(
         expiries = [ts for raw in records if (ts := _parse_datetime(raw.get("expiry_at")))]
         fetches = [ts for raw in records if (ts := _parse_datetime(raw.get("fetched_at")))]
 
+        documents: dict[str, SourceDocument] = {}
+        for raw in records:
+            for document in _source_documents(raw):
+                documents.setdefault(document.document_id, document)
+        source_documents = sorted(documents.values(), key=lambda document: document.document_id)
+        preferred = min(
+            source_documents,
+            key=lambda document: (
+                document.is_excerpt or not document.text.strip(),
+                document.document_id,
+            ),
+            default=None,
+        )
+        directions = _dedupe_keep_order(
+            [
+                direction
+                for raw in records
+                for direction in [
+                    _clean_text(raw.get("target_direction")),
+                    *_clean_str_list(raw.get("target_directions")),
+                ]
+                if direction
+            ]
+        )
+        employment_types = _dedupe_keep_order(
+            [employment for raw in records if (employment := _raw_employment_type(raw))]
+        )
+        if len(employment_types) > 1:
+            warnings.append(
+                "Conflicting source employment types; merged employment type left unknown."
+            )
+
         job_id = _clean_text(first.get("job_id"))
         if job_id is None:
             job_id = "gen-" + sha256("|".join(key).encode("utf-8")).hexdigest()[:16]
@@ -532,6 +567,11 @@ def process_jobs(
                     None,
                 ),
                 target_direction=_clean_text(first.get("target_direction")) or "",
+                target_directions=directions,
+                source_documents=source_documents,
+                description=(_clean_description(preferred.text) or "") if preferred else "",
+                description_is_excerpt=preferred.is_excerpt if preferred else True,
+                employment_type=employment_types[0] if len(employment_types) == 1 else None,
                 responsibilities=responsibilities,
                 required_skills=required_skills,
                 posted_at=min(timestamps) if timestamps else None,
@@ -547,3 +587,130 @@ def process_jobs(
         )
 
     return ProcessingResult(jobs=jobs, warnings=warnings)
+
+
+def _raw_employment_type(raw: dict[str, Any]) -> str | None:
+    value = _clean_text(raw.get("employment_type"))
+    if value:
+        return value
+    payload = raw.get("raw_payload")
+    if not isinstance(payload, dict):
+        return None
+    labels = (
+        payload.get("employment_type")
+        or payload.get("job_type")
+        or payload.get("workType")
+        or payload.get("workTypes")
+        or payload.get("job_types")
+    )
+    values = [labels] if isinstance(labels, str) else labels if isinstance(labels, list) else []
+    aliases = {
+        "full-time": {"full time", "fulltime", "全职", "全職"},
+        "part-time": {"part time", "parttime", "兼职", "兼職"},
+        "internship": {"intern", "internship", "实习", "實習"},
+        "contract": {"contract", "contract/temp", "合同工"},
+        "freelance": {"freelance", "自由职业"},
+    }
+    for label in values:
+        if isinstance(label, str):
+            normalized_label = " ".join(
+                label.casefold().replace("_", " ").replace("-", " ").split()
+            )
+            for kind, names in aliases.items():
+                if normalized_label in names:
+                    return kind
+    return None
+
+
+def _source_documents(raw: dict[str, Any]) -> list[SourceDocument]:
+    existing = raw.get("source_documents")
+    documents: list[SourceDocument] = []
+    if isinstance(existing, list):
+        for value in existing:
+            try:
+                documents.append(SourceDocument.model_validate(value))
+            except ValidationError:
+                continue
+    if documents:
+        return documents
+    text = raw.get("description")
+    fetched_at = _parse_datetime(raw.get("fetched_at"))
+    if not isinstance(text, str) or not text.strip() or fetched_at is None:
+        return []
+    payload = raw.get("raw_payload")
+    payload = payload if isinstance(payload, dict) else {}
+    fetched_at = _parse_datetime(payload.get("detail_fetched_at")) or fetched_at
+    is_excerpt = bool(raw.get("description_is_excerpt") or payload.get("description_is_excerpt"))
+    source = _clean_text(raw.get("source")) or "unknown"
+    url = _clean_text(raw.get("source_url")) or ""
+    versions = [(text, fetched_at, is_excerpt)]
+    listing_text = payload.get("listing_description")
+    listing_stamp = _parse_datetime(payload.get("listing_fetched_at"))
+    if isinstance(listing_text, str) and listing_text.strip() and listing_stamp:
+        versions.append((listing_text, listing_stamp, True))
+    for document_text, stamp, excerpt in versions:
+        identity = "\0".join((source, url, document_text, stamp.isoformat(), str(excerpt)))
+        documents.append(
+            SourceDocument(
+                document_id="jd-" + sha256(identity.encode("utf-8")).hexdigest()[:24],
+                source=source,
+                source_url=url,
+                text=document_text,
+                fetched_at=stamp,
+                is_excerpt=excerpt,
+            )
+        )
+    return documents
+
+
+def select_balanced_candidates(jobs: Sequence[JobPosting], limit: int = 20) -> list[JobPosting]:
+    """Rotate directions, then sources; each stable vacancy ID consumes one slot."""
+    if limit <= 0:
+        return []
+    groups: dict[str, dict[str, deque[JobPosting]]] = defaultdict(lambda: defaultdict(deque))
+    ordered = sorted(
+        jobs,
+        key=lambda job: (
+            not any(
+                document.text.strip() and not document.is_excerpt
+                for document in job.source_documents
+            )
+            if job.source_documents
+            else not bool(job.description.strip() and not job.description_is_excerpt),
+            job.job_id,
+            job.source_url,
+        ),
+    )
+    for job in ordered:
+        if job.freshness_status == FreshnessStatus.EXPIRED:
+            continue
+        directions = set(job.target_directions or [job.target_direction])
+        sources = {document.source for document in job.source_documents} or set(
+            job.source.split(", ")
+        )
+        for direction in sorted(directions):
+            for source in sorted(sources):
+                groups[direction][source].append(job)
+    source_rotation = {direction: deque(sorted(sources)) for direction, sources in groups.items()}
+    directions_left = deque(sorted(groups))
+    selected: list[JobPosting] = []
+    seen: set[str] = set()
+    while directions_left and len(selected) < limit:
+        direction = directions_left.popleft()
+        rotation = source_rotation[direction]
+        while rotation:
+            source = rotation.popleft()
+            queue = groups[direction][source]
+            while queue and queue[0].job_id in seen:
+                queue.popleft()
+            if not queue:
+                continue
+            job = queue.popleft()
+            seen.add(job.job_id)
+            selected.append(job)
+            if queue:
+                rotation.append(source)
+            break
+        if rotation:
+            directions_left.append(direction)
+    return selected

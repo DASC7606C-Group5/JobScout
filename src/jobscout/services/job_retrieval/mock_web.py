@@ -19,6 +19,15 @@ class FixtureWebClient:
             path.read_text(encoding="utf-8")
         )
 
+    async def request_async(
+        self,
+        url: str,
+        *,
+        body: dict[str, object] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> WebPage:
+        return self.request(url, body=body, headers=headers)
+
     def request(
         self,
         url: str,

@@ -4,9 +4,22 @@
 
 本文档是第 5 组（岗位理解与数据质量）模块实现的设计依据，对应任务 JOBS-3，实现任务为 JOBS-1。
 内容覆盖：字段映射、职责与技能解析策略、去重与合并规则、时效判定规则、接口设计和测试计划。
-本文档不修改任何共享契约；文末列出仍开放的契约缺口，待相关组确认。
+共享契约由统一 schema 层维护；本模块消费这些类型，不自行定义替代 schema。
 
 > **修订记录（2026-10-02，JOBS-1 迁移迭代）**：schema v1（commit `0e3a007`）与 `AgentState`（commit `fc2b26f`，含 append reducer 见 commit `be26469`）已在 main 冻结。两位成员于 2026-09-30 确认了迁移决策，本文档已同步：§2 契约现状、§4 缺失字段处理规则、§7 时效判定规则、§8 状态键名与接口、§9 缺口清单、§10 测试计划。§5/§6 中与已确认"逻辑不变"的实现不一致的描述（职责全文回退、技能别名、基准记录选取、`posted_at` 合并取值）一并按实现校正。
+
+## P05 更新（2026-10-04）
+
+以下增量取代下文历史 schema v1 的单方向/无证据限制：
+
+- `process_jobs(raw_jobs, *, now=None)` 的返回结构不变。`JobPosting` 增加 `description`、`description_is_excerpt`、`employment_type`、`target_directions`、`source_documents`。
+- 每个 `SourceDocument` 保留确切原 JD 字符串（可含 HTML）、单一来源/URL、实际抓取时间和 excerpt 标志。ID 是这些字段的稳定 SHA-256 摘要；重复方向复用同一快照，不重复计文档。详情替换列表摘录时，两份文档及各自时间都保留。
+- 合并岗位的 `description` 是一个优先完整文档的可读文本；原字符串仍在该文档中。不能把不同来源拼接的描述归到一个 URL。多方向合并保留完整 `target_directions`，单值字段为兼容保留首条方向。
+- 工作类型只来自来源明确字段/适配器证据，绝不复制请求类型当作事实；多个来源类型冲突时置空并提示。
+- `select_balanced_candidates(jobs, limit=20)` 按方向轮转，再在每个方向内按来源轮转；组内完整描述优先、稳定 `job_id`/URL 打破平局。同一 ID 只占一个名额，跳过已过期岗位。输入顺序不影响选择，默认最多二十条。硬条件检查和跨轮累计分析预算由上游分析服务管理。
+- 标准化、已有职责/技能规则、有效性分类、来源链接合并与缺失字段处理继续保持。证据校验与模型调用不属于本模块。
+
+新增离线回归见 `tests/test_processing_provenance.py`；异步检索与取消见 `tests/test_retrieval_async.py`。四来源在 2026-10-04 的独立合成条件 live 查询记录见 [清理后的验证元数据](retrieval-live-validation-2026-10-04.json)；该记录只验证当时检索可达性与解析，不验证模型证据评分或岗位持续有效性。
 
 ## 1. 范围与职责
 
@@ -155,7 +168,7 @@ def process_jobs(
 ## 9. 契约缺口（待确认清单）
 
 1. **raw job schema 未冻结**（待第 4 组）：§3 是本组的超集假设。需确认：是否提供 `description` 原文、`posted_at`/`expiry_at` 的覆盖率与格式、显式 `freshness_status` 是否存在、`source` 命名清单、`target_direction` 由谁写入。注意：schema v1 将 `target_direction`/`location`/`source_url` 定为必填，本模块对缺失记录一律丢弃，若第 4 组来源覆盖率低会造成较高丢弃率，联调时需核对。
-2. **跨方向重复岗位的 `target_direction`**（待第 6 组）：字段为单值且必填，合并跨方向重复时取基准记录值；若推荐侧需要"一岗多方向"，需契约扩展（如 `target_directions: list`）。
+2. **跨方向重复岗位的 `target_direction`**（P05 已关闭）：兼容单值字段保留首条值；`target_directions` 保存所有匹配方向，`source_documents` 保留每份独立证据。
 3. **过期岗位的下游语义**（待第 6 组）：本组输出保留全部岗位含 `expired`/`unknown` 并如实标记；是否过滤、如何降权由推荐侧决定。
 
 **已关闭**（2026-10-02 记录）：

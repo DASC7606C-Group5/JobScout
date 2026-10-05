@@ -1,11 +1,14 @@
-"""Group 4 synchronous retrieval entry point; no graph/frontend/LLM dependency."""
+"""Bounded asynchronous retrieval with a synchronous compatibility entry point."""
 
-import tempfile
+import asyncio
+import inspect
+import math
 import time
 from collections.abc import Mapping, Sequence
-from pathlib import Path
+from typing import cast
 
 from jobscout.schemas.search import SearchRequest
+from jobscout.services.job_retrieval.async_transport import AsyncHttpWebClient
 from jobscout.services.job_retrieval.careerjet import CareerjetAdapter
 from jobscout.services.job_retrieval.local_sources import LocalAdapter
 from jobscout.services.job_retrieval.models import (
@@ -20,9 +23,9 @@ from jobscout.services.job_retrieval.planning import (
     select_sources,
     validate_request,
 )
-from jobscout.services.job_retrieval.sources import FeedAdapter, SourceAdapter
+from jobscout.services.job_retrieval.sources import FeedAdapter, SourceAdapter, SourceResult
 from jobscout.services.job_retrieval.transport import HttpJsonClient, JsonClient
-from jobscout.services.job_retrieval.web_transport import HttpWebClient, WebClient
+from jobscout.services.job_retrieval.web_transport import AsyncWebClient, HttpWebClient, WebClient
 
 
 class JobSearchService:
@@ -34,21 +37,30 @@ class JobSearchService:
         *,
         client: JsonClient | None = None,
         web_client: WebClient | None = None,
-        max_pages: int = 2,
-        page_size: int = 20,
+        async_web_client: AsyncWebClient | None = None,
+        max_pages: int = 1,
+        page_size: int = 10,
         candidate_limit: int = 60,
-        result_limit: int = 30,
-        detail_limit: int = 5,
+        result_limit: int = 10,
+        detail_limit: int = 3,
+        concurrency: int = 4,
     ) -> None:
+        if not 1 <= concurrency <= 16:
+            raise ValueError("concurrency must be between 1 and 16")
+        self.concurrency = concurrency
         if adapters is not None:
             self.adapters = dict(adapters)
         else:
             injected_client = client
-            client = client or HttpJsonClient(
-                cache_dir=Path(tempfile.gettempdir()) / "jobscout-group4-cache-v1"
-            )
+            client = client or HttpJsonClient()
             self.adapters = {name: FeedAdapter(name, client) for name in LEGACY_SOURCES}
             public_client = web_client or HttpWebClient()
+            async_client = async_web_client
+            if async_client is None:
+                if web_client is None:
+                    async_client = AsyncHttpWebClient()
+                elif inspect.iscoroutinefunction(getattr(web_client, "request_async", None)):
+                    async_client = cast(AsyncWebClient, web_client)
             self.adapters.update(
                 {
                     name: LocalAdapter(
@@ -59,6 +71,7 @@ class JobSearchService:
                         candidate_limit=candidate_limit,
                         result_limit=result_limit,
                         detail_limit=detail_limit,
+                        async_client=async_client,
                     )
                     for name in DEFAULT_SOURCES
                 }
@@ -110,7 +123,7 @@ class JobSearchService:
                             target_direction=request.target_direction,
                         )
                     )
-                    outcome.status = "error"
+                    outcome.status = "unavailable"
                 else:
                     try:
                         retrieved = adapter.search(request)
@@ -139,18 +152,11 @@ class JobSearchService:
                             for job in retrieved.jobs
                         )
                         outcome.excerpt_count = sum(
-                            job.raw_payload.get("description_is_excerpt") is True
+                            job.description_is_excerpt
+                            or job.raw_payload.get("description_is_excerpt") is True
                             for job in retrieved.jobs
                         )
-                        outcome.status = (
-                            "partial"
-                            if retrieved.errors and retrieved.jobs
-                            else "error"
-                            if retrieved.errors
-                            else "ok"
-                            if retrieved.jobs
-                            else "empty"
-                        )
+                        outcome.status = _source_status(retrieved)
                     except RetrievalFailure as exc:
                         result.errors.append(
                             workflow_error(
@@ -161,7 +167,18 @@ class JobSearchService:
                                 target_direction=request.target_direction,
                             )
                         )
-                        outcome.status = "error"
+                        outcome.status = _failure_status(exc.code)
+                    except Exception:
+                        result.errors.append(
+                            workflow_error(
+                                "SEARCH_SOURCE_FAILED",
+                                "Source retrieval failed.",
+                                source=source,
+                                request_index=index,
+                                target_direction=request.target_direction,
+                            )
+                        )
+                        outcome.status = "unavailable"
                 outcome.elapsed_seconds = round(time.perf_counter() - start, 4)
                 result.outcomes.append(outcome)
         if result.errors and result.raw_jobs:
@@ -169,3 +186,170 @@ class JobSearchService:
                 "Partial retrieval: successful jobs retained; inspect errors before downstream processing."
             )
         return result
+
+    async def search_many_async(
+        self, requests: Sequence[SearchRequest], *, timeout: float = 60.0
+    ) -> SearchResult:
+        """Use one deadline, cancel children, and keep results in request/source order.
+
+        Async adapters must implement cooperative ``search_async``. Synchronous
+        adapters are deliberately not offloaded to uncancellable worker threads.
+        The caller supplies the remaining cross-round retrieval/operation budget.
+        """
+        if not math.isfinite(timeout) or timeout < 0:
+            raise ValueError("timeout must be finite and nonnegative")
+        result = SearchResult()
+        if not requests:
+            result.errors.append(
+                workflow_error("SEARCH_INPUT", "At least one SearchRequest is required.")
+            )
+            return result
+        pending: list[tuple[int, SearchRequest, str, SourceResult, SourceOutcome]] = []
+        for index, request in enumerate(requests):
+            try:
+                validate_request(request)
+            except RetrievalFailure as exc:
+                result.errors.append(workflow_error(exc.code, str(exc), request_index=index))
+                continue
+            sources = select_sources(request)
+            if not sources:
+                result.errors.append(
+                    workflow_error(
+                        "SEARCH_REGION_UNSUPPORTED",
+                        "No supported source for this location.",
+                        request_index=index,
+                    )
+                )
+            for source in sources:
+                pending.append(
+                    (
+                        index,
+                        request,
+                        source,
+                        SourceResult(),
+                        SourceOutcome(
+                            request_index=index,
+                            source=source,
+                            target_direction=request.target_direction,
+                        ),
+                    )
+                )
+        semaphore = asyncio.Semaphore(self.concurrency)
+        deadline = asyncio.get_running_loop().time() + min(timeout, 60.0)
+
+        async def run_source(
+            index: int,
+            request: SearchRequest,
+            source: str,
+            partial: SourceResult,
+            outcome: SourceOutcome,
+        ) -> None:
+            started = time.perf_counter()
+            try:
+                async with asyncio.timeout_at(deadline), semaphore:
+                    if asyncio.get_running_loop().time() >= deadline:
+                        raise TimeoutError
+                    adapter = self.adapters.get(source)
+                    if adapter is None:
+                        raise RetrievalFailure("SEARCH_UNKNOWN_SOURCE", "Unknown job source.")
+                    search_async = getattr(adapter, "search_async", None)
+                    if not inspect.iscoroutinefunction(search_async):
+                        raise RetrievalFailure(
+                            "SEARCH_ASYNC_UNAVAILABLE", "Source requires an asynchronous adapter."
+                        )
+                    retrieved = (
+                        await adapter.search_async(request, result=partial)
+                        if isinstance(adapter, LocalAdapter)
+                        else await search_async(request)
+                    )
+                    if retrieved is not partial:
+                        partial.jobs.extend(retrieved.jobs)
+                        partial.errors.extend(retrieved.errors)
+                        partial.warnings.extend(retrieved.warnings)
+                        partial.candidate_count = retrieved.candidate_count
+            except TimeoutError:
+                partial.errors.append(
+                    workflow_error(
+                        "SEARCH_TIMEOUT",
+                        "Source exceeded the remaining retrieval budget.",
+                        source=source,
+                        request_index=index,
+                        target_direction=request.target_direction,
+                    )
+                )
+            except RetrievalFailure as exc:
+                partial.errors.append(
+                    workflow_error(
+                        exc.code,
+                        str(exc),
+                        source=source,
+                        request_index=index,
+                        target_direction=request.target_direction,
+                    )
+                )
+            except Exception:
+                partial.errors.append(
+                    workflow_error(
+                        "SEARCH_SOURCE_FAILED",
+                        "Source retrieval failed.",
+                        source=source,
+                        request_index=index,
+                        target_direction=request.target_direction,
+                    )
+                )
+            finally:
+                outcome.elapsed_seconds = round(time.perf_counter() - started, 4)
+                outcome.status = _source_status(partial)
+                outcome.candidate_count = partial.candidate_count
+                outcome.returned_count = len(partial.jobs)
+                outcome.incomplete_count = sum(
+                    not all((job.title, job.source_url, job.company, job.location, job.description))
+                    for job in partial.jobs
+                )
+                outcome.excerpt_count = sum(
+                    job.description_is_excerpt
+                    or job.raw_payload.get("description_is_excerpt") is True
+                    for job in partial.jobs
+                )
+
+        tasks = [asyncio.create_task(run_source(*item)) for item in pending]
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        for index, _, _, partial, outcome in pending:
+            result.raw_jobs.extend(partial.jobs)
+            result.errors.extend(
+                error.model_copy(
+                    update={"details": {**(error.details or {}), "request_index": index}}
+                )
+                for error in partial.errors
+            )
+            result.warnings.extend(partial.warnings)
+            result.outcomes.append(outcome)
+        if result.errors and result.raw_jobs:
+            result.warnings.append(
+                "Partial retrieval: successful jobs retained; source diagnostics available."
+            )
+        return result
+
+
+def _failure_status(code: str) -> str:
+    if code in {"SEARCH_AUTH", "SEARCH_RATE_LIMIT", "SEARCH_SOURCE_REJECTED"}:
+        return "blocked"
+    return "unavailable"
+
+
+def _source_status(result: SourceResult) -> str:
+    if result.jobs:
+        return "partial" if result.errors else "ok"
+    if result.errors:
+        return (
+            "blocked"
+            if any(_failure_status(error.code) == "blocked" for error in result.errors)
+            else "unavailable"
+        )
+    return "empty"

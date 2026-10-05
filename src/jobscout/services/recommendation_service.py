@@ -11,6 +11,7 @@ from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import FreshnessStatus, JobPosting
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult
+from jobscout.services.job_retrieval.local_sources import CITY_CODES
 
 _SKILL_ALIASES = (
     ("javascript", "js"),
@@ -26,6 +27,15 @@ _EMPLOYMENT_ALIASES = {
     "part-time": ("part-time", "part time", "parttime", "兼职"),
     "full-time": ("full-time", "full time", "fulltime", "全职"),
 }
+_HONG_KONG_ALIASES = (
+    "hong kong",
+    "hongkong",
+    "hong kong sar",
+    "hk",
+    "香港",
+    "香港特别行政区",
+    "香港特別行政區",
+)
 _DEGREE_ALIASES = {
     1: ("bachelor", "bachelor's", "bachelors", "本科", "学士"),
     2: ("master", "master's", "masters", "硕士"),
@@ -107,6 +117,8 @@ def _employment_type(text: str) -> str | None:
 
 
 def _job_employment_type(job: JobPosting) -> str | None:
+    if job.employment_type and job.employment_type.strip():
+        return _employment_type(job.employment_type)
     kind = _employment_type(job.title)
     if kind is not None:
         return kind
@@ -115,6 +127,17 @@ def _job_employment_type(job: JobPosting) -> str | None:
         if re.match(r"^(employment type|job type|工作类型|雇佣类型)\s*[:：]", _normalize(text)):
             return _employment_type(text)
     return None
+
+
+def _location_matches(actual: str, requested: str) -> bool:
+    normalized_request = _normalize(requested)
+    if normalized_request in _HONG_KONG_ALIASES:
+        return any(_mentions(actual, alias) for alias in _HONG_KONG_ALIASES)
+    for chinese, (_, _, english) in CITY_CODES.items():
+        aliases = (chinese, chinese + "市", english)
+        if normalized_request in aliases:
+            return any(_mentions(actual, alias) for alias in aliases)
+    return _mentions(actual, requested)
 
 
 def _preference_check(profile: UserProfile, job: JobPosting) -> tuple[bool, list[str]]:
@@ -126,9 +149,16 @@ def _preference_check(profile: UserProfile, job: JobPosting) -> tuple[bool, list
     if _confirmed(profile, "location") and preferences.location and not unrestricted:
         if not job.location.strip() or _normalize(job.location) == "unknown":
             warnings.append(f"岗位 {job.job_id} 的地点未知，申请前请确认。")
-        elif not _mentions(job.location, preferences.location):
+        elif not _location_matches(job.location, preferences.location):
             return False, []
-    if _confirmed(profile, "employment_type") and preferences.employment_type:
+    employment_unrestricted = preferences.employment_type_unrestricted and _confirmed(
+        profile, "employment_type_unrestricted"
+    )
+    if (
+        _confirmed(profile, "employment_type")
+        and preferences.employment_type
+        and not employment_unrestricted
+    ):
         requested = _employment_type(preferences.employment_type)
         actual = _job_employment_type(job)
         if requested is None or actual is None:
@@ -136,6 +166,42 @@ def _preference_check(profile: UserProfile, job: JobPosting) -> tuple[bool, list
         elif requested != actual:
             return False, []
     return True, warnings
+
+
+def _direction_matches(profile: UserProfile, job: JobPosting) -> bool:
+    directions = {_normalize(value) for value in profile.target_directions if value.strip()}
+    return any(
+        _normalize(value) in directions for value in [job.target_direction, *job.target_directions]
+    )
+
+
+def eligible_jobs(profile: UserProfile, jobs: Sequence[JobPosting]) -> list[JobPosting]:
+    """Return unique eligible vacancies before coverage checks and model analysis.
+
+    Only confirmed hard constraints exclude candidates. Unknown conditions remain
+    eligible; normalized company/title/location and source URLs prevent duplicates
+    from inflating coverage. Input objects are not changed.
+    """
+    selected: list[JobPosting] = []
+    seen_ids: set[str] = set()
+    seen_urls: set[str] = set()
+    seen_keys: set[tuple[str, str, str]] = set()
+    for job in sorted(jobs, key=lambda item: (item.job_id, item.source_url)):
+        if (
+            job.freshness_status == FreshnessStatus.EXPIRED
+            or not _direction_matches(profile, job)
+            or not _preference_check(profile, job)[0]
+        ):
+            continue
+        key = (_normalize(job.company), _normalize(job.title), _normalize(job.location))
+        urls = {url.rstrip("/") for url in [job.source_url, *job.source_links] if url.strip()}
+        if job.job_id in seen_ids or urls & seen_urls or key in seen_keys:
+            continue
+        seen_ids.add(job.job_id)
+        seen_urls.update(urls)
+        seen_keys.add(key)
+        selected.append(job)
+    return selected
 
 
 def _degree_level(texts: Sequence[str]) -> int:
@@ -247,9 +313,6 @@ def recommend_jobs(
         if _confirmed(profile, field) and getattr(profile.preferences, field):
             result_warnings.append(f"Schema v1 无法可靠验证 {field} 偏好，请在来源 JD 中核实。")
 
-    directions = {
-        _normalize(direction) for direction in profile.target_directions if direction.strip()
-    }
     candidates: list[_Candidate] = []
     seen_ids: set[str] = set()
     excluded = 0
@@ -260,10 +323,7 @@ def recommend_jobs(
             )
             continue
         seen_ids.add(job.job_id)
-        if (
-            job.freshness_status == FreshnessStatus.EXPIRED
-            or _normalize(job.target_direction) not in directions
-        ):
+        if job.freshness_status == FreshnessStatus.EXPIRED or not _direction_matches(profile, job):
             excluded += 1
             continue
         eligible, job_warnings = _preference_check(profile, job)

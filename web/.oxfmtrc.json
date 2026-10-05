@@ -5,5 +5,15 @@
   "semi": false,
   "sortImports": {},
   "sortTailwindcss": { "stylesheet": "./src/styles.css" },
-  "ignorePatterns": ["src/routeTree.gen.ts", "bun.lock", "dist/**", ".tanstack/**", ".agents/**"]
+  "ignorePatterns": [
+    "src/routeTree.gen.ts",
+    "bun.lock",
+    "package-lock.json",
+    "dist/**",
+    ".tanstack/**",
+    ".agents/**",
+    ".tools/**",
+    "test-results/**",
+    "playwright-report/**"
+  ]
 }

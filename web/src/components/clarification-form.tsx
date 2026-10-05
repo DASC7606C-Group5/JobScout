@@ -1,116 +1,75 @@
-import { useEffect, useMemo } from 'react'
-import { useForm } from 'react-hook-form'
+import { useState } from 'react'
 
 import type { ClarificationMessage } from '../lib/contracts'
-import { useScoutStore } from '../state/scout-context'
+import { collectAnswers, pendingQuestions } from '../lib/conversation'
 import { useScoutSession } from '../state/session-context'
-import { Icon } from './icon'
-
-type AnswerValues = { responses: { value: string }[] }
+import { QuestionControl } from './question-control'
 
 export function ClarificationForm({ questions }: { questions: ClarificationMessage[] }) {
-  const store = useScoutStore()
-  const { answer } = useScoutSession()
-  const pending = useMemo(
-    () => questions.filter((question) => question.status === 'pending'),
-    [questions],
-  )
-  const {
-    register,
-    subscribe,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<AnswerValues>({
-    defaultValues: {
-      responses: pending.map((question) => ({
-        value: store.getState().answers[question.field] ?? '',
-      })),
-    },
-  })
-  // Use indexed fields: API field identifiers contain dots and must remain flat keys.
-  function toAnswers(values: AnswerValues) {
-    return Object.fromEntries(
-      pending.map((question, index) => [question.field, values.responses[index]?.value ?? '']),
-    )
-  }
-  useEffect(
-    () =>
-      subscribe({
-        formState: { values: true },
-        callback: ({ values }) =>
-          store
-            .getState()
-            .saveAnswers(
-              Object.fromEntries(
-                pending.map((question, index) => [
-                  question.field,
-                  values.responses[index]?.value ?? '',
-                ]),
-              ),
-            ),
-      }),
-    [subscribe, store, pending],
-  )
+  const { answer, busy } = useScoutSession()
+  const pending = pendingQuestions(questions)
+  const [values, setValues] = useState<Record<string, string | string[]>>({})
+  const [skipped, setSkipped] = useState<string[]>([])
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const skippedIds = new Set(skipped)
   return (
     <form
       className="card border border-base-300 bg-base-100 p-5 sm:p-7"
-      noValidate
       onSubmit={(event) => {
-        void handleSubmit((values) => answer(toAnswers(values)))(event)
+        event.preventDefault()
+        const answers = collectAnswers(pending, values, skipped)
+        if (!answers.length && !message.trim() && !skipped.length) {
+          setError('请回答问题、跳过选填项，或补充你的想法。')
+          return
+        }
+        setError('')
+        answer({ answers, message: message.trim(), skipped_question_ids: skipped })
       }}
     >
-      <div className="mb-6 flex items-start gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary/40">
-          <Icon name="sparkles" />
-        </span>
-        <div>
-          <h2 className="text-lg font-semibold">再了解你一点点</h2>
-          <p className="mt-2 text-sm leading-6 text-base-content/60">
-            有 {pending.length} 项信息需要确认。补充后，我们就可以继续了。
-          </p>
-        </div>
-      </div>
-      <div className="space-y-6">
-        {pending.map((question, index) => (
-          <div key={question.field}>
-            <label htmlFor={`answer-${index}`} className="mb-2 block text-sm font-medium">
-              {question.question}
-              {!question.required && (
-                <span className="ml-2 text-xs text-base-content/50">选填</span>
-              )}
-            </label>
-            <p id={`reason-${index}`} className="mb-3 text-xs leading-5 text-base-content/60">
-              {question.reason}
-            </p>
-            <input
-              id={`answer-${index}`}
-              className="input w-full rounded-xl border border-base-300 bg-base-200/25"
-              required={question.required}
-              maxLength={500}
-              aria-describedby={`reason-${index} answer-error-${index}`}
-              aria-invalid={Boolean(errors.responses?.[index]?.value)}
-              {...register(`responses.${index}.value`, {
-                validate: (value) =>
-                  !question.required || Boolean(value.trim()) || '请填写此必填项。',
-              })}
-              placeholder="在这里填写你的想法"
-            />
-            <p
-              id={`answer-error-${index}`}
-              role="alert"
-              className="mt-2 text-xs text-error-content"
-            >
-              {errors.responses?.[index]?.value?.message}
-            </p>
-          </div>
+      <h2 className="mb-3 text-lg font-semibold">再了解你一点点</h2>
+      <p className="mb-6 text-sm text-base-content/60">
+        可以回答问题，也可以直接补充或纠正之前的信息。
+      </p>
+      <fieldset disabled={busy} className="min-w-0 space-y-6">
+        {pending.map((question) => (
+          <QuestionControl
+            key={question.question_id}
+            question={question}
+            value={values[question.question_id] ?? ''}
+            skipped={skippedIds.has(question.question_id)}
+            onChange={(value) => setValues({ ...values, [question.question_id]: value })}
+            onSkip={(checked) =>
+              setSkipped(
+                checked
+                  ? [...skipped, question.question_id]
+                  : skipped.filter((id) => id !== question.question_id),
+              )
+            }
+          />
         ))}
-      </div>
-      <div className="mt-7 flex justify-end border-t border-base-300 pt-5">
-        <button className="btn rounded-xl border-0 btn-primary" type="submit">
-          确认并继续
-          <Icon name="arrow" size={18} />
+        <div>
+          <label htmlFor="conversation-message" className="mb-2 block text-sm font-medium">
+            补充或纠正
+          </label>
+          <textarea
+            id="conversation-message"
+            className="textarea w-full"
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            maxLength={10000}
+            placeholder="例如：我想改为数据分析方向，接受香港或深圳。"
+          />
+        </div>
+        {error && (
+          <p role="alert" className="text-sm text-error-content">
+            {error}
+          </p>
+        )}
+        <button className="btn rounded-xl btn-primary" type="submit">
+          发送并继续
         </button>
-      </div>
+      </fieldset>
     </form>
   )
 }

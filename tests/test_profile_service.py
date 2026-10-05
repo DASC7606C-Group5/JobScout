@@ -209,15 +209,15 @@ def test_unrestricted_location_is_not_a_required_gap() -> None:
     assert profile.preferences.location_unrestricted is True
 
 
-def test_disjoint_skills_are_reported_as_a_conflict() -> None:
+def test_disjoint_skills_are_complementary_not_a_conflict() -> None:
     resume_background = extract_background("Skills\nPython, SQL\n")
     description_background = extract_background("Skills\nJava, Golang\n")
 
-    assert detect_conflicts(resume_background, description_background) == ["skills"]
+    assert detect_conflicts(resume_background, description_background) == []
 
     profile = build_from_input(conflicting_input())
 
-    assert profile.conflicts == ["skills"]
+    assert profile.conflicts == []
     assert profile.missing_required_fields == []
     assert profile.skills == ["Python", "SQL", "Java", "Golang"]
 
@@ -266,7 +266,8 @@ def test_build_clarification_questions_covers_every_required_gap() -> None:
 
 
 def test_build_clarification_questions_asks_about_the_conflict() -> None:
-    questions = build_clarification_questions(build_from_input(conflicting_input()))
+    profile = build_from_input(conflicting_input()).model_copy(update={"conflicts": ["skills"]})
+    questions = build_clarification_questions(profile)
 
     assert [question.field for question in questions] == ["skills"]
     assert questions[0].required is True
@@ -300,7 +301,8 @@ def test_build_clarification_questions_localizes_the_generic_fallback() -> None:
 
 
 def test_build_clarification_questions_localizes_the_skills_conflict() -> None:
-    questions = build_clarification_questions(build_from_input(conflicting_input()))
+    profile = build_from_input(conflicting_input()).model_copy(update={"conflicts": ["skills"]})
+    questions = build_clarification_questions(profile)
 
     assert [question.field for question in questions] == ["skills"]
     assert not questions[0].question.isascii()
@@ -336,7 +338,7 @@ def test_apply_answers_fills_required_gaps() -> None:
 
 
 def test_apply_answers_resolves_the_skills_conflict() -> None:
-    profile = build_from_input(conflicting_input())
+    profile = build_from_input(conflicting_input()).model_copy(update={"conflicts": ["skills"]})
     questions = build_clarification_questions(profile)
 
     updated, updated_questions = apply_answers(

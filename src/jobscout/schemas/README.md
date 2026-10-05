@@ -1,6 +1,6 @@
 # Shared Schemas
 
-这里定义跨模块共享的数据契约。字段变更需要相关小组共同确认。目前的字段是Schema v1版本，后续开发过程中如果需要进行调整、修改，请在群内沟通后再进行。
+这里定义跨模块共享的数据契约。新增对话、显式确认、异步会话和证据字段在保留原岗位/推荐字段的基础上扩展；前端对应 `web/src/lib/contracts.ts`。接口行为见 [异步会话 API](../../../docs/session-api.md)，功能边界见 [实施规范](../../../docs/implementation-plan.md)。
 
 ## UserProfile
 
@@ -46,8 +46,13 @@
 - `field`: 问题涉及的画像字段。
 - `reason`: 需要追问的原因。
 - `required`: 是否为继续流程所必需。
-- `status`: `pending` 或 `answered`。
-- `answer`: 用户回答；未回答时为 `None`。
+- `status`: `pending`、`answered` 或 `skipped`。
+- `answer`: 已归一化的回答；未回答时为 `None`。
+- `question_id`: 服务器生成的稳定问题 ID，答案和跳过引用它而非字段名。
+- `control_type`: `single_choice`、`multiple_choice` 或 `text`。
+- `options`: 单/多选的 ID 和显示标签，提交时使用 ID。
+
+每轮最多三个问题；消息本身通过 `ConversationMessage` 表示，纯信息消息不生成必填控件。
 
 ## JobPosting
 
@@ -79,7 +84,9 @@
 - `jobs`: 推荐项目列表，最多 5 条，按总体推荐结果返回，不按求职方向分别返回。
 - `warnings`: 不影响结果生成但需要提示用户的信息。
 
-每个推荐项目包含一个 `JobPosting`、`missing_skills` 和 `preparation_suggestions`。
+每个推荐项目保留 `JobPosting`、`missing_skills` 和 `preparation_suggestions`，并增加 `matching_reasons` 与 `uncertainty_notices`。理由关联 JD 及用户材料的 `EvidenceReference`，引用必须在对应文档中存在。`not_evidenced` 表示材料未体现，不表示缺乏能力。`RecommendationResult.introduction` 用于结果前的简短说明。
+
+岗位新增 `source_documents`、`description`、`description_is_excerpt`、`employment_type` 和多来源方向 `target_directions`。系统负责 URL、时间、薪资和时效字段；模型不能覆盖这些外部事实。
 
 ## WorkflowError
 

@@ -31,7 +31,7 @@ def careerjet_params(request: SearchRequest, region: str, page: int = 1) -> dict
         "locale_code": "en_HK" if region == "hk" else "zh_CN",
         "keywords": " ".join(plan_keywords(request)),
         "page": page,
-        "page_size": 50,
+        "page_size": 10,
         "sort": "relevance",
         "fragment_size": 1000,
     }
@@ -52,14 +52,9 @@ def careerjet_params(request: SearchRequest, region: str, page: int = 1) -> dict
         params["work_hours"] = "f" if employment == "full time" else "p"
     elif employment in {"internship", "contract"}:
         params["contract_type"] = "i" if employment == "internship" else "c"
-    else:
+    elif not request.employment_type_unrestricted:
         raise RetrievalFailure(
             "SEARCH_FILTER_UNSUPPORTED", "Careerjet has no verified freelance filter."
-        )
-    if request.work_mode:
-        raise RetrievalFailure(
-            "SEARCH_FILTER_UNSUPPORTED",
-            "Careerjet v4 has no documented work-mode filter; refusing to broaden it.",
         )
     return params
 
@@ -103,7 +98,7 @@ class CareerjetAdapter:
             raise RetrievalFailure(
                 "SEARCH_RESPONSE_FORMAT", "Expected Careerjet JOBS response and jobs array."
             )
-        result = SourceResult(candidate_count=min(len(records), 50))
+        result = SourceResult(candidate_count=min(len(records), 10))
         result.warnings.append(
             f"{self.name}: source-native location/employment filters; description is an excerpt, not guaranteed full JD; first page only."
         )
@@ -113,7 +108,7 @@ class CareerjetAdapter:
             )
         if request.salary_range:
             result.warnings.append(f"{self.name}: optional salary preference is not filtered.")
-        for index, record in enumerate(records[:50]):
+        for index, record in enumerate(records[:10]):
             try:
                 if not isinstance(record, dict):
                     raise ValueError("Invalid record")
@@ -129,6 +124,8 @@ class CareerjetAdapter:
                         "location": record.get("locations"),
                         "salary": record.get("salary"),
                         "description": record.get("description"),
+                        "description_is_excerpt": True,
+                        "employment_type": record.get("employment_type"),
                         "posted_at": record.get("date"),
                         "expiry_at": None,
                         "raw_payload": record,
@@ -150,7 +147,7 @@ class CareerjetAdapter:
                         record_index=index,
                     )
                 )
-        if page.payload.get("pages", 1) != 1 or len(records) >= 50:
+        if page.payload.get("pages", 1) != 1 or len(records) >= 10:
             result.warnings.append(
                 f"{self.name}: page/candidate bound reached; results are not exhaustive."
             )

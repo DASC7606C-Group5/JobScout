@@ -1,17 +1,27 @@
 import operator
 from typing import Annotated, Literal, NotRequired, TypedDict
 
+from jobscout.schemas.conversation import ConversationMessage, SearchSummary
 from jobscout.schemas.errors import WorkflowError
-from jobscout.schemas.job import JobPosting
+from jobscout.schemas.job import JobPosting, SourceDocument
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
 from jobscout.schemas.search import ClarificationMessage, SearchRequest
+from jobscout.services.job_retrieval.models import SourceOutcome
 
 WorkflowStage = Literal[
     "ingest",
     "profile",
     "validate",
     "clarify",
+    "confirm",
+    "edit_conditions",
+    "plan",
+    "retrieve",
+    "normalize",
+    "understand",
+    "coverage",
+    "present",
     "search",
     "process_jobs",
     "recommend",
@@ -32,3 +42,26 @@ class AgentState(TypedDict):
     current_stage: NotRequired[WorkflowStage]
     errors: NotRequired[Annotated[list[WorkflowError], operator.add]]
     warnings: NotRequired[Annotated[list[str], operator.add]]
+    revision: NotRequired[int]
+    outcome: NotRequired[Literal["running", "paused", "completed", "failed"]]
+    retryable: NotRequired[bool]
+    mode: NotRequired[Literal["live", "replay"]]
+    conversation: NotRequired[list[ConversationMessage]]
+    search_summary: NotRequired[SearchSummary | None]
+    source_outcomes: NotRequired[list[SourceOutcome]]
+    profile_documents: NotRequired[list[SourceDocument]]
+    required_attempts: NotRequired[dict[str, int]]
+    optional_rounds: NotRequired[int]
+    question_turn: NotRequired[int]
+    suppressed_fields: NotRequired[list[str]]
+    direct_edit_fields: NotRequired[list[str]]
+    command: NotRequired[dict[str, object] | None]
+    resume_payload: NotRequired[dict[str, object]]
+    confirmed_profile: NotRequired[UserProfile | None]
+    operation_deadline: NotRequired[float]
+    retrieval_seconds: NotRequired[float]
+    retrieval_round: NotRequired[int]
+    analyzed_job_ids: NotRequired[list[str]]
+    analysis_jobs: NotRequired[list[JobPosting]]
+    assessment: NotRequired[RecommendationResult | None]
+    jd_cache: NotRequired[dict[str, object]]

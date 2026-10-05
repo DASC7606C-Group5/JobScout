@@ -2,19 +2,11 @@ import { describe, expect, test } from 'bun:test'
 
 import { QueryClient, QueryObserver } from '@tanstack/react-query'
 
-import type { ScoutSession } from './contracts'
+import { createSessionFixture } from '../../tests/fixtures'
 import { createSessionClient } from './session-client'
 import { sessionKey, sessionQueryOptions } from './session-query'
 
-const session: ScoutSession = {
-  session_id: 'session-1',
-  outcome: 'paused',
-  profile: null,
-  clarification_questions: [],
-  recommendation: null,
-  errors: [],
-  warnings: [],
-}
+const session = createSessionFixture()
 
 describe('session query lifecycle', () => {
   test('fresh mutation responses are shared with queries without a duplicate GET', async () => {

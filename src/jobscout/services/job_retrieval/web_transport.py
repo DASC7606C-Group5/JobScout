@@ -33,6 +33,16 @@ class WebClient(Protocol):
     ) -> WebPage: ...
 
 
+class AsyncWebClient(Protocol):
+    async def request_async(
+        self,
+        url: str,
+        *,
+        body: dict[str, object] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> WebPage: ...
+
+
 class HttpWebClient:
     """Public reads only; no account cookies. Cache retains actual fetch timestamps."""
 

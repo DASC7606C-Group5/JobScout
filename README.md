@@ -27,7 +27,7 @@ bun dev
 
 打开终端显示的地址，默认是 [http://localhost:3000](http://localhost:3000)。
 
-后端本地配置示例见 [.env.example](.env.example)，数据库设置见 [Python 开发说明](docs/python-development.md)。
+后端本地配置示例见 [.env.example](.env.example)，真实模型调用需配置服务端 `LLM_API_KEY`。数据库设置见 [Python 开发说明](docs/python-development.md)。显式合成回放可在后端终端设置 `JOBSCOUT_MODE=replay`，操作见 [演示说明](docs/demo-walkthrough.md)；live 失败不会自动切换回放。
 
 后端地址不同时，在 `web/` 中将 [.env.example](web/.env.example) 复制为 `.env.local`，修改 `API_PROXY_TARGET` 后重启 Vite。
 
@@ -49,6 +49,12 @@ bun dev
 
 | 文档                                                       | 内容                                       |
 | ---------------------------------------------------------- | ------------------------------------------ |
+| [实施规范](docs/implementation-plan.md) | 功能范围、预算与交付要求 |
+| [系统架构](docs/architecture.md) | 模型边界、图流程、异步操作与证据 |
+| [异步会话 API](docs/session-api.md) | 确认、版本、幂等、轮询和删除 |
+| [固定评估](docs/evaluation.md) | 合成标注、规则基线、回放和指标局限 |
+| [演示与备用录制](docs/demo-walkthrough.md) | 样例输入、显式回放和演示步骤 |
+| [实际贡献记录](docs/contributions.md) | 本轮实施与验证范围 |
 | [项目结构与协作](docs/project-structure.md)                | 目录职责、后端入口、运行状态和共享文件维护 |
 | [Python 开发说明](docs/python-development.md)              | 后端配置、检查工具、依赖管理和提交钩子     |
 | [前端架构与会话流程](docs/frontend-architecture.md)        | 路由、状态管理、API 交互和部署配置         |

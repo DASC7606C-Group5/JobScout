@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 3000",
-    "test": "bun test",
+    "test": "bun test src",
+    "test:browser": "playwright test",
     "generate-routes": "tsr generate",
     "typecheck": "bun run generate-routes && tsc --noEmit",
     "lint": "oxlint --type-aware --deny-warnings",
@@ -15,7 +16,7 @@
     "check": "bun run typecheck && bun run lint && bun run format:check",
     "build": "bun run typecheck && vite build",
     "preview": "vite preview --port 3000",
-    "doctor": "bunx react-doctor@latest"
+    "doctor": "react-doctor --no-telemetry --no-supply-chain --output-dir .tools/doctor"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.0",
@@ -26,6 +27,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@rolldown/plugin-babel": "^0.2.4",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/router-cli": "^1.167.39",
@@ -45,7 +47,8 @@
     "vite": "^8.3.1"
   },
   "engines": {
-    "bun": ">=1.4.2"
+    "bun": ">=1.4.2",
+    "node": ">=22.12.0"
   },
   "packageManager": "bun@1.4.2"
 }

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
+from jobscout.schemas.conversation import QuestionAnswer, SearchSummary
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import FreshnessStatus, JobPosting
 from jobscout.schemas.profile import ProfilePreferences, UserProfile
@@ -38,6 +39,26 @@ def test_profile_preferences_support_explicit_unrestricted_location() -> None:
 
     assert preferences.location is None
     assert preferences.location_unrestricted is True
+
+
+def test_explicit_unrestricted_type_is_distinct_from_missing() -> None:
+    missing = ProfilePreferences()
+    unrestricted = ProfilePreferences(employment_type_unrestricted=True)
+    assert missing.employment_type is unrestricted.employment_type is None
+    assert not missing.employment_type_unrestricted
+    assert unrestricted.employment_type_unrestricted
+    request = SearchRequest(target_direction="data analyst", employment_type_unrestricted=True)
+    assert request.employment_type == ""
+    assert request.employment_type_unrestricted
+
+
+def test_conversation_contract_carries_typed_answers_and_summary_revision() -> None:
+    answer = QuestionAnswer(question_id="q-1", value=["option-a", "option-b"])
+    assert answer.model_dump()["value"] == ["option-a", "option-b"]
+    summary = SearchSummary(profile=UserProfile(profile_id="p"), revision=2)
+    assert summary.revision == 2
+    assert not summary.confirmed
+    assert not summary.ready
 
 
 def test_search_request_constructs_with_optional_filters() -> None:
@@ -114,7 +135,7 @@ def test_workflow_error_accepts_structured_details() -> None:
 @pytest.mark.parametrize(
     ("model", "payload"),
     [
-        (SearchRequest, {"target_direction": "data analyst"}),
+        (SearchRequest, {}),
         (JobPosting, {"job_id": "job-1"}),
         (WorkflowError, {"code": "error"}),
     ],

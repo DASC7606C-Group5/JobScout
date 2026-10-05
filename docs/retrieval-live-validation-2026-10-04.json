@@ -1,0 +1,179 @@
+{
+  "validation_kind": "live_synthetic_query",
+  "started_at_utc": "2026-10-04T11:48:07.902712+00:00",
+  "completed_at_utc": "2026-10-04T11:48:10.046795+00:00",
+  "offline_validation": {
+    "tests_passed": 69,
+    "command": "pytest tests/test_retrieval_async.py tests/test_local_sources.py tests/test_processing_provenance.py -q"
+  },
+  "limits": {
+    "total_timeout_seconds": 60,
+    "listing_pages_per_source": 1,
+    "results_per_source": 10,
+    "detail_requests_per_source": 3,
+    "concurrency": 4
+  },
+  "queries": [
+    {
+      "target_direction": "Data Analyst",
+      "keywords": [],
+      "location": "Hong Kong",
+      "location_unrestricted": false,
+      "employment_type": "internship",
+      "employment_type_unrestricted": false,
+      "salary_range": null,
+      "work_mode": null,
+      "sources": [
+        "jobsdb"
+      ]
+    },
+    {
+      "target_direction": "Data Analyst",
+      "keywords": [],
+      "location": "Shanghai",
+      "location_unrestricted": false,
+      "employment_type": "internship",
+      "employment_type_unrestricted": false,
+      "salary_range": null,
+      "work_mode": null,
+      "sources": [
+        "zhaopin",
+        "liepin",
+        "shixiseng"
+      ]
+    }
+  ],
+  "elapsed_seconds": 2.1441,
+  "returned_count": 32,
+  "outcomes": [
+    {
+      "request_index": 0,
+      "target_direction": "Data Analyst",
+      "source": "jobsdb",
+      "candidate_count": 10,
+      "returned_count": 10,
+      "incomplete_count": 0,
+      "excerpt_count": 7,
+      "elapsed_seconds": 2.1438,
+      "status": "ok"
+    },
+    {
+      "request_index": 1,
+      "target_direction": "Data Analyst",
+      "source": "zhaopin",
+      "candidate_count": 10,
+      "returned_count": 8,
+      "incomplete_count": 0,
+      "excerpt_count": 0,
+      "elapsed_seconds": 0.5113,
+      "status": "ok"
+    },
+    {
+      "request_index": 1,
+      "target_direction": "Data Analyst",
+      "source": "liepin",
+      "candidate_count": 12,
+      "returned_count": 10,
+      "incomplete_count": 8,
+      "excerpt_count": 8,
+      "elapsed_seconds": 1.3583,
+      "status": "ok"
+    },
+    {
+      "request_index": 1,
+      "target_direction": "Data Analyst",
+      "source": "shixiseng",
+      "candidate_count": 20,
+      "returned_count": 4,
+      "incomplete_count": 1,
+      "excerpt_count": 1,
+      "elapsed_seconds": 1.6126,
+      "status": "ok"
+    }
+  ],
+  "diagnostics": [],
+  "warning_count": 26,
+  "transport_calls": [
+    {
+      "source": "jobsdb",
+      "phase": "listing",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.5062
+    },
+    {
+      "source": "zhaopin",
+      "phase": "listing",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.5049
+    },
+    {
+      "source": "liepin",
+      "phase": "listing",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.5485
+    },
+    {
+      "source": "shixiseng",
+      "phase": "listing",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.5792
+    },
+    {
+      "source": "jobsdb",
+      "phase": "detail",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.4753
+    },
+    {
+      "source": "liepin",
+      "phase": "detail",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.2315
+    },
+    {
+      "source": "shixiseng",
+      "phase": "detail",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.339
+    },
+    {
+      "source": "liepin",
+      "phase": "detail",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.3046
+    },
+    {
+      "source": "jobsdb",
+      "phase": "detail",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.6481
+    },
+    {
+      "source": "shixiseng",
+      "phase": "detail",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.3674
+    },
+    {
+      "source": "liepin",
+      "phase": "detail",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.2592
+    },
+    {
+      "source": "shixiseng",
+      "phase": "detail",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.3017
+    },
+    {
+      "source": "jobsdb",
+      "phase": "detail",
+      "transport_status": "response_received",
+      "elapsed_seconds": 0.4703
+    }
+  ],
+  "privacy": "Only synthetic search constraints and aggregate metadata retained. No profiles, credentials, request headers, response bodies, vacancy payloads, or vacancy links saved.",
+  "access_policy": "No authentication, CAPTCHA handling, access-block bypass, or alternative endpoints attempted. Standard transient network/5xx retry only.",
+  "scope": "Point-in-time source reachability and parsing test; not a guarantee of ongoing availability or full vacancy validity."
+}

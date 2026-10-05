@@ -1,23 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
 
-import type { ScoutInput, SessionClient } from '../lib/contracts'
-import { toScoutInput } from '../lib/profile-form'
+import type {
+  CreateSessionRequest,
+  ResumeSessionRequest,
+  ResumeSubmission,
+  ScoutInput,
+  SessionClient,
+} from '../lib/contracts'
 import { SessionHttpError } from '../lib/session-client'
 import { sessionKey, sessionQueryOptions } from '../lib/session-query'
+import { readSessionId, rememberSessionId } from '../lib/session-storage'
 import type { ScoutStore } from './scout-store'
 
 type Command =
-  | { kind: 'start'; input: ScoutInput }
-  | { kind: 'answer'; sessionId: string; answers: Record<string, string> }
+  | { kind: 'start'; input: CreateSessionRequest }
+  | { kind: 'answer'; sessionId: string; request: ResumeSessionRequest }
   | { kind: 'delete'; sessionId: string }
 
-type Operation = { command: Command; revision: number; controller: AbortController }
+type Operation = { command: Command; generation: number; controller: AbortController }
 
 export function useSessionWorkflow(store: ScoutStore, client: SessionClient) {
   const queryClient = useQueryClient()
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const revision = useRef(0)
+  const [sessionId, setSessionId] = useState(readSessionId)
+  const generation = useRef(0)
   const active = useRef<Operation | null>(null)
   const lastCommand = useRef<Command | null>(null)
 
@@ -27,32 +33,35 @@ export function useSessionWorkflow(store: ScoutStore, client: SessionClient) {
     networkMode: 'always',
     gcTime: 0,
     mutationFn: async ({ command, controller }: Operation) => {
-      const signal = controller.signal
       switch (command.kind) {
         case 'start':
-          return client.start(command.input, signal)
+          return client.start(command.input, controller.signal)
         case 'answer':
-          return client.answer(command.sessionId, command.answers, signal)
+          return client.answer(command.sessionId, command.request, controller.signal)
         case 'delete':
-          await client.delete(command.sessionId, signal)
+          await client.delete(command.sessionId, controller.signal)
           return null
       }
     },
     onSuccess: (session, operation) => {
-      // An abandoned request must never restore a session or replace a newer draft.
-      if (operation.revision !== revision.current) return
-      if (session) {
-        queryClient.setQueryData(sessionKey(session.session_id), session)
-        setSessionId(session.session_id)
-      } else {
-        setSessionId(null)
-        store.getState().saveAnswers({})
-      }
+      // Abandoned operations cannot restore a deleted or replaced session.
+      if (operation.generation !== generation.current) return
+      rememberSessionId(session?.session_id ?? null)
+      setSessionId(session?.session_id ?? null)
+      if (session) queryClient.setQueryData(sessionKey(session.session_id), session)
+      else store.getState().saveAnswers({})
       if (sessionId && sessionId !== session?.session_id)
         queryClient.removeQueries({ queryKey: sessionKey(sessionId), exact: true })
     },
+    onError: (error, operation) => {
+      if (operation.generation !== generation.current) return
+      if (error instanceof SessionHttpError && error.status === 409 && sessionId) {
+        lastCommand.current = null
+        void queryClient.invalidateQueries({ queryKey: sessionKey(sessionId), exact: true })
+      }
+    },
     onSettled: (_data, _error, operation) => {
-      if (operation.revision === revision.current) active.current = null
+      if (operation.generation === generation.current) active.current = null
     },
   })
 
@@ -61,7 +70,8 @@ export function useSessionWorkflow(store: ScoutStore, client: SessionClient) {
     enabled: sessionId !== null && !mutation.isPending,
   })
   const session = query.data ?? null
-  const busy = mutation.isPending || query.isFetching
+  const pending = mutation.isPending || query.isFetching
+  const busy = pending || session?.outcome === 'running'
   const error = mutation.error ?? query.error
   const profile = session?.profile
 
@@ -71,45 +81,60 @@ export function useSessionWorkflow(store: ScoutStore, client: SessionClient) {
 
   useEffect(
     () => () => {
-      revision.current += 1
+      generation.current += 1
       active.current?.controller.abort()
     },
     [],
   )
 
   function execute(command: Command) {
-    if (active.current || query.isFetching) return
+    if (active.current) return
     const operation = {
       command,
-      revision: ++revision.current,
+      generation: ++generation.current,
       controller: new AbortController(),
     }
     active.current = operation
     lastCommand.current = command
     mutation.reset()
-    // Cancel a background GET before a mutation can update the cached snapshot.
     void queryClient.cancelQueries({ queryKey: sessionKey(sessionId), exact: true })
     mutation.mutate(operation)
   }
 
   function start(input: ScoutInput) {
-    if (active.current || query.isFetching) return
+    if (busy) return
     store.getState().saveAnswers({})
-    execute({ kind: 'start', input: structuredClone(input) })
+    execute({
+      kind: 'start',
+      input: { ...structuredClone(input), request_id: crypto.randomUUID() },
+    })
   }
 
-  function answer(answers: Record<string, string>) {
-    if (!sessionId || active.current || query.isFetching) return
-    store.getState().saveAnswers(answers)
-    execute({ kind: 'answer', sessionId, answers: { ...answers } })
+  function answer(submission: Partial<ResumeSubmission>) {
+    if (!session || busy) return
+    execute({
+      kind: 'answer',
+      sessionId: session.session_id,
+      request: {
+        message: '',
+        answers: [],
+        skipped_question_ids: [],
+        profile_updates: {},
+        action: 'answer',
+        ...structuredClone(submission),
+        request_id: crypto.randomUUID(),
+        expected_revision: session.revision,
+      },
+    })
   }
 
-  function edit() {
-    revision.current += 1
+  function reset() {
+    generation.current += 1
     active.current?.controller.abort()
     active.current = null
     lastCommand.current = null
     mutation.reset()
+    rememberSessionId(null)
     setSessionId(null)
     store.getState().saveAnswers({})
     void queryClient.cancelQueries({ queryKey: sessionKey(sessionId), exact: true })
@@ -117,38 +142,48 @@ export function useSessionWorkflow(store: ScoutStore, client: SessionClient) {
   }
 
   function refresh() {
-    if (!sessionId || busy) return
+    if (!sessionId || pending) return
     mutation.reset()
     void query.refetch()
   }
 
   const recovery =
-    error instanceof SessionHttpError && (error.status === 404 || error.status === 422)
+    error instanceof SessionHttpError && error.status === 404
       ? 'edit'
       : error instanceof SessionHttpError && error.status === 409
         ? 'refresh'
-        : 'retry'
+        : error instanceof SessionHttpError && error.status === 422
+          ? 'correct'
+          : 'retry'
 
   function retry() {
-    if (busy) return
-    if (recovery === 'edit') edit()
+    if (pending) return
+    if (recovery === 'edit') reset()
     else if (recovery === 'refresh' || query.isError) refresh()
+    else if (recovery === 'correct') mutation.reset()
     else if (mutation.isError && lastCommand.current) execute(lastCommand.current)
-    else if (session?.outcome === 'failed') start(toScoutInput(store.getState().draft))
+    else if (session?.outcome === 'failed' && session.retryable) answer({ action: 'retry' })
+  }
+
+  function deleteSession() {
+    if (!sessionId) return
+    generation.current += 1
+    active.current?.controller.abort()
+    active.current = null
+    execute({ kind: 'delete', sessionId })
   }
 
   return {
     session,
     busy,
+    pending,
     error,
     recovery,
     start,
     answer,
     retry,
-    edit,
     refresh,
-    deleteSession: () => {
-      if (sessionId) execute({ kind: 'delete', sessionId })
-    },
+    deleteSession,
+    edit: () => (session ? answer({ action: 'edit_conditions' }) : reset()),
   }
 }

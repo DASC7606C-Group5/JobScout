@@ -1,6 +1,7 @@
 import type { RecommendationItem } from '../lib/contracts'
 import { dateLabel, safeSourceUrl } from '../lib/job-display'
 import { Icon } from './icon'
+import { MatchingEvidence } from './matching-evidence'
 
 const statusLabels = {
   active: { label: '招聘中', style: 'bg-primary/20 text-primary-content' },
@@ -75,6 +76,17 @@ export function JobCard({
             <Icon name="chevron" size={16} className="transition-transform group-open:rotate-90" />
           </summary>
           <div className="mt-5 space-y-5 text-sm leading-6">
+            <MatchingEvidence reasons={item.matching_reasons} />
+            {item.uncertainty_notices.map((notice) => (
+              <p key={notice} className="rounded-xl bg-accent/25 p-3 text-xs">
+                {notice}
+              </p>
+            ))}
+            {job.description_is_excerpt && (
+              <p className="text-xs text-base-content/60">
+                当前岗位说明仅有摘要，完整要求请核对来源页面。
+              </p>
+            )}
             <section>
               <h4 className="mb-2 font-semibold">你将参与</h4>
               {job.responsibilities.length ? (
@@ -94,8 +106,8 @@ export function JobCard({
               </h4>
               <p className="text-xs text-base-content/65">
                 {item.missing_skills.length
-                  ? `待补技能：${item.missing_skills.join('、')}`
-                  : '暂未列出待补技能。'}
+                  ? `所提供材料中未体现或证据待补充：${item.missing_skills.join('、')}`
+                  : '暂未列出需要补充证据的技能。'}
               </p>
               {item.preparation_suggestions.length ? (
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-base-content/75">

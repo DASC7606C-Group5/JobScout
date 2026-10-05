@@ -12,6 +12,12 @@ export function PreferenceFields() {
   const { field: employment } = useController<ProfileFormValues, 'preferences.employment_type'>({
     name: 'preferences.employment_type',
   })
+  const { field: employmentUnrestricted } = useController<
+    ProfileFormValues,
+    'preferences.employment_type_unrestricted'
+  >({
+    name: 'preferences.employment_type_unrestricted',
+  })
   const { field: salary } = useController<ProfileFormValues, 'preferences.salary_range'>({
     name: 'preferences.salary_range',
   })
@@ -52,6 +58,7 @@ export function PreferenceFields() {
           id="employment"
           {...employment}
           value={employment.value ?? ''}
+          disabled={employmentUnrestricted.value}
           className="select w-full rounded-xl border border-base-300 bg-base-100 text-sm"
         >
           <option value="">还没想好，稍后确认</option>
@@ -63,6 +70,16 @@ export function PreferenceFields() {
               <option value={employment.value}>{employment.value}</option>
             )}
         </select>
+        <label className="mt-2.5 flex w-fit cursor-pointer items-center gap-2 text-xs text-base-content/65">
+          <input
+            type="checkbox"
+            className="checkbox checkbox-xs"
+            {...employmentUnrestricted}
+            value="unrestricted"
+            checked={employmentUnrestricted.value}
+          />
+          我接受不限工作类型
+        </label>
       </div>
       <div>
         <label htmlFor="salary" className="mb-2 block text-sm">

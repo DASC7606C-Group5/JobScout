@@ -22,7 +22,7 @@
 
 ## 后端入口与运行状态
 
-[`main.py`](../src/jobscout/main.py) 创建 FastAPI 应用，挂载 Session 与简历解析接口，初始化数据库连接和 LangGraph 工作流。
+[`main.py`](../src/jobscout/main.py) 创建 FastAPI 应用，挂载 Session 与简历解析接口，在 lifespan 中初始化数据库连接、可注入的模型客户端和 LangGraph 工作流；关闭时取消会话操作并释放客户端。
 
 [`config.py`](../src/jobscout/config.py) 从环境变量及 `.env` 读取配置。当前 `DATABASE_URL` 默认指向 SQLite，也可以使用 PostgreSQL；具体设置见[Python 开发说明](python-development.md)。
 
@@ -37,7 +37,7 @@
 | [`graph/routing.py`](../src/jobscout/graph/routing.py) | 判断追问、检索、处理、推荐和结束分支               |
 | [`graph/runner.py`](../src/jobscout/graph/runner.py)   | 启动或恢复工作流，统一返回运行结果                 |
 
-应用启动时使用 `build_graph` 接入各业务节点；`build_mock_graph` 使用固定节点，供测试与独立验证流程使用。Mock 样例用于开发和测试，前端的运行时结果来自 Session API。
+应用启动时通过 `graph/live.py` 的 `build_live_graph` 注入模型、检索与推荐依赖；`services/session_service.py` 管理异步操作、版本、请求幂等和删除取消。`graph/builder.py` 的规则图和 Mock 图保留用于基线及离线回归。正式运行不因失败自动切换 Mock。会话契约详见 [异步会话 API](session-api.md)，完整实现边界见 [实施规范](implementation-plan.md)。
 
 ## 节点、服务与数据契约
 

@@ -1,3 +1,100 @@
+# 用户画像、追问与生产流程（P04）
+
+## 生产入口
+
+`jobscout.graph.live.build_live_graph(checkpointer, provider, search_service=None, *, evidence_factory=None)` 返回异步 LangGraph。`graph/builder.py` 与旧节点保留用于规则基线；生产入口不使用其自动检索路径。
+
+`services/conversation_service.py` 封装内部 Pydantic 模型：`ProfileExtraction`、`QuestionGeneration`、`AnswerInterpretation`、`SearchPhrasing`。提供者实现共享 `LLMProvider` 协议：`async structured(schema, messages, *, deadline=None)`；简历和来源文本仅作为不可信数据传入，错误输出不展示上游响应或私人材料。
+
+```mermaid
+flowchart TD
+    extract --> validate
+    validate --> generate_question
+    generate_question --> await_answers
+    await_answers --> apply
+    apply --> validate
+    validate --> build_summary
+    build_summary --> await_confirmation
+    await_confirmation --> apply
+    apply -->|明确确认且没有更正| plan
+    plan --> retrieve
+    retrieve --> normalize
+    normalize --> understand
+    understand --> coverage
+    coverage -->|不足五个且尚有预算| plan
+    coverage --> recommend
+    recommend --> present
+```
+
+仅 `await_answers` 和 `await_confirmation` 调用 `interrupt`，其前置节点的模型调用和检索不会因恢复而重复。等待节点恢复后，先将新版本、running 状态及已失效确认写入检查点，再进入可能等待模型的 `apply` 节点，避免 GET 看到旧版本结果。等待时阶段分别为 `clarify`、`confirm`；终态为 `completed`、`failed`。
+
+所有会话模型系统提示明确把简历、文档和 JD 视为不可信数据；忽略其中要求修改约束、系统字段、流程、确认、ID 或职位元数据的指令。模型输出只能写入允许的画像字段，问题/搜索来源 ID 必须对应服务端允许集合；冻结约束和来源 URL、日期、薪资、状态不允许模型改写。信息未提供属于不确定性，不应解释为已验证的硬条件不匹配。证据服务负责逐条核实岗位/要求 ID 与原文引用。
+
+## 确认约束与追问终止
+
+- 至少提供非空简历或描述，否则保留输入并返回可重试错误。
+- 必须由用户明确选择 1–3 个方向；多于三个时要求用户重新选择，不自动截断或推测方向。
+- 地点必须属于香港/中国内地的受支持路由或明确不限；就业类型必须明确或不限。
+- 每次最多三问。可选问题最多三轮，跳过/已答的可选字段在本轮会话不再出现；同一必填字段两次未解决后改为摘要直接编辑。
+- 技能列表不同属于互补信息，`detect_conflicts` 不再把无交集技能标为冲突。模型使用原始文本识别明确否定和冲突；用户更正优先，结构化编辑具有最终优先级。
+- 有效答案按 question ID/选项 ID 校验。结构化答案先应用，然后应用自由文本更正，最后应用摘要编辑。
+- 仅明确按钮动作 `confirm_search` 或清晰的确认文字可开始检索。确认同时包含更正时重新展示摘要，必须再次确认。确认后的画像深拷贝冻结，检索短语不能改写硬条件。
+- 搜索短语仅使用所选方向的翻译/等价表达；不把 `profile.skills` 或其他背景自动加入关键词。
+
+## 会话管理器接入
+
+```python
+from langgraph.types import Command
+from jobscout.graph.live import build_live_graph
+
+graph = build_live_graph(checkpointer, provider, search_service)
+config = {"configurable": {"thread_id": session_id}, "recursion_limit": 60}
+await graph.ainvoke({"session_id": session_id, "input_data": input_data, "revision": 1}, config)
+# API 验证请求去重/旧版本，并把响应版本递增；载荷保留 expected_revision 旧值。
+payload = request.model_dump()
+await graph.ainvoke(Command(resume=payload), config)
+snapshot = await graph.aget_state(config)
+
+# 已结束的图：相同 thread_id，以普通 state 调用重新进入 entry。
+# payload.action 必须是 edit_conditions 或 retry。
+await graph.ainvoke({
+    **snapshot.values,
+    "command": payload,
+    "current_stage": "edit_conditions",
+    "revision": payload["expected_revision"] + 1,
+}, config)
+```
+
+初始版本为 1。恢复载荷的 `expected_revision` 保留客户端旧值，图写入 `revision = expected_revision + 1`，且摘要使用相同新值。API 独立维护已接受操作的响应版本，在运行中/等待 GET 时覆盖响应版本，不要提前改写恢复载荷。GET 可通过 `aget_state` 或 `get_state` 直接读取检查点；API 负责旧版本拒绝、请求去重、单会话单操作、删除时取消任务和丢弃已删除会话的迟到结果。
+
+完成/失败的图不能通过 `Command(resume=...)` 重新开始。初始命令键精确为 **`command`**，值为 `SessionResumeRequest.model_dump()`，动作只允许 `edit_conditions` 或 `retry`。管理器可以使用相同 thread ID，把先前 state 合并 `command` 和新 `revision` 后普通 `ainvoke`。`entry` 清除旧推荐、确认、来源结果、错误/警告、分析状态、检索计数和 deadline；保留 `input_data`、`conversation`、`profile_documents` 与追问历史。使用 `Overwrite` 重置累加型错误/警告，避免旧失败污染重试。已有画像无需重新调用提取模型；编辑载荷在进入新摘要前应用，并且必须重新确认。画像提取失败的 retry 会重新提取保留的输入，然后继续澄清/确认。
+
+同一线程已由 `Overwrite([])` 处理累加 reducer 清理，不要求新线程。若管理器选择在 completed/failed 后新建 `thread_id=f"{session_id}:{revision}"` 进行额外隔离，图同样支持：仍传递稳定的 `session_id` 和完整旧状态加 `command`，GET 读取当前活动线程，DELETE 删除管理器记录的全部历史线程 ID，并且只需按稳定 `session_id` 清理一次证据服务。不要在普通 interrupt 恢复中切换线程。
+
+## 检索与分析边界
+
+累计最多两轮检索、60 秒检索时间，确认后的整个操作最多 180 秒。使用单调时钟绝对 deadline 和 asyncio 取消传播；第二轮只更换相同方向的等价短语，不放宽条件。先归一化/去重，再平衡方向与来源，整个操作最多分析 20 个不同岗位。来源诊断放入 `source_outcomes` 和 warnings；部分来源失败保留成功结果，全部来源不可用不能伪装成零结果成功。
+
+`EvidenceService` 通过 factory 注入，每个会话独立实例，跨检索轮次及条件编辑后的新搜索复用已验证 JD 缓存；匹配会按当前画像重新计算。每次明确确认调用 `await service.begin_search(f"{session_id}:{accepted_revision}")`，仅重置本次搜索的 20 个不同候选预算，不清除 JD 缓存；同一确认 ID 重复调用为幂等。图本身的 `analyzed_job_ids` 也只在新确认时重置。
+
+每次成功评估后，将 `EvidenceService.export_cache()` 的 JSON 安全快照写入内部 **`AgentState.jd_cache`**。它只含会话 ID、schema 版本及已验证 JD 分析，不含用户匹配或候选预算。新图/证据实例通过 `import_cache(snapshot, session_id)` 恢复服务端检查点；跨会话或无效快照会被拒绝并重新分析，命中项仍由证据服务按当前原文复核。此字段不是客户端输入或 SessionResponse 字段；管理器旋转线程时随旧 state 一并转移。
+
+内存缓存和检查点快照保留至会话删除。编译图公开异步、幂等回调 **`await graph.cleanup_session(session_id)`**，调用服务的异步清理钩子并移除注册实例。DELETE 顺序必须为：先取消并等待正在运行的会话任务结束，再 await 清理回调，最后删除管理器记录的全部线程检查点；这样不会被尚未结束的节点重新创建缓存。管理器注入其他图时可用 `getattr(graph, "cleanup_session", None)` 检测可选回调，并 await 返回的可等待对象。传递用户原文及回答文档的 ID→文本映射；模型不能替换来源 URL、日期或薪资。结果保留 Top 5 结构并带简短中文 `introduction`。
+
+## 安全阶段日志
+
+非等待节点通过标准库 logger `jobscout.graph.live` 输出 `workflow_stage` 事件：固定阶段名、成功/失败/取消状态、单调时钟耗时、版本、按固定 outcome 状态聚合的来源数量、允许列表错误码，以及数值型模型 usage 快照。不记录 session ID、请求 ID、来源名称、岗位链接、用户材料、JD 原文、模型提示/响应、上游异常内容或推理。usage 为提供者累计快照，可能包含并发会话，不能解释为该阶段/会话独占用量。等待节点不记录用户停留时间。缓存拒绝/导出失败仅记录固定安全码。
+
+## 验证
+
+`tests/test_live_graph.py` 为离线注入测试，覆盖等待不重放、版本同步、简历输入、追问上限、跳过、直接编辑、方向上限、地区校验、显式更正、重试保留输入、部分/全部来源失败、候选预算、无隐式技能关键词、会话隔离、重建图/旋转线程后的 JD 检查点缓存复用、跨会话缓存拒绝，以及日志不泄露输入/来源内容。不代表已完成真实 DeepSeek 或招聘来源联网验证。
+
+---
+
+# 历史规则基线设计（非生产流程）
+
+以下为原有确定性实现的历史记录，不代表 P04 生产行为。尤其旧的“技能无交集即冲突”规则已删除、就业类型不限增加显式布尔支持；当前契约以 `schemas/` 和上文为准。
+
 # 用户画像与确认模块设计文档（第 2 组）
 
 *Profile & Clarification Design — ScoutInput → UserProfile → ClarificationMessage*

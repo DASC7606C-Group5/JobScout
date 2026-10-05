@@ -80,8 +80,20 @@ def test_overall_top_five_and_complete_schema_fields() -> None:
     assert all(item.missing_skills == [] for item in result.jobs)
     assert [item.job for item in result.jobs] == jobs[:5]
     assert RecommendationResult.model_validate_json(result.model_dump_json()) == result
-    assert set(result.model_dump()) == {"session_id", "generated_at", "jobs", "warnings"}
-    assert set(result.jobs[0].model_dump()) == {"job", "missing_skills", "preparation_suggestions"}
+    assert set(result.model_dump()) == {
+        "session_id",
+        "generated_at",
+        "jobs",
+        "warnings",
+        "introduction",
+    }
+    assert set(result.jobs[0].model_dump()) == {
+        "job",
+        "missing_skills",
+        "preparation_suggestions",
+        "matching_reasons",
+        "uncertainty_notices",
+    }
 
 
 def test_skill_coverage_ranks_a_better_match_first() -> None:
@@ -162,6 +174,72 @@ def test_confirmed_location_filters_mismatches_but_keeps_unknown() -> None:
     assert any("c" in warning and "地点未知" in warning for warning in result.warnings)
 
 
+@pytest.mark.parametrize("requested", ["香港", "Hong Kong", "HK", "ＨＫ", "Hong Kong SAR"])
+@pytest.mark.parametrize("actual", ["Hong Kong", "香港", "HK", "Hong Kong SAR", "香港特別行政區"])
+def test_confirmed_hong_kong_location_aliases_are_equivalent(requested: str, actual: str) -> None:
+    profile = make_profile()
+    profile.preferences.location = requested
+    candidate = make_job("a", location=actual)
+    result = run(profile, [candidate])
+    assert [item.job for item in result.jobs] == [candidate]
+    assert profile.preferences.location == requested
+    assert result.jobs[0].job.location == actual
+
+
+@pytest.mark.parametrize(
+    ("requested", "actual"),
+    [
+        ("香港", "Shanghai"),
+        ("HK", "HKUST Guangzhou"),
+        ("Hong Kong Central", "Hong Kong"),
+        ("香港中环", "香港"),
+        ("Shanghai", "Hong Kong"),
+    ],
+)
+def test_location_aliases_do_not_broaden_specific_constraints(requested: str, actual: str) -> None:
+    profile = make_profile()
+    profile.preferences.location = requested
+    assert run(profile, [make_job("a", location=actual)]).jobs == []
+
+
+@pytest.mark.parametrize(
+    ("chinese", "english"),
+    [
+        ("北京", "Beijing"),
+        ("上海", "Shanghai"),
+        ("广州", "Guangzhou"),
+        ("深圳", "Shenzhen"),
+        ("杭州", "Hangzhou"),
+        ("成都", "Chengdu"),
+    ],
+)
+@pytest.mark.parametrize("reverse", [False, True])
+def test_existing_source_city_aliases_match_without_changing_locations(
+    chinese: str, english: str, reverse: bool
+) -> None:
+    profile = make_profile()
+    profile.preferences.location = english if reverse else chinese + "市"
+    candidate = make_job("a", location=chinese + "市" if reverse else english)
+    assert [item.job for item in run(profile, [candidate]).jobs] == [candidate]
+
+
+@pytest.mark.parametrize(
+    ("requested", "actual"),
+    [
+        ("Shanghai", "Beijing"),
+        ("深圳", "Guangzhou"),
+        ("Shanghai Pudong", "Shanghai"),
+        ("上海浦东", "上海市"),
+        ("北京", "Beijingville"),
+        ("上海/北京", "Shanghai"),
+    ],
+)
+def test_city_aliases_do_not_equate_regions_or_erase_districts(requested: str, actual: str) -> None:
+    profile = make_profile()
+    profile.preferences.location = requested
+    assert run(profile, [make_job("a", location=actual)]).jobs == []
+
+
 def test_unconfirmed_preferences_are_not_used_as_filters() -> None:
     profile = make_profile()
     profile.confirmed_fields = []
@@ -202,6 +280,30 @@ def test_employment_label_is_used_but_colleague_mentions_are_not() -> None:
     )
     assert {item.job.job_id for item in result.jobs} == {"b", "c"}
     assert any("b" in warning and "工作类型" in warning for warning in result.warnings)
+
+
+def test_structured_employment_metadata_takes_precedence_over_title() -> None:
+    mismatch = make_job("mismatch")
+    mismatch.employment_type = "full-time"
+    match = make_job("match", title="Full-time team analyst")
+    match.employment_type = "internship"
+    result = run(make_profile(), [mismatch, match])
+    assert [item.job.job_id for item in result.jobs] == ["match"]
+
+
+def test_explicit_unrestricted_employment_overrides_stale_type() -> None:
+    profile = make_profile()
+    profile.preferences.employment_type_unrestricted = True
+    profile.confirmed_fields.append("preferences.employment_type_unrestricted")
+    result = run(profile, [make_job("a", title="Full-time Analyst")])
+    assert len(result.jobs) == 1
+    assert not any("工作类型" in warning for warning in result.warnings)
+
+
+def test_merged_direction_tags_retain_an_eligible_vacancy() -> None:
+    candidate = make_job("a", direction="Sales")
+    candidate.target_directions = ["Data Analyst"]
+    assert len(run(make_profile(), [candidate]).jobs) == 1
 
 
 def test_unverifiable_optional_preferences_are_reported() -> None:

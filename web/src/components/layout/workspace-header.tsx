@@ -19,7 +19,7 @@ export function WorkspaceHeader() {
           <button className="btn btn-ghost btn-sm" disabled={busy} onClick={refresh}>
             刷新会话
           </button>
-          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={deleteSession}>
+          <button className="btn btn-ghost btn-sm" onClick={deleteSession}>
             清除会话
           </button>
         </div>

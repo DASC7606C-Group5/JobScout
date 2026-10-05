@@ -8,10 +8,11 @@ import { WorkflowSteps } from './workflow-steps'
 const headings = {
   initial: '好机会，从认识你开始。',
   paused: '好机会，值得再聊一聊。',
+  running: '正在理解你的下一步。',
   completed: '下一站，从这些机会开始。',
   failed: '好机会，从认识你开始。',
 }
-const stageSteps = { initial: 0, paused: 1, failed: 2, completed: 3 }
+const stageSteps = { initial: 0, paused: 1, running: 1, failed: 2, completed: 3 }
 
 export function DiscoveryPage() {
   const { session, busy, edit } = useScoutSession()
@@ -38,7 +39,7 @@ export function DiscoveryPage() {
           </button>
         )}
       </PageHeading>
-      <WorkflowSteps step={busy ? 2 : stageSteps[stage]} />
+      <WorkflowSteps step={session?.search_summary?.confirmed ? 2 : stageSteps[stage]} />
       <div
         aria-busy={busy}
         className={`grid items-start gap-6 ${completed ? '' : 'min-[1100px]:grid-cols-[minmax(0,1fr)_280px]'}`}

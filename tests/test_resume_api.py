@@ -64,11 +64,15 @@ def test_upload_requires_file_field() -> None:
 def test_parsed_resume_enters_profile_flow_without_contract_changes(
     name: str, content: bytes
 ) -> None:
-    with TestClient(create_app()) as client:
+    from jobscout.services.replay_service import ReplayProvider
+    from tests.test_web_scaffold import settled
+
+    with TestClient(create_app(provider=ReplayProvider())) as client:
         parsed = client.post("/api/v1/resumes/parse", files={"file": (name, content)})
         response = client.post(
             "/api/v1/sessions",
             json={
+                "request_id": "parsed-resume",
                 "description": "",
                 "resume": parsed.json(),
                 "target_directions": ["backend engineer"],
@@ -82,8 +86,9 @@ def test_parsed_resume_enters_profile_flow_without_contract_changes(
                 },
             },
         )
-    assert response.status_code == 201
-    assert response.json()["outcome"] == "paused"
-    assert response.json()["profile"]["source"]["resume"] is True
-    assert set(response.json()["profile"]["skills"]) >= {"Python", "SQL"}
-    assert "input_data" not in response.json()
+        assert response.status_code == 202
+        snapshot = settled(client, response.json()["session_id"])
+    assert snapshot["outcome"] == "paused"
+    assert snapshot["profile"]["source"]["resume"] is True
+    assert set(snapshot["profile"]["skills"]) >= {"Python", "SQL"}
+    assert "input_data" not in snapshot

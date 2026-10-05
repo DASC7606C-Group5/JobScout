@@ -12,7 +12,7 @@ import { ResumeField } from './profile/resume-field'
 
 export function ProfileForm() {
   const store = useScoutStore()
-  const { start } = useScoutSession()
+  const { start, busy } = useScoutSession()
   const form = useForm<ProfileFormValues>({ defaultValues: store.getState().draft })
   const {
     subscribe,
@@ -56,11 +56,14 @@ export function ProfileForm() {
             </div>
           </div>
         </div>
-        <fieldset disabled={reading} className="min-w-0 space-y-6 p-5 sm:p-7">
+        <fieldset disabled={reading || busy} className="min-w-0 space-y-6 p-5 sm:p-7">
           <DescriptionField />
           <ResumeField reading={reading} onReadingChange={setReading} />
           <DirectionField />
           <PreferenceFields />
+          <p className="rounded-xl bg-base-200/60 p-4 text-xs leading-6 text-base-content/70">
+            提交后，个人介绍和简历文本将发送给后端配置的模型服务商用于理解与匹配。请勿上传敏感资料；密钥仅保存在服务器。方向和偏好可暂不填写，稍后对话确认后才会搜索。
+          </p>
           <div id="profile-error" hidden={!error}>
             {error && (
               <div className="alert rounded-xl alert-soft text-sm alert-error" role="alert">
@@ -75,7 +78,7 @@ export function ProfileForm() {
               className="btn min-w-40 rounded-xl border-0 btn-primary"
               disabled={reading}
             >
-              {reading ? '正在读取…' : '发现适合我的机会'}
+              {reading ? '正在读取…' : '开始分析与对话'}
               <Icon name="arrow" size={18} />
             </button>
           </div>

@@ -61,7 +61,13 @@ export function createSessionClient(
     if (
       !data ||
       typeof data.session_id !== 'string' ||
-      !['paused', 'completed', 'failed'].includes(data.outcome) ||
+      !['running', 'paused', 'completed', 'failed'].includes(data.outcome) ||
+      !Number.isInteger(data.revision) ||
+      data.revision < 0 ||
+      typeof data.current_stage !== 'string' ||
+      !Array.isArray(data.conversation) ||
+      !Array.isArray(data.source_outcomes) ||
+      !['live', 'replay'].includes(data.mode) ||
       !Array.isArray(data.clarification_questions) ||
       !Array.isArray(data.errors) ||
       !Array.isArray(data.warnings)
@@ -73,7 +79,7 @@ export function createSessionClient(
   return {
     start: (input, signal) => session('/sessions', 'POST', input, signal),
     get: (id, signal) => session(pathFor(id), 'GET', undefined, signal),
-    answer: (id, answers, signal) => session(`${pathFor(id)}/resume`, 'POST', { answers }, signal),
+    answer: (id, request, signal) => session(`${pathFor(id)}/resume`, 'POST', request, signal),
     delete: async (id, signal) => {
       await request(pathFor(id), 'DELETE', undefined, signal)
     },

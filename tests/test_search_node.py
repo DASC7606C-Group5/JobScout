@@ -34,7 +34,7 @@ def test_node_returns_only_new_diagnostics_without_mutating_state() -> None:
         ],
     }
     update = search_node(state, service=JobSearchService(client=EmptyClient()))
-    assert set(update) == {"raw_jobs", "errors", "warnings"}
+    assert set(update) == {"raw_jobs", "errors", "warnings", "source_outcomes"}
     assert update["raw_jobs"] == []
     assert update["errors"] == []
     assert "upstream" not in update["warnings"]

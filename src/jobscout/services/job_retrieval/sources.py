@@ -63,6 +63,23 @@ def map_job(source: str, record: dict[str, JsonValue], page: Page, direction: st
         "title": record.get("title"),
         "company": record.get("company_name"),
         "description": record.get("description"),
+        "employment_type": next(
+            (
+                kind
+                for kind, aliases in EMPLOYMENT_ALIASES.items()
+                if any(
+                    isinstance(label, str) and normalized(label) in aliases
+                    for label in (
+                        [job_types]
+                        if isinstance(job_types, str)
+                        else job_types
+                        if isinstance(job_types, list)
+                        else []
+                    )
+                )
+            ),
+            None,
+        ),
         "salary": None if record.get("salary") == "" else record.get("salary"),
         "location": record.get(
             "candidate_required_location" if source == "remotive" else "location"
@@ -98,11 +115,12 @@ def matches_request(job: RawJob, request: SearchRequest) -> bool:
         else job.raw_payload.get("job_types")
     )
     labels = [types] if isinstance(types, str) else types if isinstance(types, list) else []
-    aliases = next(
-        v for k, v in EMPLOYMENT_ALIASES.items() if normalized(k) == query.employment_type
-    )
-    if not any(isinstance(t, str) and normalized(t) in aliases for t in labels):
-        return False
+    if not request.employment_type_unrestricted:
+        aliases = next(
+            v for k, v in EMPLOYMENT_ALIASES.items() if normalized(k) == query.employment_type
+        )
+        if not any(isinstance(t, str) and normalized(t) in aliases for t in labels):
+            return False
     if request.work_mode:
         # remote=false cannot distinguish onsite from hybrid: never infer it.
         if normalized(request.work_mode) != "remote":
@@ -118,9 +136,9 @@ class FeedAdapter:
         name: str,
         client: JsonClient,
         *,
-        max_pages: int = 2,
+        max_pages: int = 1,
         candidate_limit: int = 1000,
-        result_limit: int = 50,
+        result_limit: int = 10,
     ) -> None:
         if (
             name not in URLS

@@ -307,8 +307,9 @@ def detect_conflicts(
 ) -> list[str]:
     """Report profile fields where resume and description cannot be reconciled.
 
-    Only comparable structured fields are checked. Skills conflict when both
-    sources list skills and share none, because neither source may silently win.
+    Skill lists contain positive claims, so different lists are complementary,
+    not contradictory. The live understanding service handles explicit negations
+    and corrections using the original text; this lossy background cannot.
 
     Args:
         resume_background: Background parsed from the resume.
@@ -317,10 +318,6 @@ def detect_conflicts(
     Returns:
         Field names awaiting user confirmation, in a stable order.
     """
-    resume_skills = {skill.casefold() for skill in resume_background.skills}
-    description_skills = {skill.casefold() for skill in description_background.skills}
-    if resume_skills and description_skills and not resume_skills & description_skills:
-        return ["skills"]
     return []
 
 
@@ -487,7 +484,7 @@ def required_missing_fields(profile: UserProfile) -> list[str]:
     preferences = profile.preferences
     if not _has_text(preferences.location) and not preferences.location_unrestricted:
         missing.append("preferences.location")
-    if not _has_text(preferences.employment_type):
+    if not _has_text(preferences.employment_type) and not preferences.employment_type_unrestricted:
         missing.append("preferences.employment_type")
     return missing
 
@@ -680,6 +677,7 @@ def apply_answers(
             preferences.location = None if preferences.location_unrestricted else answer
         elif field == "preferences.employment_type":
             preferences.employment_type = _normalize_employment_type(answer)
+            preferences.employment_type_unrestricted = _is_unrestricted_answer(answer)
         elif field == "preferences.work_mode":
             preferences.work_mode = _normalize_work_mode(answer)
         elif field == "preferences.salary_range":

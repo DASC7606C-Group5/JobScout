@@ -124,7 +124,6 @@ def test_native_params_preserve_explicit_intent() -> None:
         ("zhaopin", {"location": "Hong Kong"}, "SEARCH_REGION_UNSUPPORTED"),
         ("zhaopin", {"location": "武汉"}, "SEARCH_LOCATION_UNSUPPORTED"),
         ("liepin", {"location": "上海浦东"}, "SEARCH_LOCATION_UNSUPPORTED"),
-        ("jobsdb", {"location": "Hong Kong", "work_mode": "remote"}, "SEARCH_FILTER_UNSUPPORTED"),
         ("shixiseng", {"employment_type": "full-time"}, "SEARCH_FILTER_UNSUPPORTED"),
         ("unknown", {}, "SEARCH_UNKNOWN_SOURCE"),
     ],
@@ -156,7 +155,6 @@ def test_confirmed_empty(source: str, text: str) -> None:
         ("zhaopin", '{"code":200}'),
         ("liepin", '{"flag":1}'),
         ("jobsdb", '{"data":{}}'),
-        ("shixiseng", "<html>captcha</html>"),
         ("zhaopin", "<html>login</html>"),
     ],
 )
@@ -217,7 +215,7 @@ def test_one_source_failure_keeps_other_sources() -> None:
     result = JobSearchService(web_client=FailingClient(FIXTURE)).search(req())
     assert {j.source for j in result.raw_jobs} == {"liepin", "shixiseng"}
     assert result.errors[0].code == "SEARCH_TIMEOUT"
-    assert [o.status for o in result.outcomes] == ["error", "ok", "ok"]
+    assert [o.status for o in result.outcomes] == ["unavailable", "ok", "ok"]
 
 
 class Pages:
@@ -243,7 +241,7 @@ def test_pagination_failure_and_malformed_record_preserve_success() -> None:
         STAMP,
     )
     result = LocalAdapter(
-        "zhaopin", Pages([page, RetrievalFailure("SEARCH_RATE_LIMIT", "limited")])
+        "zhaopin", Pages([page, RetrievalFailure("SEARCH_RATE_LIMIT", "limited")]), max_pages=2
     ).search(req())
     assert len(result.jobs) == 1
     assert [e.code for e in result.errors] == ["SEARCH_RESPONSE_FORMAT", "SEARCH_RATE_LIMIT"]

@@ -124,7 +124,13 @@ def validate_request(request: SearchRequest) -> None:
         raise RetrievalFailure("SEARCH_INPUT", "keywords must not contain blank entries.")
     if bool(request.location and request.location.strip()) == request.location_unrestricted:
         raise RetrievalFailure("SEARCH_INPUT", "Specify a location OR location_unrestricted=true.")
-    if normalized(request.employment_type) not in {normalized(k) for k in EMPLOYMENT_ALIASES}:
+    if bool(request.employment_type.strip()) == request.employment_type_unrestricted:
+        raise RetrievalFailure(
+            "SEARCH_INPUT", "Specify employment_type OR employment_type_unrestricted=true."
+        )
+    if not request.employment_type_unrestricted and normalized(request.employment_type) not in {
+        normalized(k) for k in EMPLOYMENT_ALIASES
+    }:
         raise RetrievalFailure("SEARCH_INPUT", "Unsupported employment_type; see retrieval guide.")
     if request.work_mode and normalized(request.work_mode) not in {
         "remote",
@@ -148,14 +154,18 @@ def select_sources(request: SearchRequest) -> list[str]:
         return [
             s
             for s in DEFAULT_SOURCES
-            if s != "shixiseng" or normalized(request.employment_type) == "internship"
+            if s != "shixiseng"
+            or request.employment_type_unrestricted
+            or normalized(request.employment_type) == "internship"
         ]
     region = location_region(request.location)
     if region in REGIONAL_SOURCES:
         return [
             s
             for s in REGIONAL_SOURCES[region]
-            if s != "shixiseng" or normalized(request.employment_type) == "internship"
+            if s != "shixiseng"
+            or request.employment_type_unrestricted
+            or normalized(request.employment_type) == "internship"
         ]
     return []
 

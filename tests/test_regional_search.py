@@ -67,7 +67,6 @@ def test_native_mainland_fulltime_filters_preserve_keywords() -> None:
     "updates, code",
     [
         ({"location": "Shanghai"}, "SEARCH_REGION_UNSUPPORTED"),
-        ({"work_mode": "remote"}, "SEARCH_FILTER_UNSUPPORTED"),
         ({"employment_type": "freelance"}, "SEARCH_FILTER_UNSUPPORTED"),
     ],
 )
@@ -85,7 +84,7 @@ def test_missing_config_is_not_empty_or_foreign_fallback(monkeypatch: pytest.Mon
     network.assert_not_called()
     assert result.errors[0].code == "SEARCH_CONFIG"
     assert [o.source for o in result.outcomes] == ["careerjet_hk"]
-    assert result.outcomes[0].status == "error"
+    assert result.outcomes[0].status == "unavailable"
 
 
 class Client:

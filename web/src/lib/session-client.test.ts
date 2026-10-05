@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
-import { createProfileFixture } from '../../tests/fixtures'
-import type { ScoutSession } from './contracts'
+import { createProfileFixture, createSessionFixture } from '../../tests/fixtures'
+import type { ResumeSessionRequest } from './contracts'
 import { toScoutInput } from './profile-form'
 import { createSessionClient, SessionHttpError } from './session-client'
 
-const input = toScoutInput(createProfileFixture())
-const completed: ScoutSession = {
+const input = { ...toScoutInput(createProfileFixture()), request_id: 'create-1' }
+const completed = createSessionFixture({
   session_id: 'session-1',
   outcome: 'completed',
   profile: null,
@@ -16,10 +16,11 @@ const completed: ScoutSession = {
     generated_at: '2026-10-03T00:00:00Z',
     jobs: [],
     warnings: [],
+    introduction: '',
   },
   errors: [],
   warnings: [],
-}
+})
 
 function createTransport(
   handler: (url: string, init: RequestInit) => Response | Promise<Response>,
@@ -42,14 +43,25 @@ describe('Session HTTP API', () => {
         requests.push({ url, init })
         return init.method === 'DELETE'
           ? new Response(null, { status: 204 })
-          : Response.json(completed, { status: init.method === 'POST' ? 201 : 200 })
+          : Response.json(completed, { status: init.method === 'POST' ? 202 : 200 })
       }),
     )
     const signal = new AbortController().signal
     expect(await client.start(input, signal)).toEqual(completed)
     expect(await client.get('session/1', signal)).toEqual(completed)
-    const answers = { 'preferences.location': '香港', target_directions: '前端开发' }
-    expect(await client.answer('session/1', answers, signal)).toEqual(completed)
+    const request: ResumeSessionRequest = {
+      request_id: 'resume-1',
+      expected_revision: 1,
+      action: 'answer',
+      message: '补充说明',
+      answers: [
+        { question_id: 'location-1', value: 'hk' },
+        { question_id: 'directions-1', value: ['frontend', 'data'] },
+      ],
+      skipped_question_ids: ['optional-1'],
+      profile_updates: { 'preferences.location': '香港' },
+    }
+    expect(await client.answer('session/1', request, signal)).toEqual(completed)
     await client.delete('session/1', signal)
 
     expect(requests.map(({ url, init }) => [url, init.method])).toEqual([
@@ -63,7 +75,7 @@ describe('Session HTTP API', () => {
     if (typeof startBody !== 'string' || typeof answerBody !== 'string')
       throw new Error('Expected JSON request bodies')
     expect(JSON.parse(startBody)).toEqual(input)
-    expect(JSON.parse(answerBody)).toEqual({ answers })
+    expect(JSON.parse(answerBody)).toEqual(request)
     expect(requests.every(({ init }) => init.signal === signal)).toBe(true)
     expect(requests[0]?.init.headers).toHaveProperty('Content-Type', 'application/json')
     expect(requests[1]?.init.body).toBeUndefined()
@@ -71,7 +83,7 @@ describe('Session HTTP API', () => {
   })
 
   test('paused and failed workflow outcomes remain successful HTTP responses', async () => {
-    for (const outcome of ['paused', 'failed'] as const) {
+    for (const outcome of ['running', 'paused', 'failed'] as const) {
       const response = { ...completed, outcome, recommendation: null, warnings: ['检索来源提示'] }
       const client = createSessionClient(
         '/api/v1',

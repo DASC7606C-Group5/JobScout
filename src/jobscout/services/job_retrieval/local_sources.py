@@ -6,6 +6,7 @@ cross-source deduplication, skill extraction or vacancy expiry inference here.
 
 import json
 import re
+from collections.abc import Generator
 from dataclasses import dataclass
 from html import unescape
 from urllib.parse import urlencode, urljoin, urlsplit
@@ -19,7 +20,7 @@ from .html_fields import Tree
 from .models import RawJob, RetrievalFailure, workflow_error
 from .planning import location_region, normalized, plan_keywords, validate_request
 from .sources import SourceResult
-from .web_transport import WebClient, WebPage
+from .web_transport import AsyncWebClient, WebClient, WebPage
 
 JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 CITY_CODES = {
@@ -86,18 +87,13 @@ class SearchPlan:
 
 
 def build_search_plan(
-    request: SearchRequest, source: str, page: int = 1, page_size: int = 20
+    request: SearchRequest, source: str, page: int = 1, page_size: int = 10
 ) -> SearchPlan:
     validate_request(request)
     if source not in HOSTS:
         raise RetrievalFailure("SEARCH_UNKNOWN_SOURCE", "Unknown source.")
     if not 1 <= page <= 5 or not 1 <= page_size <= 50:
         raise RetrievalFailure("SEARCH_INPUT", "Invalid page bounds.")
-    if request.work_mode:
-        raise RetrievalFailure(
-            "SEARCH_FILTER_UNSUPPORTED",
-            "Work-mode filtering is not verified for this source; refusing to broaden it.",
-        )
     region = location_region(request.location)
     if not request.location_unrestricted and region != ("hk" if source == "jobsdb" else "cn"):
         raise RetrievalFailure(
@@ -131,7 +127,11 @@ def build_search_plan(
             "SEARCH_LOCATION_UNSUPPORTED",
             "City has no verified native parameter mapping; refusing nationwide fallback.",
         )
-    if source == "shixiseng" and normalized(request.employment_type) != "internship":
+    if (
+        source == "shixiseng"
+        and not request.employment_type_unrestricted
+        and normalized(request.employment_type) != "internship"
+    ):
         raise RetrievalFailure(
             "SEARCH_FILTER_UNSUPPORTED", "This Shixiseng adapter covers internships only."
         )
@@ -263,6 +263,16 @@ def decode_json(page: WebPage) -> dict[str, JsonValue]:
 
 
 def parse_listing(source: str, page: WebPage) -> list[dict[str, JsonValue]]:
+    if (
+        page.text.lstrip().startswith("<")
+        and "intern-wrap" not in page.text
+        and re.search(
+            r"captcha|verify you are human|access denied|安全验证|安全驗證|访问受限",
+            page.text,
+            re.I,
+        )
+    ):
+        raise RetrievalFailure("SEARCH_AUTH", "Source requires verification; not an empty result.")
     if source == "shixiseng":
         tree = Tree(page.text).root
         cards = tree.find(attr="class", value="intern-wrap")
@@ -427,6 +437,9 @@ def detail_url(job: RawJob) -> str | None:
 
 
 def add_detail(job: RawJob, page: WebPage) -> None:
+    if job.description:
+        job.raw_payload.setdefault("listing_description", job.description)
+        job.raw_payload.setdefault("listing_fetched_at", job.fetched_at.isoformat())
     tree = Tree(page.text).root
     if job.source == "jobsdb":
         description = tree.field("data-automation", "jobAdDetails")
@@ -504,9 +517,38 @@ def passes_location(job: RawJob, request: SearchRequest) -> bool:
     return True
 
 
+def observed_employment_type(job: RawJob) -> str | None:
+    labels: JsonValue = (
+        job.raw_payload.get("workType")
+        if job.source == "zhaopin"
+        else job.raw_payload.get("workTypes")
+        if job.source == "jobsdb"
+        else at(job.raw_payload, "job", "campusJobKind")
+        or at(job.raw_payload, "job", "workType")
+        or at(job.raw_payload, "detail_structured", "employmentType")
+        or job.raw_payload.get("employment_type")
+    )
+    values = [labels] if isinstance(labels, str) else labels if isinstance(labels, list) else []
+    types = {normalized(v) for v in values if isinstance(v, str)}
+    if job.source == "shixiseng" or re.search(
+        r"\bintern(?:ship)?\b|实习|實習", job.title or "", re.I
+    ):
+        return "internship"
+    aliases = {
+        "internship": {"internship", "intern", "实习", "實習"},
+        "full-time": {"full time", "fulltime", "全职", "全職"},
+        "part-time": {"part time", "parttime", "兼职", "兼職"},
+        "contract": {"contract", "contract/temp", "合同工"},
+        "freelance": {"freelance", "自由职业"},
+    }
+    return next((kind for kind, values in aliases.items() if types & values), None)
+
+
 def passes_filters(job: RawJob, request: SearchRequest) -> bool:
     if not passes_location(job, request):
         return False
+    if request.employment_type_unrestricted:
+        return True
     kind = normalized(request.employment_type)
     title = (job.title or "").casefold()
     internship = (
@@ -581,11 +623,12 @@ class LocalAdapter:
         name: str,
         client: WebClient,
         *,
-        max_pages: int = 2,
-        page_size: int = 20,
+        max_pages: int = 1,
+        page_size: int = 10,
         candidate_limit: int = 60,
-        result_limit: int = 30,
-        detail_limit: int = 5,
+        result_limit: int = 10,
+        detail_limit: int = 3,
+        async_client: AsyncWebClient | None = None,
     ) -> None:
         if (
             name not in HOSTS
@@ -597,6 +640,7 @@ class LocalAdapter:
         ):
             raise ValueError("Invalid source or retrieval bounds")
         self.name, self.client = name, client
+        self.async_client = async_client
         self.max_pages, self.page_size = max_pages, page_size
         self.candidate_limit, self.result_limit, self.detail_limit = (
             candidate_limit,
@@ -605,15 +649,62 @@ class LocalAdapter:
         )
 
     def search(self, request: SearchRequest) -> SourceResult:
+        steps = self._search_steps(request, SourceResult())
+        try:
+            plan = next(steps)
+            while True:
+                try:
+                    page = self.client.request(plan.url, body=plan.body, headers=plan.headers)
+                except RetrievalFailure as exc:
+                    plan = steps.throw(exc)
+                else:
+                    plan = steps.send(page)
+        except StopIteration as done:
+            return done.value  # type: ignore[no-any-return]
+        finally:
+            steps.close()
+
+    async def search_async(
+        self, request: SearchRequest, *, result: SourceResult | None = None
+    ) -> SourceResult:
+        if self.async_client is None:
+            raise RetrievalFailure(
+                "SEARCH_ASYNC_UNAVAILABLE", "Source requires an asynchronous transport."
+            )
+        steps = self._search_steps(request, result if result is not None else SourceResult())
+        try:
+            plan = next(steps)
+            while True:
+                try:
+                    page = await self.async_client.request_async(
+                        plan.url, body=plan.body, headers=plan.headers
+                    )
+                except RetrievalFailure as exc:
+                    plan = steps.throw(exc)
+                else:
+                    plan = steps.send(page)
+        except StopIteration as done:
+            return done.value  # type: ignore[no-any-return]
+        finally:
+            steps.close()
+
+    def _search_steps(
+        self, request: SearchRequest, result: SourceResult
+    ) -> Generator[SearchPlan, WebPage, SourceResult]:
         build_search_plan(request, self.name)
-        result = SourceResult()
         label = f"{self.name}/{request.target_direction}"
         result.warnings.append(
-            f"{label}: demand-driven source search; hard location/type checked locally; unknown types excluded. Relevance/ranking belongs to Group 6."
+            f"{label}: demand-driven source search; confirmed location/type constraints checked locally. Relevance/ranking belongs to Group 6."
         )
         if request.salary_range:
             result.warnings.append(
                 f"{label}: salary_range is a preference, not applied; pass to Group 6."
+            )
+        if request.work_mode:
+            result.warnings.append(f"{label}: work_mode is advisory; source cannot verify it.")
+        if request.employment_type_unrestricted:
+            result.warnings.append(
+                f"{label}: employment type unrestricted; unknown types retained."
             )
         seen: set[str] = set()
         detail_count = 0
@@ -624,7 +715,7 @@ class LocalAdapter:
         for number in range(1, self.max_pages + 1):
             plan = build_search_plan(request, self.name, number, self.page_size)
             try:
-                page = self.client.request(plan.url, body=plan.body, headers=plan.headers)
+                page = yield plan
                 records = parse_listing(self.name, page)
             except RetrievalFailure as exc:
                 result.errors.append(
@@ -675,7 +766,8 @@ class LocalAdapter:
                         if url:
                             detail_count += 1
                             try:
-                                add_detail(job, self.client.request(url))
+                                detail_page = yield SearchPlan(url, None, {}, ())
+                                add_detail(job, detail_page)
                                 job.raw_payload["detail_status"] = "ok"
                             except RetrievalFailure as exc:
                                 result.errors.append(
@@ -707,9 +799,12 @@ class LocalAdapter:
                     unverified += evidence == "unverified"
                     job.raw_payload["keyword_evidence"] = evidence
                     job.raw_payload["search_keywords"] = list(plan.keywords)
-                    job.raw_payload["description_is_excerpt"] = (
-                        self.name == "jobsdb" and "detail_description" not in job.raw_payload
+                    job.description_is_excerpt = bool(
+                        not job.description
+                        or (self.name == "jobsdb" and "detail_description" not in job.raw_payload)
                     )
+                    job.employment_type = observed_employment_type(job)
+                    job.raw_payload["description_is_excerpt"] = job.description_is_excerpt
                     job.raw_payload["missing_fields"] = [
                         name
                         for name in ("title", "source_url", "company", "location", "description")

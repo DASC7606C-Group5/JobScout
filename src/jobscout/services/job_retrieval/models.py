@@ -16,6 +16,8 @@ class RawJob(BaseModel):
     location: str | None = None
     salary: str | None = None
     description: str | None = None
+    description_is_excerpt: bool = False
+    employment_type: str | None = None
     posted_at: str | int | float | None = None
     expiry_at: str | int | float | None = None
     raw_payload: dict[str, JsonValue]

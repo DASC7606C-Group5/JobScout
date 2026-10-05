@@ -12,6 +12,17 @@ class FreshnessStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+class SourceDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str
+    source: str
+    source_url: str
+    text: str
+    fetched_at: datetime
+    is_excerpt: bool = False
+
+
 class JobPosting(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -30,3 +41,8 @@ class JobPosting(BaseModel):
     freshness_status: FreshnessStatus = FreshnessStatus.UNKNOWN
     fetched_at: datetime
     source_links: list[str] = Field(default_factory=list)
+    source_documents: list[SourceDocument] = Field(default_factory=list)
+    description: str = ""
+    description_is_excerpt: bool = False
+    employment_type: str | None = None
+    target_directions: list[str] = Field(default_factory=list)

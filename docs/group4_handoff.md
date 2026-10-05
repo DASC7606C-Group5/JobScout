@@ -56,8 +56,8 @@ requests = [
     ),
 ]
 
-service = JobSearchService(result_limit=10, detail_limit=5)
-result = service.search_many(requests)
+service = JobSearchService()
+result = await service.search_many_async(requests, timeout=60.0)
 payload = result.model_dump(mode="json")
 
 raw_jobs = payload["raw_jobs"]
@@ -69,7 +69,9 @@ warnings = payload["warnings"]
 - 多个请求：`service.search_many(requests)`。
 - 参数为 `SearchRequest` 对象；来自 JSON 的字典先执行 `SearchRequest.model_validate(data)`。结构不合法时由 Pydantic 报错，调用方负责处理。
 - 每批/会话使用一个 service 实例，不将其作为多个线程共用的全局对象。
-- 调用为同步阻塞。在异步服务中可使用 `await asyncio.to_thread(service.search_many, requests)`。调用方负责整体超时；取消等待不会立即终止已经运行的线程。
+- 异步服务使用 `await service.search_many_async(requests, timeout=remaining_seconds)`。原生 httpx 异步 I/O、重试和限流等待均可取消；最多四个并行来源。完成顺序不会改变返回顺序。
+- `timeout` 是本轮剩余预算，最多 60 秒；调用方累计所有轮次的 60 秒检索预算与 180 秒总操作预算。零预算不启动请求。超时保留其他来源及当前来源已完成的岗位；取消操作会取消并等待全部子任务退出。
+- 同步入口保留给脚本/旧测试，不应放入异步事件循环或通过不可取消的线程伪装异步。自定义 async adapter 必须提供协作取消的 `search_async`；仅同步的 adapter 在异步入口报告 `SEARCH_ASYNC_UNAVAILABLE`。现有非默认 feed/Careerjet 兼容适配器仅用于同步入口。
 
 ## 3. 输入 SearchRequest
 
@@ -81,10 +83,11 @@ warnings = payload["warnings"]
 | keywords | list[str] | 可选，默认 []；有值时使用给定词语，不自动翻译；不要传空白词 |
 | location | str 或 null | 指定一个地点，例如 上海、Hong Kong |
 | location_unrestricted | bool | 默认 false；明确不限地点时设 true，同时 location=null |
-| employment_type | str | 必填，使用 full-time、part-time、internship、contract 或 freelance |
+| employment_type | str | 默认空；具体类型使用 full-time、part-time、internship、contract 或 freelance |
+| employment_type_unrestricted | bool | 明确不限类型时 true，employment_type 必须为空；未回答不等于不限 |
 | sources | list[str] | 可选，默认 []，自动按地区选源；也可显式指定来源标识 |
 | salary_range | str 或 null | 可选偏好；检索端不做薪资数值过滤，调用方应保留给后续匹配 |
-| work_mode | str 或 null | 当前来源暂不支持工作模式过滤，请留 null；非空请求会返回输入或过滤能力错误 |
+| work_mode | str 或 null | remote/hybrid/onsite 为建议偏好；四个默认来源无法可靠验证，不做硬过滤并报告 warning |
 
 `location` 与 `location_unrestricted=true` 二选一，不能都不指定或同时指定。
 
@@ -97,7 +100,7 @@ warnings = payload["warnings"]
 | 大陆实习 | zhaopin（智联）、liepin（猎聘）、shixiseng（实习僧） |
 | 大陆其他工作类型 | zhaopin、liepin |
 | 香港 | jobsdb |
-| 不限地点 | 上述来源联合；非实习跳过 shixiseng |
+| 不限地点 | 上述来源联合；具体非实习类型跳过 shixiseng，明确不限类型保留四来源 |
 
 显式来源示例：`sources=["zhaopin", "liepin"]`。未知标识产生错误，其他有效来源继续。
 
@@ -125,8 +128,12 @@ warnings = payload["warnings"]
 | target_direction | 对应输入的求职方向 |
 | title、company、location、salary | 来源提供的文本，缺失时为 null |
 | description | 原岗位描述；可能是 HTML、文本、摘要或 null |
+| description_is_excerpt | 摘录/缺失描述标志；同时保留 raw_payload 兼容字段 |
+| employment_type | 来源证据支持的类型；未知为 null，不能复制请求类型推定 |
 | posted_at、expiry_at | 来源原始时间文本/数字或 null，尚未统一日期格式和时区 |
 | raw_payload | 来源数据及辅助诊断字段 |
+
+规范化层将原文、来源 URL、实际抓取时间和摘录状态保存为 `SourceDocument`，跨方向/来源去重不丢证据。详情替换列表摘录时，raw_payload 的 listing_description/listing_fetched_at 与 detail_description/detail_fetched_at 保留两个快照。
 
 第五组应检查 raw_payload 中以下字段：
 
@@ -139,7 +146,7 @@ warnings = payload["warnings"]
 
 缺失字段不应自行补写为事实。返回记录尚未跨来源去重或判定有效性，同一岗位可能出现在多个方向。第五组需显式映射到共享 `JobPosting`；不要直接对整个原始字典执行 `JobPosting.model_validate()`，两者字段和类型不同。
 
-`outcomes.status` 取值为 ok、empty、partial、error。ok 仅表示未报告来源错误，不保证字段完整。`incomplete_count` 统计标题、链接、公司、地点、描述中任一缺失的记录数；`excerpt_count` 统计摘要记录，两者可能重叠。
+`outcomes.status` 取值为 ok、empty、partial、blocked、unavailable。empty 必须是已验证成功的零结果；验证码/认证/限流为 blocked；网络/超时/格式变化为 unavailable（超时诊断码 SEARCH_TIMEOUT）。ok 仅表示未报告来源错误，不保证字段完整。`incomplete_count` 统计标题、链接、公司、地点、描述中任一缺失的记录数；`excerpt_count` 统计摘要记录，两者可能重叠。
 
 ## 6. 异常与空结果
 
@@ -169,7 +176,7 @@ update = search_node(
 )
 ```
 
-节点读取 AgentState.search_requests，返回 raw_jobs、errors、warnings。当前行为为替换 raw_jobs、保留并追加已有诊断；调用方若为状态添加累加 reducer，需避免重复累加。流程状态与分支由第三组管理。
+节点读取 AgentState.search_requests，返回 raw_jobs、errors、warnings、source_outcomes。异步图使用 `await search_node_async(state, service=service, timeout=remaining_seconds)`；同步 search_node 用于兼容。来源错误保留在 outcomes/warnings，不再混为致命 errors；缺失/无效请求仍是 errors。跨轮岗位合并、预算累计与路由由调用方管理。
 
 节点 raw_jobs 已是 JSON 可序列化字典，errors 仍为 WorkflowError 对象；向 HTTP 输出时使用 Pydantic 序列化或逐项 model_dump(mode="json")。
 
@@ -179,13 +186,19 @@ update = search_node(
 
 | 参数 | 默认值 | 作用 |
 | --- | ---: | --- |
-| max_pages | 2 | 最多请求的列表页数 |
-| page_size | 20 | 请求的页大小，网站可能不完全遵守 |
+| max_pages | 1 | 最多请求的列表页数 |
+| page_size | 10 | 请求的页大小，网站可能不完全遵守 |
 | candidate_limit | 60 | 最多扫描的候选数量 |
-| result_limit | 30 | 最多返回的记录数，不保证凑满 |
-| detail_limit | 5 | 最多请求的详情页数；预算耗尽后可能保留摘要/null |
+| result_limit | 10 | 最多返回的记录数，不保证凑满 |
+| detail_limit | 3 | 最多请求的详情页数；预算耗尽后可能保留摘要/null |
 
-增加 detail_limit 可改善描述完整度，但会增加耗时，且不能保证详情成功。每次网络请求超时 12 秒；网络/5xx 最多重试一次，认证/限流不重试。没有整个批次的固定完成时间保证。
+增加 detail_limit 可改善描述完整度，但会增加耗时，且不能保证详情成功。每次网络请求超时 12 秒；网络/5xx 最多重试一次，认证/限流不重试。异步入口的共享 deadline 覆盖排队、HTTP、重试和限流等待。离线测试验证了取消和部分结果。
+
+### 2026-10-04 live 验证
+
+先通过 69 个检索/处理离线测试，再使用无个人资料的 Data Analyst 实习查询：JobsDB 香港，其他三来源上海。一次批次共 2.1441 秒，60 秒总 deadline；每来源一页、最多十条返回、三次详情。四来源均返回 `ok`，无来源错误；JobsDB 10 条（7 摘录）、Zhaopin 8 条、Liepin 10 条（8 不完整/摘录）、Shixiseng 4 条（1 不完整/摘录）。各来源列表请求一次，除自带 JD 的 Zhaopin 外各三次详情请求。
+
+这是当时的网络可达性与解析验证，不保证持续可用、完整 JD 或招聘有效性；不以 `ok` 表示所有字段齐全。未绕过访问限制，也未保存岗位正文/链接、凭证或个人数据。清理后的时间、数量和状态见 [验证元数据](retrieval-live-validation-2026-10-04.json)。
 
 来源使用网站接口/公开页面，可能变更或拒绝访问。模块不承诺完整召回、语义相关性、实时有效性或固定返回数量。最终标准化、去重、时效判断、画像匹配和总体 Top 5 由后续模块完成。
 

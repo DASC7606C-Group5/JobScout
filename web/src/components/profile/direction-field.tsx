@@ -4,7 +4,10 @@ import { parseDirections, type ProfileFormValues } from '../../lib/profile-form'
 import { Icon } from '../icon'
 
 export function DirectionField() {
-  const { field } = useController<ProfileFormValues, 'directions'>({ name: 'directions' })
+  const { field, fieldState } = useController<ProfileFormValues, 'directions'>({
+    name: 'directions',
+    rules: { validate: (value) => parseDirections(value).length <= 3 || '最多选择三个求职方向。' },
+  })
   const selected = parseDirections(field.value)
   return (
     <div className="border-t border-base-300 pt-6">
@@ -13,7 +16,7 @@ export function DirectionField() {
         <h3 className="text-sm font-semibold">你想往哪个方向走？</h3>
       </div>
       <label htmlFor="directions" className="mb-2 block text-sm">
-        求职方向 <span className="ml-1 text-xs text-base-content/50">可填写多个</span>
+        求职方向 <span className="ml-1 text-xs text-base-content/50">选填，最多三个</span>
       </label>
       <input
         id="directions"
@@ -21,7 +24,12 @@ export function DirectionField() {
         className="input w-full rounded-xl border border-base-300 bg-base-200/25 text-sm"
         placeholder="例如：前端开发，数据分析"
         maxLength={300}
+        aria-invalid={fieldState.invalid}
+        aria-describedby="directions-error"
       />
+      <p id="directions-error" role="alert" className="text-xs text-error-content">
+        {fieldState.error?.message}
+      </p>
       <div className="mt-2.5 flex flex-wrap gap-2">
         {['前端开发', '数据分析', '产品设计', '软件工程'].map((direction) => {
           const active = selected.includes(direction)

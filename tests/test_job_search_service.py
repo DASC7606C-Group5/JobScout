@@ -180,7 +180,7 @@ def test_partial_source_failure_keeps_other_source() -> None:
     result = svc.search(request(sources=["remotive", "arbeitnow"]))
     assert len(result.raw_jobs) == 1 and result.raw_jobs[0].source == "arbeitnow"
     assert result.errors[0].code == "SEARCH_TIMEOUT"
-    assert [o.status for o in result.outcomes] == ["error", "ok"]
+    assert [o.status for o in result.outcomes] == ["unavailable", "ok"]
 
 
 @pytest.mark.parametrize("payload", [{}, {"jobs": None}, {"jobs": {}}, {"error": "changed"}])
@@ -227,6 +227,14 @@ def test_hong_kong_internship_does_not_become_worldwide_fulltime() -> None:
     assert not result.raw_jobs and not result.errors
 
 
+def test_unrestricted_type_retains_unknown_and_mixed_employment() -> None:
+    result = service(Pages(page(records=[row(job_type=""), row(job_type="internship")]))).search(
+        request(sources=["remotive"], employment_type="", employment_type_unrestricted=True)
+    )
+    assert len(result.raw_jobs) == 2
+    assert [job.employment_type for job in result.raw_jobs] == [None, "internship"]
+
+
 def test_hard_location_and_type_match() -> None:
     result = service(
         Pages(page(records=[row(candidate_required_location="Hong Kong", job_type="internship")]))
@@ -267,7 +275,7 @@ def test_pagination_does_not_follow_response_url_and_preserves_partial() -> None
         page("arbeitnow", next_page="http://internal.invalid/secret"),
         RetrievalFailure("SEARCH_NETWORK", "network"),
     )
-    result = service(client, "arbeitnow").search(request(sources=["arbeitnow"]))
+    result = service(client, "arbeitnow", max_pages=2).search(request(sources=["arbeitnow"]))
     assert len(result.raw_jobs) == 1 and result.errors[0].code == "SEARCH_NETWORK"
     assert client.urls[-1] == "https://www.arbeitnow.com/api/job-board-api?page=2"
 
