@@ -296,7 +296,11 @@ def _render(
     experience_count = 0
     education_credit = False
     matches = {item.requirement_id: item for item in match.matches}
-    labels = {"strong": "直接支持", "partial": "部分支持", "related_experience": "相关经历支持"}
+    labels = {
+        "strong": "directly supports",
+        "partial": "partially supports",
+        "related_experience": "is supported by related experience",
+    }
     for requirement in analysis.requirements:
         item = matches[requirement.requirement_id]
         values.append(_VALUES[item.level])
@@ -313,9 +317,9 @@ def _render(
             if reference not in user_refs:
                 user_refs.append(reference)
         if item.level == "not_evidenced":
-            explanation = "提供的材料中未见此项要求的证据，不代表不具备该能力。"
+            explanation = "No evidence for this requirement was found in the materials provided. This does not mean you lack the skill."
         else:
-            explanation = f"提供的材料对该要求有{labels[item.level]}；请结合所附原文核实。"
+            explanation = f"The materials provided {labels[item.level]}; review the attached excerpts to verify."
         reasons.append(
             MatchingReason(
                 requirement=requirement.text,
@@ -327,36 +331,50 @@ def _render(
         )
         if item.level != "strong":
             missing.append(requirement.text)
-            suggestions.append(f"针对「{requirement.text}」准备可核实的学习、项目或经历材料。")
+            suggestions.append(
+                f"Prepare verifiable learning, project, or experience evidence for “{requirement.text}.”"
+            )
     score = Fraction(0)
     if values:
         score = 70 * sum(values, Fraction(0)) / len(values)
         score += 20 * Fraction(experience_count, len(values))
         score += 10 if education_credit else 0
     else:
-        warnings.append(f"岗位 {job.job_id} 缺少可核实的原文要求，匹配依据不足。")
+        warnings.append(
+            f"Job {job.job_id} has no verifiable requirements from the original listing, so there is limited evidence for assessing the match."
+        )
     warnings.extend(_preference_check(profile, job)[1])
     if job.freshness_status == FreshnessStatus.UNKNOWN:
-        warnings.append(f"岗位 {job.job_id} 的有效状态为 unknown，申请前请访问来源确认。")
+        warnings.append(
+            f"The status of job {job.job_id} is unknown. Check the source before applying."
+        )
     if not documents:
-        warnings.append(f"岗位 {job.job_id} 未提供原始 JD，无法生成来源证据。")
+        warnings.append(
+            f"Job {job.job_id} has no original job description, so source evidence could not be generated."
+        )
     elif any(document.is_excerpt for document in documents.values()):
-        warnings.append(f"岗位 {job.job_id} 的来源包含摘要，要求可能不完整，请查看原始链接。")
+        warnings.append(
+            f"The source for job {job.job_id} contains only a summary, so requirements may be incomplete. See the original listing."
+        )
     action_text = {
-        "practice": "完成有可展示成果的练习",
-        "portfolio": "整理作品、个人贡献与可核实成果",
-        "review": "复习相关知识并准备面试示例",
-        "verify_education": "准备教育经历证明并核对资格条件",
-        "verify_experience": "整理经历与职责证明，不将项目年数等同于工作年数",
+        "practice": "Complete a practical exercise with a demonstrable result",
+        "portfolio": "Organize your work, contributions, and verifiable results",
+        "review": "Review relevant knowledge and prepare interview examples",
+        "verify_education": "Prepare proof of your education and verify the qualification requirements",
+        "verify_experience": "Organize evidence of your experience and responsibilities; don’t equate project duration with years of employment",
     }
     requirements = {item.requirement_id: item.text for item in analysis.requirements}
     for suggestion in match.preparation_suggestions:
         suggestions.append(
-            f"针对「{requirements[suggestion.requirement_id]}」，{action_text[suggestion.action]}。"
+            f"For “{requirements[suggestion.requirement_id]}”: {action_text[suggestion.action]}."
         )
     if not suggestions:
-        suggestions.append("整理与所附岗位要求对应的项目或实习证据，说明个人贡献与成果。")
-    suggestions.append("通过来源链接核实岗位状态、完整要求和申请方式。")
+        suggestions.append(
+            "Gather project or internship evidence related to the job requirements and describe your contributions and results."
+        )
+    suggestions.append(
+        "Use the source link to verify the job status, full requirements, and how to apply."
+    )
     return _Ranked(
         item=RecommendationItem(
             job=job.model_copy(deep=True),
@@ -389,7 +407,9 @@ class EvidenceService:
 
     def _ensure_open(self) -> None:
         if self._closed:
-            raise RecommendationError("recommendation_invalid_session", "证据服务会话已清理。")
+            raise RecommendationError(
+                "recommendation_invalid_session", "The evidence service session has been cleared."
+            )
 
     async def begin_search(self, search_id: str) -> None:
         """Reset only the candidate budget for a newly confirmed search.
@@ -398,7 +418,9 @@ class EvidenceService:
         resume. JD cache survives new searches; matching is never cached here.
         """
         if not search_id.strip():
-            raise RecommendationError("recommendation_invalid_search", "搜索需要非空的 search_id。")
+            raise RecommendationError(
+                "recommendation_invalid_search", "A non-empty search_id is required for a search."
+            )
         async with self._lock:
             self._ensure_open()
             if self._search_id != search_id:
@@ -414,7 +436,9 @@ class EvidenceService:
         if not session_id.strip() or (
             self._session_id is not None and self._session_id != session_id
         ):
-            raise RecommendationError("recommendation_invalid_session", "会话标识不匹配。")
+            raise RecommendationError(
+                "recommendation_invalid_session", "The session ID does not match."
+            )
         self._closed = True
         async with self._lock:
             self.cache.clear()
@@ -426,7 +450,8 @@ class EvidenceService:
         self._ensure_open()
         if self._session_id is None or self._lock.locked():
             raise RecommendationError(
-                "recommendation_invalid_cache", "仅可导出已完成评估的会话缓存。"
+                "recommendation_invalid_cache",
+                "Only session caches with completed evaluations can be exported.",
             )
         return _JDCacheSnapshot(
             version=_SCHEMA_VERSION, session_id=self._session_id, entries=self.cache
@@ -440,22 +465,28 @@ class EvidenceService:
         """
         self._ensure_open()
         if self._lock.locked() or not session_id.strip():
-            raise RecommendationError("recommendation_invalid_cache", "无法导入会话缓存。")
+            raise RecommendationError(
+                "recommendation_invalid_cache", "The session cache could not be imported."
+            )
         try:
             value = _JDCacheSnapshot.model_validate(snapshot)
         except ValidationError:
             raise RecommendationError(
-                "recommendation_invalid_cache", "会话缓存格式无效。"
+                "recommendation_invalid_cache", "The session cache format is invalid."
             ) from None
         if value.session_id != session_id or (
             self._session_id is not None and self._session_id != session_id
         ):
-            raise RecommendationError("recommendation_invalid_session", "会话标识不匹配。")
+            raise RecommendationError(
+                "recommendation_invalid_session", "The session ID does not match."
+            )
         if value.version != _SCHEMA_VERSION or any(
             len(key) != 64 or any(character not in "0123456789abcdef" for character in key)
             for key in value.entries
         ):
-            raise RecommendationError("recommendation_invalid_cache", "会话缓存版本或键无效。")
+            raise RecommendationError(
+                "recommendation_invalid_cache", "The session cache version or key is invalid."
+            )
         self._session_id = session_id
         self.cache.update({key: item.model_copy(deep=True) for key, item in value.entries.items()})
 
@@ -634,7 +665,7 @@ class EvidenceService:
         for job in jobs:
             if job.job_id in failed:
                 notices[job.job_id].append(
-                    f"岗位 {job.job_id} 的模型分析不可用或证据未通过核验；已使用确定性保守回退。"
+                    f"Model analysis for job {job.job_id} was unavailable or its evidence could not be verified; a deterministic fallback was used."
                 )
                 matches[job.job_id] = _fallback_match(
                     profile, analyses[job.job_id], profile_documents
@@ -670,12 +701,15 @@ class EvidenceService:
         """
         recommend_jobs(profile, [], session_id=session_id)
         if deadline is not None and not math.isfinite(deadline):
-            raise RecommendationError("recommendation_invalid_time", "截止时间必须为有限值。")
+            raise RecommendationError(
+                "recommendation_invalid_time", "The deadline must be a finite value."
+            )
         async with self._lock:
             self._ensure_open()
             if self._session_id is not None and self._session_id != session_id:
                 raise RecommendationError(
-                    "recommendation_invalid_session", "证据服务不可跨会话共享。"
+                    "recommendation_invalid_session",
+                    "The evidence service cannot be shared across sessions.",
                 )
             self._session_id = session_id
             candidates: list[JobPosting] = []
@@ -710,19 +744,21 @@ class EvidenceService:
             warnings = [warning for item in ranked for warning in item.warnings]
             if len(eligible) > len(candidates):
                 warnings.append(
-                    "本次已确认搜索已达到最多分析 20 个候选岗位的上限；其余候选未分析。"
+                    "This confirmed search reached the limit of 20 job candidates for analysis. The remaining candidates were not analyzed."
                 )
             if not ranked:
-                warnings.append("没有符合当前条件的可推荐岗位。")
+                warnings.append("No recommended jobs match the current criteria.")
             for field in ("salary_range", "work_mode", "industry"):
                 if f"preferences.{field}" in profile.confirmed_fields and getattr(
                     profile.preferences, field
                 ):
-                    warnings.append(f"无法可靠验证 {field} 偏好，请在来源 JD 中核实。")
+                    warnings.append(
+                        f"Could not reliably verify the {field} preference. Check the original job description."
+                    )
             return RecommendationResult(
                 session_id=session_id,
                 generated_at=datetime.now(UTC),
                 jobs=[item.item for item in ranked[:5]],
                 warnings=list(dict.fromkeys(warnings)),
-                introduction="以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。",
+                introduction="These jobs were filtered by your confirmed criteria and ranked using verifiable evidence. Missing evidence does not mean you lack a skill.",
             )

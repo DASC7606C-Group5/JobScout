@@ -14,8 +14,8 @@ function SavedPage() {
     <>
       <PageHeading
         eyebrow="KEEP THE POSSIBILITIES"
-        title="心动的机会，慢慢比较。"
-        description="留住值得关注的岗位，为下一步做好准备。"
+        title="Save jobs to compare later."
+        description="Keep track of roles that interest you and get ready for your next step."
       />
       <Results
         result={null}

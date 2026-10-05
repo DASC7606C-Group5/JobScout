@@ -20,24 +20,24 @@ export function DiscoveryContent() {
           <span>{error.message}</span>
           <button className="btn btn-sm" onClick={retry}>
             {recovery === 'edit'
-              ? '重新开始'
+              ? 'Start over'
               : recovery === 'refresh'
-                ? '刷新会话'
+                ? 'Refresh session'
                 : recovery === 'correct'
-                  ? '修改提交内容'
-                  : '重试'}
+                  ? 'Edit submission'
+                  : 'Retry'}
           </button>
         </div>
       )}
       {session?.mode === 'replay' && (
         <output className="mb-4 alert border-base-300 bg-base-200/50 text-sm text-base-content">
           <Icon name="info" size={18} />
-          <span>回放演示模式 · 合成资料与固定岗位，非实时检索</span>
+          <span>Replay demo</span>
         </output>
       )}
       <SessionWarnings />
       {busy && session?.outcome !== 'running' && (
-        <output className="mb-4 block text-sm">正在处理，请稍候…</output>
+        <output className="mb-4 block text-sm">Working…</output>
       )}
       <SessionContent />
     </>

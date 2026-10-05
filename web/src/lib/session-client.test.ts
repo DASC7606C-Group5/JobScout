@@ -53,7 +53,7 @@ describe('Session HTTP API', () => {
       request_id: 'resume-1',
       expected_revision: 1,
       action: 'answer',
-      message: '补充说明',
+      message: 'Additional notes',
       answers: [
         { question_id: 'location-1', value: 'hk' },
         { question_id: 'directions-1', value: ['frontend', 'data'] },
@@ -84,7 +84,12 @@ describe('Session HTTP API', () => {
 
   test('paused and failed workflow outcomes remain successful HTTP responses', async () => {
     for (const outcome of ['running', 'paused', 'failed'] as const) {
-      const response = { ...completed, outcome, recommendation: null, warnings: ['检索来源提示'] }
+      const response = {
+        ...completed,
+        outcome,
+        recommendation: null,
+        warnings: ['Source search notice'],
+      }
       const client = createSessionClient(
         '/api/v1',
         createTransport(() => Response.json(response)),
@@ -95,10 +100,10 @@ describe('Session HTTP API', () => {
 
   test('HTTP errors preserve status for recovery and show useful messages', async () => {
     for (const [status, message] of [
-      [404, '会话已不存在'],
-      [409, '刷新会话'],
-      [422, '格式不正确'],
-      [503, '服务暂时不可用'],
+      [404, 'no longer available'],
+      [409, 'Refresh it'],
+      [422, 'invalid'],
+      [503, 'temporarily unavailable'],
     ] as const) {
       const client = createSessionClient(
         '/api/v1',
@@ -113,7 +118,7 @@ describe('Session HTTP API', () => {
       '/api/v1',
       createTransport(() => new Response('Bad gateway', { status: 502 })),
     )
-    await expectFailure(client.get('session-1'), '服务暂时不可用')
+    await expectFailure(client.get('session-1'), 'temporarily unavailable')
   })
 
   test('network failures and invalid JSON produce readable errors', async () => {
@@ -123,17 +128,17 @@ describe('Session HTTP API', () => {
         throw new TypeError('Failed to fetch')
       }),
     )
-    await expectFailure(offline.start(input), '无法连接服务')
+    await expectFailure(offline.start(input), 'Could not connect to the service')
     const invalidJson = createSessionClient(
       '/api/v1',
       createTransport(() => new Response('<html>Proxy misconfigured</html>')),
     )
-    await expectFailure(invalidJson.get('session-1'), '无法读取的数据')
+    await expectFailure(invalidJson.get('session-1'), 'unreadable data')
     const invalidSession = createSessionClient(
       '/api/v1',
       createTransport(() => Response.json({ session_id: 'session-1', outcome: 'running' })),
     )
-    await expectFailure(invalidSession.get('session-1'), '会话格式不正确')
+    await expectFailure(invalidSession.get('session-1'), 'invalid session response')
   })
 
   test('aborted requests preserve the abort error', async () => {

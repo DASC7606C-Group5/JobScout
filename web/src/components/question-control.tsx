@@ -26,7 +26,7 @@ export function QuestionControl({
       <legend className="fieldset-legend flex flex-wrap items-center gap-2 text-sm">
         {question.question}
         <span className="badge border-0 bg-base-200 text-xs badge-sm font-normal text-base-content/60">
-          {question.required ? '必填' : '选填'}
+          {question.required ? 'Required' : 'Optional'}
         </span>
       </legend>
       <p
@@ -37,7 +37,7 @@ export function QuestionControl({
       </p>
       {limitDirections && (
         <p id={`${id}-limit`} className="text-xs text-base-content/55">
-          最多选择三个方向 · 已选择 {selected.length} / 3
+          Choose up to three directions · {selected.length} / 3 selected
         </p>
       )}
       <fieldset disabled={skipped} className="grid min-w-0 gap-2 sm:grid-cols-2">
@@ -90,7 +90,7 @@ export function QuestionControl({
             checked={skipped}
             onChange={(event) => onSkip(event.target.checked)}
           />
-          跳过此问题
+          Skip this question
         </label>
       )}
     </fieldset>

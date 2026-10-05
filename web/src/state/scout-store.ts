@@ -47,7 +47,7 @@ export function createScoutStore() {
       set((state) => ({
         draft: {
           ...state.draft,
-          directions: profile.target_directions.join('，'),
+          directions: profile.target_directions.join(', '),
           preferences: { ...profile.preferences },
         },
       }))
@@ -59,7 +59,7 @@ export function createScoutStore() {
           saved: exists
             ? state.saved.filter((entry) => entry.job.job_id !== item.job.job_id)
             : [...state.saved, item],
-          announcement: `${exists ? '已取消收藏' : '已收藏'}：${item.job.title}`,
+          announcement: `${exists ? 'Removed from saved jobs' : 'Saved job'}: ${item.job.title}`,
         }
       }),
   }))

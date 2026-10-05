@@ -30,8 +30,8 @@
       },
       "missing_skills": [],
       "preparation_suggestions": [
-        "整理与 Python, SQL 相关的项目或实习证据，说明职责与成果。",
-        "根据岗位职责调整简历，准备面试示例，并通过来源链接查看完整申请要求。"
+        "Gather project or internship evidence related to Python, SQL, and describe your responsibilities and results.",
+        "Tailor your resume to the job responsibilities, prepare interview examples, and check the source link for the full application requirements."
       ]
     },
     {
@@ -65,9 +65,9 @@
         "R"
       ],
       "preparation_suggestions": [
-        "补充 R 的学习与实践，并准备可展示的练习或项目。",
-        "整理与 Python, SQL 相关的项目或实习证据，说明职责与成果。",
-        "根据岗位职责调整简历，准备面试示例，并通过来源链接查看完整申请要求。"
+        "Build your R skills through study or practice, and prepare an exercise or project to demonstrate them.",
+        "Gather project or internship evidence related to Python, SQL, and describe your responsibilities and results.",
+        "Tailor your resume to the job responsibilities, prepare interview examples, and check the source link for the full application requirements."
       ]
     },
     {
@@ -101,9 +101,9 @@
         "Docker"
       ],
       "preparation_suggestions": [
-        "补充 Docker 的学习与实践，并准备可展示的练习或项目。",
-        "整理与 Python, SQL 相关的项目或实习证据，说明职责与成果。",
-        "根据岗位职责调整简历，准备面试示例，并通过来源链接查看完整申请要求。"
+        "Build your Docker skills through study or practice, and prepare an exercise or project to demonstrate them.",
+        "Gather project or internship evidence related to Python, SQL, and describe your responsibilities and results.",
+        "Tailor your resume to the job responsibilities, prepare interview examples, and check the source link for the full application requirements."
       ]
     },
     {
@@ -136,9 +136,9 @@
         "Excel"
       ],
       "preparation_suggestions": [
-        "补充 Excel 的学习与实践，并准备可展示的练习或项目。",
-        "整理与 SQL 相关的项目或实习证据，说明职责与成果。",
-        "根据岗位职责调整简历，准备面试示例，并通过来源链接查看完整申请要求。"
+        "Build your Excel skills through study or practice, and prepare an exercise or project to demonstrate them.",
+        "Gather project or internship evidence related to SQL, and describe your responsibilities and results.",
+        "Tailor your resume to the job responsibilities, prepare interview examples, and check the source link for the full application requirements."
       ]
     },
     {
@@ -171,14 +171,14 @@
         "PostgreSQL"
       ],
       "preparation_suggestions": [
-        "补充 PostgreSQL 的学习与实践，并准备可展示的练习或项目。",
-        "整理与 Python 相关的项目或实习证据，说明职责与成果。",
-        "根据岗位职责调整简历，准备面试示例，并通过来源链接查看完整申请要求。"
+        "Build your PostgreSQL skills through study or practice, and prepare an exercise or project to demonstrate them.",
+        "Gather project or internship evidence related to Python, and describe your responsibilities and results.",
+        "Tailor your resume to the job responsibilities, prepare interview examples, and check the source link for the full application requirements."
       ]
     }
   ],
   "warnings": [
     "Mock data only; verify real vacancies at the source.",
-    "已排除 1 条过期、方向不符或已确认偏好不符的岗位。"
+    "Excluded 1 job because it was expired, outside your selected directions, or conflicted with confirmed preferences."
   ]
 }

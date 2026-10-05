@@ -27,7 +27,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
         }
         const answers = collectAnswers(pending, values, skipped)
         if (!answers.length && !message.trim() && !skipped.length) {
-          setError('请回答问题、跳过选填项，或补充你的想法。')
+          setError('Answer the questions, skip optional ones, or add a note.')
           return
         }
         setError('')
@@ -39,9 +39,9 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
           <Icon name="sparkles" />
         </span>
         <div>
-          <h2 className="text-lg font-semibold">再了解你一点点</h2>
+          <h2 className="text-lg font-semibold">Tell us a little more</h2>
           <p className="mt-1 text-xs leading-6 text-base-content/60">
-            可以回答问题，也可以直接补充或纠正之前的信息。
+            Answer the questions or add to or correct the information you already shared.
           </p>
         </div>
       </div>
@@ -70,7 +70,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
         ))}
         <div className="border-t border-base-300 pt-6">
           <label htmlFor="conversation-message" className="mb-2 block text-sm font-medium">
-            补充或纠正
+            Add a note or correction
           </label>
           <textarea
             id="conversation-message"
@@ -80,7 +80,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
               setDraft((previous) => ({ ...previous, message: event.target.value }))
             }
             maxLength={10000}
-            placeholder="例如：我想改为数据分析方向，接受香港或深圳。"
+            placeholder="For example: I’m interested in data analysis and open to roles in Hong Kong or Shenzhen."
           />
         </div>
         {error && (
@@ -90,7 +90,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
         )}
         <div className="flex justify-end border-t border-base-300 pt-5">
           <button className="btn min-w-40 rounded-xl border-0 btn-primary" type="submit">
-            发送并继续
+            Send and continue
             <Icon name="arrow" size={18} />
           </button>
         </div>

@@ -32,7 +32,7 @@ export function ResumeField({
       <button
         type="button"
         disabled={reading}
-        aria-label={resume ? `移除简历：${resume.name}` : '添加 PDF、DOCX 或 TXT 简历'}
+        aria-label={resume ? `Remove resume: ${resume.name}` : 'Add a PDF, DOCX, or TXT resume'}
         aria-describedby="profile-error"
         className={`group flex w-full cursor-pointer items-center gap-4 rounded-xl border border-dashed p-4 text-left transition-colors disabled:cursor-wait ${resume ? 'border-base-content/20 bg-base-200/20 hover:border-error hover:bg-error/10 hover:text-error focus-visible:border-error focus-visible:bg-error/10 focus-visible:text-error' : dragging ? 'border-primary-content bg-primary/15' : 'border-base-content/20 bg-base-200/20 hover:bg-base-200/45'}`}
         onClick={() => {
@@ -65,16 +65,18 @@ export function ResumeField({
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium">
             {reading ? (
-              '正在解析简历…'
+              'Parsing resume…'
             ) : resume ? (
               <>
                 <span className="block truncate group-hover:hidden group-focus-visible:hidden">
                   {resume.name}
                 </span>
-                <span className="hidden group-hover:block group-focus-visible:block">移除简历</span>
+                <span className="hidden group-hover:block group-focus-visible:block">
+                  Remove resume
+                </span>
               </>
             ) : (
-              '添加简历，或者拖到这里'
+              'Add a resume or drop it here'
             )}
           </span>
           <span
@@ -82,13 +84,13 @@ export function ResumeField({
           >
             {resume ? (
               <>
-                <span className="group-hover:hidden group-focus-visible:hidden">简历已添加</span>
+                <span className="group-hover:hidden group-focus-visible:hidden">Resume added</span>
                 <span className="hidden truncate group-hover:block group-focus-visible:block">
                   {resume.name}
                 </span>
               </>
             ) : (
-              'PDF / DOCX / TXT · 最大 10 MB · 可选'
+              'PDF / DOCX / TXT · Up to 10 MB · Optional'
             )}
           </span>
         </span>

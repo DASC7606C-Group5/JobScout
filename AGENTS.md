@@ -7,3 +7,7 @@
 - Link from README files to the relevant documents in `docs/` instead of duplicating their implementation details.
 - When documenting a feature, update the relevant document in `docs/`. Update a README only when the overview, setup, or common usage changes, or when adding a documentation link.
 - Follow existing daisyUI design when implement frontend UI changes.
+
+## Project language
+
+- Develop and maintain the project in English, regardless of the language the operator uses when communicating with agents.

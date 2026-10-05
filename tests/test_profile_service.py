@@ -279,14 +279,17 @@ def test_build_clarification_questions_without_profile_asks_for_a_direction() ->
     assert [question.field for question in questions] == ["target_directions"]
 
 
-def test_build_clarification_questions_uses_chinese_copy() -> None:
+def test_build_clarification_questions_uses_english_copy() -> None:
     questions = build_clarification_questions(build_from_input(missing_input()))
 
-    assert questions[0].question == "你希望寻找哪一类岗位？"
-    assert questions[1].question == "你希望在哪个城市工作？"
-    assert questions[2].question == "你更倾向哪种工作类型？"
-    assert all(not question.question.isascii() for question in questions)
-    assert all(not question.reason.isascii() for question in questions)
+    assert questions[0].question == "What kind of roles are you looking for?"
+    assert questions[1].question == "Which city would you like to work in?"
+    assert questions[2].question == "What type of employment are you looking for?"
+    assert [question.reason for question in questions] == [
+        "Job directions define the search scope. Separate multiple directions with commas.",
+        "Enter a city. If you have no location preference, answer “No preference.”",
+        "For example, full-time, internship, or part-time. If you have no preference, answer “No preference.”",
+    ]
 
 
 def test_build_clarification_questions_localizes_the_generic_fallback() -> None:
@@ -297,7 +300,7 @@ def test_build_clarification_questions_localizes_the_generic_fallback() -> None:
     questions = build_clarification_questions(profile)
 
     assert [question.field for question in questions] == ["preferences.salary_range"]
-    assert questions[0].question == "请补充「preferences.salary_range」的相关信息。"
+    assert questions[0].question == "Please provide information about preferences.salary_range."
 
 
 def test_build_clarification_questions_localizes_the_skills_conflict() -> None:
@@ -305,8 +308,8 @@ def test_build_clarification_questions_localizes_the_skills_conflict() -> None:
     questions = build_clarification_questions(profile)
 
     assert [question.field for question in questions] == ["skills"]
-    assert not questions[0].question.isascii()
-    assert "完整" in questions[0].reason
+    assert questions[0].question.isascii()
+    assert "complete" in questions[0].reason
 
 
 def test_apply_answers_fills_required_gaps() -> None:

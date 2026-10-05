@@ -19,7 +19,9 @@ async def parse_resume_upload(file: UploadFile) -> ResumeInput:
     try:
         validate_resume_name(file.filename)
         if file.size is not None and file.size > MAX_RESUME_BYTES:
-            raise ResumeParseError("file_too_large", "文件过大，请选择 10 MB 以内的简历。", 413)
+            raise ResumeParseError(
+                "file_too_large", "The file is too large. Choose a resume under 10 MB.", 413
+            )
         content = await file.read(MAX_RESUME_BYTES + 1)
         return await run_in_threadpool(parse_resume, file.filename, content)
     except ResumeParseError as error:

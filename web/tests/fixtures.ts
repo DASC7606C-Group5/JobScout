@@ -5,15 +5,15 @@ import { summaryFields } from '../src/lib/search-summary'
 // Unit-test data only. Application modules must not import this file.
 export function createProfileFixture(): ProfileFormValues {
   return {
-    description: 'React 开发经历',
+    description: 'React development experience',
     resume: null,
-    directions: '前端开发，数据分析',
+    directions: 'Frontend development, Data analysis',
     preferences: {
-      location: '香港',
+      location: 'Hong Kong',
       location_unrestricted: false,
       employment_type: 'full-time',
       employment_type_unrestricted: false,
-      salary_range: 'HK$ 20,000–28,000 / 月',
+      salary_range: 'HK$20,000–28,000 per month',
       work_mode: null,
       industry: null,
     },
@@ -29,9 +29,9 @@ export function createRecommendationFixture(): RecommendationItem {
       source_links: [],
       title: 'React Engineer',
       company: 'Test Company',
-      location: '香港',
+      location: 'Hong Kong',
       salary: null,
-      target_direction: '前端开发',
+      target_direction: 'Frontend development',
       responsibilities: [],
       required_skills: ['React'],
       posted_at: null,
@@ -42,15 +42,15 @@ export function createRecommendationFixture(): RecommendationItem {
       description: 'React development experience required.',
       description_is_excerpt: false,
       employment_type: 'full-time',
-      target_directions: ['前端开发'],
+      target_directions: ['Frontend development'],
     },
     missing_skills: ['SQL'],
-    preparation_suggestions: ['补充项目中的实际使用证据'],
+    preparation_suggestions: ['Add evidence of how you used React in a project.'],
     matching_reasons: [
       {
         requirement: 'React',
         level: 'strong',
-        explanation: '项目材料支持 React 经验。',
+        explanation: 'Your project materials support your React experience.',
         job_evidence: [
           {
             document_id: 'job-1',
@@ -59,18 +59,18 @@ export function createRecommendationFixture(): RecommendationItem {
           },
         ],
         profile_evidence: [
-          { document_id: 'description', excerpt: 'React 开发经历', source_url: null },
+          { document_id: 'description', excerpt: 'React development experience', source_url: null },
         ],
       },
       {
         requirement: 'SQL',
         level: 'not_evidenced',
-        explanation: '所提供材料未体现 SQL。',
+        explanation: 'Your materials do not mention SQL.',
         job_evidence: [],
         profile_evidence: [],
       },
     ],
-    uncertainty_notices: ['招聘时效尚未核实。'],
+    uncertainty_notices: ['The listing status has not been verified.'],
   }
 }
 
@@ -78,11 +78,11 @@ export function createUserProfileFixture(): UserProfile {
   return {
     profile_id: 'profile-1',
     source: { description: true, resume: false },
-    education: ['合成测试大学'],
+    education: ['Synthetic Test University'],
     skills: ['React'],
     internships: [],
-    projects: ['React 项目'],
-    target_directions: ['前端开发'],
+    projects: ['React project'],
+    target_directions: ['Frontend development'],
     preferences: createProfileFixture().preferences,
     confirmed_fields: [],
     missing_required_fields: [],
@@ -103,7 +103,7 @@ export function createSessionFixture(overrides: Partial<ScoutSession> = {}): Sco
       {
         message_id: 'm1',
         role: 'assistant',
-        text: '请确认以下搜索条件。',
+        text: 'Please confirm the following search criteria.',
         question_ids: [],
         created_at: '2026-10-03T00:00:00Z',
       },
@@ -115,7 +115,7 @@ export function createSessionFixture(overrides: Partial<ScoutSession> = {}): Sco
       confirmed: false,
       editable_fields: summaryFields.map(([key]) => key),
       missing_fields: [],
-      coverage_notice: '检索香港及中国内地受支持的招聘来源。',
+      coverage_notice: 'Search supported job sources in Hong Kong and mainland China.',
     },
     source_outcomes: [],
     recommendation: null,

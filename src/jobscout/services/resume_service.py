@@ -35,31 +35,44 @@ def validate_resume_name(filename: str | None) -> tuple[str, str]:
     name = PurePosixPath((filename or "").replace("\\", "/")).name.strip()
     extension = PurePosixPath(name).suffix.lower()
     if extension not in SUPPORTED_EXTENSIONS:
-        raise ResumeParseError("unsupported_format", "请上传 PDF、DOCX 或 UTF-8 TXT 简历。", 415)
+        raise ResumeParseError(
+            "unsupported_format", "Upload your resume as a PDF, DOCX, or UTF-8 TXT file.", 415
+        )
     return name, extension
 
 
 def _extract_pdf(content: bytes) -> str:
     if not content.startswith(b"%PDF-"):
-        raise ResumeParseError("invalid_file", "文件内容不是有效的 PDF，请重新导出后上传。")
+        raise ResumeParseError(
+            "invalid_file", "This is not a valid PDF. Export the file again and upload it."
+        )
     reader = PdfReader(BytesIO(content))
     if reader.is_encrypted:
-        raise ResumeParseError("encrypted_file", "这份 PDF 已加密，请移除密码后重新上传。")
+        raise ResumeParseError(
+            "encrypted_file",
+            "This PDF is password-protected. Remove the password and upload it again.",
+        )
     if len(reader.pages) > MAX_PDF_PAGES:
-        raise ResumeParseError("document_too_large", "PDF 页数过多，请上传 50 页以内的简历。")
+        raise ResumeParseError(
+            "document_too_large",
+            "This PDF has too many pages. Upload a resume with no more than 50 pages.",
+        )
     parts: list[str] = []
     length = 0
     for page in reader.pages:
         part = page.extract_text() or ""
         length += len(part)
         if length > MAX_RESUME_TEXT_LENGTH:
-            raise ResumeParseError("text_too_long", "简历文字过多，请精简至 100,000 字以内。")
+            raise ResumeParseError(
+                "text_too_long",
+                "The resume is too long. Shorten it to 100,000 characters or fewer.",
+            )
         parts.append(part)
     text = "\n".join(parts)
     if not text.strip():
         raise ResumeParseError(
             "no_extractable_text",
-            "这份 PDF 没有可提取的文字，可能是扫描件；请先进行 OCR，或上传 DOCX / TXT 版本。",
+            "This PDF contains no extractable text and may be a scan. Run OCR first, or upload a DOCX or TXT version.",
         )
     return text
 
@@ -68,7 +81,10 @@ def _word_blocks(
     container: WordDocument | _Cell | _Header | _Footer, depth: int = 0
 ) -> Iterator[str]:
     if depth > 10:
-        raise ResumeParseError("document_too_large", "DOCX 表格嵌套过多，请简化文档后上传。")
+        raise ResumeParseError(
+            "document_too_large",
+            "The DOCX contains too many nested tables. Simplify the document and upload it again.",
+        )
     for block in container.iter_inner_content():
         if isinstance(block, Paragraph):
             yield block.text
@@ -86,11 +102,16 @@ def _extract_docx(content: bytes) -> str:
     with ZipFile(BytesIO(content)) as archive:
         entries = archive.infolist()
         if len(entries) > 1000 or sum(e.file_size for e in entries) > MAX_DOCX_UNCOMPRESSED_BYTES:
-            raise ResumeParseError("document_too_large", "DOCX 文档内容过大，请精简后上传。")
+            raise ResumeParseError(
+                "document_too_large", "The DOCX is too large. Shorten it and upload it again."
+            )
         if any(entry.flag_bits & 1 for entry in entries):
-            raise ResumeParseError("encrypted_file", "这份 DOCX 已加密，请移除密码后重新上传。")
+            raise ResumeParseError(
+                "encrypted_file",
+                "This DOCX is password-protected. Remove the password and upload it again.",
+            )
         if "word/document.xml" not in archive.namelist():
-            raise ResumeParseError("invalid_file", "文件内容不是有效的 DOCX 文档。")
+            raise ResumeParseError("invalid_file", "This is not a valid DOCX document.")
     document = Document(BytesIO(content))
     parts = list(_word_blocks(document))
     for section in document.sections:
@@ -111,9 +132,13 @@ def parse_resume(filename: str | None, content: bytes) -> ResumeInput:
     """Parse without saving an original file or sending it to another service."""
     name, extension = validate_resume_name(filename)
     if len(content) > MAX_RESUME_BYTES:
-        raise ResumeParseError("file_too_large", "文件过大，请选择 10 MB 以内的简历。", 413)
+        raise ResumeParseError(
+            "file_too_large", "The file is too large. Choose a resume under 10 MB.", 413
+        )
     if not content:
-        raise ResumeParseError("empty_file", "这份文件为空，请检查后重新选择。")
+        raise ResumeParseError(
+            "empty_file", "This file is empty. Check it and choose another file."
+        )
     try:
         if extension == ".pdf":
             text = _extract_pdf(content)
@@ -125,18 +150,26 @@ def parse_resume(filename: str | None, content: bytes) -> ResumeInput:
         raise
     except UnicodeDecodeError as error:
         raise ResumeParseError(
-            "invalid_encoding", "无法读取文件编码，请使用 UTF-8 格式的 TXT 文件。"
+            "invalid_encoding", "The file encoding could not be read. Use a UTF-8 encoded TXT file."
         ) from error
     except Exception as error:
         # Parser diagnostics can contain file contents; return only a fixed message.
         raise ResumeParseError(
-            "invalid_file", "无法解析这份文档，请确认文件可正常打开后重新导出上传。"
+            "invalid_file",
+            "This document could not be parsed. Make sure it opens correctly, then export and upload it again.",
         ) from error
     text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
     if not text:
-        raise ResumeParseError("empty_text", "这份文件没有文字，请检查后重新选择。")
+        raise ResumeParseError(
+            "empty_text", "This file contains no text. Check it and choose another file."
+        )
     if "\x00" in text or "\ufffd" in text:
-        raise ResumeParseError("invalid_text", "文字无法正确读取，请检查文件编码或重新导出文档。")
+        raise ResumeParseError(
+            "invalid_text",
+            "The text could not be read correctly. Check the file encoding or export the document again.",
+        )
     if len(text) > MAX_RESUME_TEXT_LENGTH:
-        raise ResumeParseError("text_too_long", "简历文字过多，请精简至 100,000 字以内。")
+        raise ResumeParseError(
+            "text_too_long", "The resume is too long. Shorten it to 100,000 characters or fewer."
+        )
     return ResumeInput(name=name, text=text)

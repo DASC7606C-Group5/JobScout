@@ -13,17 +13,17 @@ async function snapshot(page: Page, id: string): Promise<ScoutSession> {
 
 async function createFromForm(page: Page, complete: boolean) {
   await page.goto('/')
-  await page.getByLabel('个人介绍', { exact: true }).fill(description)
+  await page.getByLabel('About you', { exact: true }).fill(description)
   if (complete) {
-    await page.getByLabel('求职方向', { exact: false }).fill('Data Analyst')
-    await page.getByLabel('工作地点', { exact: true }).fill('Hong Kong')
-    await page.getByLabel('工作类型', { exact: true }).selectOption('internship')
+    await page.getByLabel('Job directions', { exact: false }).fill('Data Analyst')
+    await page.getByLabel('Work location', { exact: true }).fill('Hong Kong')
+    await page.getByLabel('Employment type', { exact: true }).selectOption('internship')
   }
   const accepted = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' && response.url().endsWith('/api/v1/sessions'),
   )
-  await page.getByRole('button', { name: '开始分析与对话' }).click()
+  await page.getByRole('button', { name: 'Analyze and continue' }).click()
   const response = await accepted
   expect(response.status()).toBe(202)
   const session = (await response.json()) as ScoutSession
@@ -32,7 +32,7 @@ async function createFromForm(page: Page, complete: boolean) {
 }
 
 async function confirmAndVerifyResults(page: Page, id: string) {
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled({
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled({
     timeout: 15_000,
   })
   const summary = await snapshot(page, id)
@@ -49,13 +49,13 @@ async function confirmAndVerifyResults(page: Page, id: string) {
   })
   expect(summary.source_outcomes).toEqual([])
   await page.reload()
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect((await snapshot(page, id)).revision).toBe(summary.revision)
   const accepted = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' && response.url().endsWith(`/sessions/${id}/resume`),
   )
-  await page.getByRole('button', { name: '确认并开始搜索' }).click()
+  await page.getByRole('button', { name: 'Confirm and search' }).click()
   const response = await accepted
   expect(response.status()).toBe(202)
   expect(await response.json()).toMatchObject({
@@ -63,7 +63,9 @@ async function confirmAndVerifyResults(page: Page, id: string) {
     revision: summary.revision + 1,
     mode: 'replay',
   })
-  await expect(page.getByRole('region', { name: '推荐岗位列表' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('region', { name: 'Recommended jobs' })).toBeVisible({
+    timeout: 20_000,
+  })
   const results = await snapshot(page, id)
   expect(results).toMatchObject({
     outcome: 'completed',
@@ -89,22 +91,26 @@ async function confirmAndVerifyResults(page: Page, id: string) {
     }
     for (const evidence of reason.profile_evidence) expect(description).toContain(evidence.excerpt)
   }
-  await expect(page.getByText('回放演示模式', { exact: false })).toBeVisible()
+  await expect(page.getByText('Replay demo', { exact: false })).toBeVisible()
   const article = page
     .getByRole('article')
     .filter({ has: page.getByRole('heading', { name: item.job.title, exact: true }) })
-  await article.getByText('岗位详情与准备建议', { exact: true }).click()
-  await expect(article.getByRole('heading', { name: '匹配理由与证据', exact: true })).toBeVisible()
-  await expect(article.getByText('个人经历依据', { exact: true }).first()).toBeVisible()
-  await expect(article.getByRole('link', { name: '核对来源' }).first()).toHaveAttribute(
+  await article.getByText('Job details and preparation tips', { exact: true }).click()
+  await expect(
+    article.getByRole('heading', { name: 'Match reasons and evidence', exact: true }),
+  ).toBeVisible()
+  await expect(article.getByText('Your experience evidence', { exact: true }).first()).toBeVisible()
+  await expect(article.getByRole('link', { name: 'Check source' }).first()).toHaveAttribute(
     'href',
     /^https?:\/\//,
   )
   await expect(
-    page.locator('details').filter({ has: page.getByText('查看对话历史', { exact: true }) }),
+    page
+      .locator('details')
+      .filter({ has: page.getByText('View conversation history', { exact: true }) }),
   ).not.toHaveAttribute('open')
   await page.reload()
-  await expect(page.getByRole('region', { name: '推荐岗位列表' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Recommended jobs' })).toBeVisible()
   expect((await snapshot(page, id)).recommendation).toEqual(results.recommendation)
   expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual(['jobscout.session_id'])
 }
@@ -122,13 +128,13 @@ for (const complete of [true, false]) {
     const id = await createFromForm(page, complete)
     try {
       if (!complete) {
-        await expect(page.getByRole('heading', { name: '再了解你一点点' })).toBeVisible({
+        await expect(page.getByRole('heading', { name: 'Tell us a little more' })).toBeVisible({
           timeout: 15_000,
         })
         await page.getByRole('checkbox', { name: 'Data Analyst', exact: true }).check()
-        await page.getByRole('radio', { name: '香港', exact: true }).check()
-        await page.getByRole('radio', { name: '实习', exact: true }).check()
-        await page.getByRole('button', { name: '发送并继续' }).click()
+        await page.getByRole('radio', { name: 'Hong Kong', exact: true }).check()
+        await page.getByRole('radio', { name: 'Internship', exact: true }).check()
+        await page.getByRole('button', { name: 'Send and continue' }).click()
       }
       await confirmAndVerifyResults(page, id)
       expect(errors).toEqual([])

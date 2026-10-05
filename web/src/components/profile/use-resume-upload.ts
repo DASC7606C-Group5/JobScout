@@ -34,7 +34,8 @@ export function useResumeUpload(onReadingChange: (reading: boolean) => void) {
     } catch (cause) {
       if (id === readId.current)
         setError('root.resume', {
-          message: cause instanceof Error ? cause.message : '文件读取失败，请重试。',
+          message:
+            cause instanceof Error ? cause.message : 'Could not read the file. Please try again.',
         })
     }
     if (id !== readId.current) return

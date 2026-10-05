@@ -7,29 +7,29 @@ import type {
 import { parseDirections } from './profile-form'
 
 const fieldLabels: Record<string, string> = {
-  education: '教育背景',
-  skills: '技能',
-  internships: '实习经历',
-  projects: '项目经历',
-  target_directions: '求职方向',
-  'preferences.location': '工作地点',
-  'preferences.location_unrestricted': '工作地点',
-  'preferences.employment_type': '工作类型',
-  'preferences.employment_type_unrestricted': '工作类型',
-  'preferences.salary_range': '期望薪资',
-  'preferences.work_mode': '工作方式',
-  'preferences.industry': '行业',
+  education: 'Education',
+  skills: 'Skills',
+  internships: 'Internships',
+  projects: 'Projects',
+  target_directions: 'Job directions',
+  'preferences.location': 'Work location',
+  'preferences.location_unrestricted': 'Work location',
+  'preferences.employment_type': 'Employment type',
+  'preferences.employment_type_unrestricted': 'Employment type',
+  'preferences.salary_range': 'Expected salary',
+  'preferences.work_mode': 'Work arrangement',
+  'preferences.industry': 'Industry',
 }
 const preferenceLabels: Record<string, string> = {
-  'full-time': '全职',
-  'part-time': '兼职',
-  internship: '实习',
-  contract: '合约制',
-  freelance: '自由职业',
-  onsite: '办公室',
-  hybrid: '混合办公',
-  remote: '远程',
-  unrestricted: '不限',
+  'full-time': 'Full-time',
+  'part-time': 'Part-time',
+  internship: 'Internship',
+  contract: 'Contract',
+  freelance: 'Freelance',
+  onsite: 'On-site',
+  hybrid: 'Hybrid',
+  remote: 'Remote',
+  unrestricted: 'No preference',
 }
 
 export function profileFieldLabel(field: string) {
@@ -71,8 +71,8 @@ function legacyValue(field: string, value: string): string | string[] {
   const list = quotedList(value)
   if (list) return list
   if (field.endsWith('_unrestricted'))
-    return ['true', 'True'].includes(value) ? '不限' : '有指定偏好'
-  if (['None', 'null'].includes(value)) return '未填写'
+    return ['true', 'True'].includes(value) ? 'No preference' : 'Preference specified'
+  if (['None', 'null'].includes(value)) return 'Not provided'
   return field === 'preferences.employment_type' || field === 'preferences.work_mode'
     ? (preferenceLabels[value] ?? value)
     : value
@@ -110,7 +110,7 @@ export function presentConversation(message: ConversationMessage) {
 }
 
 export function presentQuestionAnswer(question: ClarificationMessage) {
-  if (!question.answer) return '已回答'
+  if (!question.answer) return 'Answered'
   const selected = question.answer.split(',').map((value) => value.trim())
   const labels = selected.map(
     (value) => question.options.find((option) => option.id === value)?.label,
@@ -129,7 +129,7 @@ export function answerValidation(
     if (question.field !== 'target_directions' || skippedIds.has(question.question_id)) continue
     const value = values[question.question_id]
     const count = Array.isArray(value) ? value.length : parseDirections(value ?? '').length
-    if (count > 3) return '最多选择三个求职方向，请减少方向后再发送。'
+    if (count > 3) return 'Choose no more than three job directions. Remove some before continuing.'
   }
   return ''
 }

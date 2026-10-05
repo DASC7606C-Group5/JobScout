@@ -60,13 +60,15 @@ class SessionService:
             if previous:
                 previous_fingerprint, session_id = previous
                 if fingerprint != previous_fingerprint:
-                    raise SessionOperationError(409, "request_id 已用于不同内容。")
+                    raise SessionOperationError(
+                        409, "This request ID has already been used for different content."
+                    )
                 record = self._get(session_id)
                 return self._response(record)
             if not payload.description.strip() and not (
                 payload.resume and payload.resume.text.strip()
             ):
-                raise SessionOperationError(422, "请提供简历或个人描述。")
+                raise SessionOperationError(422, "Provide a resume or personal introduction.")
             session_id = str(uuid4())
             state: dict[str, Any] = {
                 "session_id": session_id,
@@ -88,18 +90,26 @@ class SessionService:
             previous = record.requests.get(payload.request_id)
             if previous:
                 if previous != fingerprint:
-                    raise SessionOperationError(409, "request_id 已用于不同内容。")
+                    raise SessionOperationError(
+                        409, "This request ID has already been used for different content."
+                    )
                 return self._response(record)
             if record.revision != payload.expected_revision:
-                raise SessionOperationError(409, "会话版本已更新，请刷新后重试。")
+                raise SessionOperationError(
+                    409, "The session has been updated. Refresh and try again."
+                )
             if record.task is not None and not record.task.done():
-                raise SessionOperationError(409, "会话已有正在执行的操作。")
+                raise SessionOperationError(
+                    409, "An operation is already in progress for this session."
+                )
             if record.outcome == "completed" and payload.action != "edit_conditions":
-                raise SessionOperationError(409, "请先修改条件，再确认新的搜索。")
+                raise SessionOperationError(
+                    409, "Update your criteria before confirming a new search."
+                )
             if record.outcome == "failed" and payload.action not in {"retry", "edit_conditions"}:
-                raise SessionOperationError(409, "请重试或修改条件。")
+                raise SessionOperationError(409, "Try again or update your criteria.")
             if payload.action == "retry" and record.outcome != "failed":
-                raise SessionOperationError(409, "当前会话不需要重试。")
+                raise SessionOperationError(409, "This session does not need to be retried.")
             self._validate_answers(record, payload)
             record.requests[payload.request_id] = fingerprint
             record.revision += 1
@@ -138,31 +148,41 @@ class SessionService:
         answered_ids = [answer.question_id for answer in payload.answers]
         submitted = [*answered_ids, *payload.skipped_question_ids]
         if len(submitted) != len(set(submitted)):
-            raise SessionOperationError(422, "同一问题不能重复回答或同时跳过。")
+            raise SessionOperationError(
+                422, "A question cannot be answered more than once or both answered and skipped."
+            )
         for question_id in submitted:
             if question_id not in pending:
-                raise SessionOperationError(422, "问题已失效或不存在。")
+                raise SessionOperationError(
+                    422, "This question is no longer valid or does not exist."
+                )
         for question_id in payload.skipped_question_ids:
             question = pending[question_id]
             if question.get("required") if isinstance(question, dict) else question.required:
-                raise SessionOperationError(422, "必填问题不能跳过。")
+                raise SessionOperationError(422, "Required questions cannot be skipped.")
         for answer in payload.answers:
             question = pending[answer.question_id]
             values = question if isinstance(question, dict) else question.model_dump()
             control = values.get("control_type", "text")
             if control == "multiple_choice":
                 if not isinstance(answer.value, list):
-                    raise SessionOperationError(422, "多选答案必须为选项列表。")
+                    raise SessionOperationError(
+                        422, "Answers to multiple-choice questions must be a list of options."
+                    )
                 selected = answer.value
             else:
                 if not isinstance(answer.value, str):
-                    raise SessionOperationError(422, "此问题需要一个文本或单选答案。")
+                    raise SessionOperationError(
+                        422, "This question requires a text or single-choice answer."
+                    )
                 selected = [answer.value]
             if len(selected) != len(set(selected)):
-                raise SessionOperationError(422, "同一选项不能重复提交。")
+                raise SessionOperationError(
+                    422, "The same option cannot be submitted more than once."
+                )
             options = {option["id"] for option in values.get("options", [])}
             if control != "text" and any(value not in options for value in selected):
-                raise SessionOperationError(422, "答案包含无效选项。")
+                raise SessionOperationError(422, "The answer contains an invalid option.")
         allowed = {
             "education",
             "skills",
@@ -178,7 +198,7 @@ class SessionService:
             "preferences.industry",
         }
         if set(payload.profile_updates) - allowed:
-            raise SessionOperationError(422, "包含不可编辑字段。")
+            raise SessionOperationError(422, "The request includes fields that cannot be edited.")
         list_fields = {"education", "skills", "internships", "projects", "target_directions"}
         flag_fields = {
             "preferences.location_unrestricted",
@@ -192,7 +212,9 @@ class SessionService:
             else:
                 valid = value is None or isinstance(value, str)
             if not valid:
-                raise SessionOperationError(422, "编辑字段的值类型不正确。")
+                raise SessionOperationError(
+                    422, "One or more edited fields have an invalid value type."
+                )
         if payload.action == "confirm_search" and record.outcome == "paused":
             summary = record.state.get("search_summary")
             summary_data = (
@@ -201,7 +223,9 @@ class SessionService:
                 else (summary.model_dump() if summary is not None else {})
             )
             if not summary_data.get("ready") or summary_data.get("revision") != record.revision:
-                raise SessionOperationError(409, "请先查看并补全当前版本的搜索摘要。")
+                raise SessionOperationError(
+                    409, "Review and complete the current search summary first."
+                )
 
     async def get(self, session_id: str) -> SessionResponse:
         async with self.lock:
@@ -256,7 +280,7 @@ class SessionService:
     def _get(self, session_id: str) -> _Session:
         record = self.sessions.get(session_id)
         if record is None or record.deleted:
-            raise SessionOperationError(404, "会话不存在或已过期。")
+            raise SessionOperationError(404, "This session does not exist or has expired.")
         return record
 
     @staticmethod
@@ -291,7 +315,7 @@ class SessionService:
                 record.state["errors"] = [
                     WorkflowError(
                         code="workflow_execution_error",
-                        message="处理未完成，请重试。输入已保留。",
+                        message="Processing did not finish. Please try again; your input has been saved.",
                         stage="workflow",
                     )
                 ]

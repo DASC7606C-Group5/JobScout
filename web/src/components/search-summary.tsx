@@ -12,16 +12,16 @@ import { useScoutSession } from '../state/session-context'
 import { useSessionDraft } from '../state/use-session-draft'
 
 const employmentOptions = [
-  ['full-time', '全职'],
-  ['internship', '实习'],
-  ['part-time', '兼职'],
-  ['contract', '合同制'],
-  ['freelance', '自由职业'],
+  ['full-time', 'Full-time'],
+  ['internship', 'Internship'],
+  ['part-time', 'Part-time'],
+  ['contract', 'Contract'],
+  ['freelance', 'Freelance'],
 ] as const
 const workModeOptions = [
-  ['onsite', '办公室'],
-  ['hybrid', '混合办公'],
-  ['remote', '远程'],
+  ['onsite', 'On-site'],
+  ['hybrid', 'Hybrid'],
+  ['remote', 'Remote'],
 ] as const
 
 function SummaryFields({
@@ -83,14 +83,16 @@ function SummaryFields({
                 disabled={!editable || unrestricted}
                 onChange={(event) => onChange(key, event.target.value)}
               >
-                <option value="">{unrestricted ? '不限' : '尚未填写'}</option>
+                <option value="">{unrestricted ? 'No preference' : 'Not provided yet'}</option>
                 {options.map(([option, optionLabel]) => (
                   <option key={option} value={option}>
                     {optionLabel}
                   </option>
                 ))}
                 {value && !options.some(([option]) => option === value) && (
-                  <option value={value}>{value === 'unrestricted' ? '不限' : value}</option>
+                  <option value={value}>
+                    {value === 'unrestricted' ? 'No preference' : value}
+                  </option>
                 )}
               </select>
             ) : (
@@ -109,7 +111,8 @@ function SummaryFields({
                 id="summary-directions-hint"
                 className={`mt-2 text-xs ${directionError ? 'text-error' : 'text-base-content/55'}`}
               >
-                {directionError || '每行一项，也可使用逗号分隔。最多选择三个明确方向。'}
+                {directionError ||
+                  'Enter one item per line or separate items with commas. Choose up to three specific directions.'}
               </p>
             )}
             {unrestrictedKey && (
@@ -122,8 +125,8 @@ function SummaryFields({
                   onChange={(event) => onChange(unrestrictedKey, event.target.checked)}
                 />
                 {unrestrictedKey === 'preferences.location_unrestricted'
-                  ? '不限地点'
-                  : '不限工作类型'}
+                  ? 'Any location'
+                  : 'Any employment type'}
               </label>
             )}
           </div>
@@ -154,16 +157,18 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           answer({ action: 'edit_conditions', profile_updates: updates, message: message.trim() })
       }}
     >
-      <h2 className="text-lg font-semibold">确认你的画像与搜索条件</h2>
+      <h2 className="text-lg font-semibold">Review your profile and search criteria</h2>
       <p className="mt-3 text-sm leading-6 text-base-content/65">
-        {summary.coverage_notice} 薪资、行业和工作方式为参考偏好，来源未核实的信息会注明。
+        {summary.coverage_notice} Salary, industry, and work arrangement are preferences. We’ll flag
+        details that haven’t been verified by the source.
       </p>
       <p className="mt-2 text-xs text-base-content/60">
-        每行一项，也可使用逗号分隔。保存修改后，请再次确认；确认前不会检索岗位。
+        Enter one item per line or separate items with commas. After saving changes, review and
+        confirm them. We won’t search for jobs until you confirm.
       </p>
       <fieldset disabled={busy} className="mt-6 min-w-0 space-y-6">
         <fieldset className="fieldset min-w-0 p-0">
-          <legend className="fieldset-legend pb-3 text-sm">个人经历</legend>
+          <legend className="fieldset-legend pb-3 text-sm">Your experience</legend>
           <SummaryFields
             fields={summaryFields
               .filter(([, , kind]) => kind === 'array')
@@ -175,7 +180,7 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           />
         </fieldset>
         <fieldset className="fieldset min-w-0 border-t border-base-300 p-0 pt-3">
-          <legend className="fieldset-legend pb-3 text-sm">搜索条件</legend>
+          <legend className="fieldset-legend pb-3 text-sm">Search criteria</legend>
           <SummaryFields
             fields={summaryFields.filter(
               ([key, , kind]) =>
@@ -190,13 +195,13 @@ export function SearchSummary({ summary }: { summary: Summary }) {
         </fieldset>
         {summary.missing_fields.length > 0 && (
           <output className="block rounded-xl bg-accent/25 p-3 text-sm">
-            还需确认：
-            {summary.missing_fields.map(profileFieldLabel).join('、')}
+            Still to confirm:
+            {summary.missing_fields.map(profileFieldLabel).join(', ')}
           </output>
         )}
         <div>
           <label htmlFor="summary-message" className="mb-2 block text-sm">
-            补充或纠正搜索条件
+            Add or correct search criteria
           </label>
           <textarea
             id="summary-message"
@@ -212,7 +217,7 @@ export function SearchSummary({ summary }: { summary: Summary }) {
             disabled={!changed || !current || Boolean(directionError)}
             className="btn rounded-xl"
           >
-            保存修改
+            Save changes
           </button>
           <button
             type="button"
@@ -222,15 +227,18 @@ export function SearchSummary({ summary }: { summary: Summary }) {
             className="btn rounded-xl btn-primary"
             onClick={() => answer({ action: 'confirm_search' })}
           >
-            确认并开始搜索
+            Confirm and search
           </button>
         </div>
         {!current && (
-          <p className="text-xs text-base-content/65">摘要版本已过期，请刷新会话后再确认搜索。</p>
+          <p className="text-xs text-base-content/65">
+            This summary is out of date. Refresh the session before confirming your search.
+          </p>
         )}
         {changed && (
           <p className="text-xs text-base-content/65">
-            有未保存的修改。请保存并检查最新摘要后再确认搜索。
+            You have unsaved changes. Save them and review the updated summary before confirming
+            your search.
           </p>
         )}
       </fieldset>

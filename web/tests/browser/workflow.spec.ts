@@ -17,14 +17,14 @@ const makeQuestion = (
   question_id,
   control_type,
   required,
-  question: `${question_id} 问题`,
-  reason: '用于完善搜索条件',
+  question: `${question_id} question`,
+  reason: 'This helps refine your search criteria.',
   field: 'skills',
   status: 'pending',
   answer: null,
   options: [
-    { id: 'one-id', label: '选项一' },
-    { id: 'two-id', label: '选项二' },
+    { id: 'one-id', label: 'Option one' },
+    { id: 'two-id', label: 'Option two' },
   ],
 })
 
@@ -93,7 +93,7 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
         recommendation: {
           session_id: snapshot.session_id,
           generated_at: '2026-10-03T00:00:00Z',
-          introduction: '根据已确认的条件，以下岗位供你核对。',
+          introduction: 'Review these jobs based on your confirmed criteria.',
           warnings: [],
           jobs: [createRecommendationFixture()],
         },
@@ -122,7 +122,7 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
           {
             message_id: `user-${revision}`,
             role: 'user',
-            text: body.message || '已更新回答',
+            text: body.message || 'Answer updated.',
             question_ids: [],
             created_at: '2026-10-03T00:00:00Z',
           },
@@ -161,8 +161,10 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
 
 async function introduce(page: Page) {
   await page.goto('/')
-  await page.getByLabel('个人介绍', { exact: true }).fill('合成测试资料：React 开发经历。')
-  await page.getByRole('button', { name: '开始分析与对话' }).click()
+  await page
+    .getByLabel('About you', { exact: true })
+    .fill('Synthetic test profile: React development experience.')
+  await page.getByRole('button', { name: 'Analyze and continue' }).click()
 }
 
 test('three-step flow uses IDs, explicit confirmation, evidence, saved jobs and same-session edits', async ({
@@ -182,16 +184,20 @@ test('three-step flow uses IDs, explicit confirmation, evidence, saved jobs and 
     }),
   )
   await introduce(page)
-  await expect(page.getByText('回放演示模式', { exact: false })).toBeVisible()
-  await expect(page.getByLabel('hidden 问题', { exact: true })).toHaveCount(0)
-  await page.getByRole('radio', { name: '选项一' }).focus()
+  await expect(page.getByText('Replay demo', { exact: false })).toBeVisible()
+  await expect(page.getByLabel('hidden question', { exact: true })).toHaveCount(0)
+  await page.getByRole('radio', { name: 'Option one' }).focus()
   await page.keyboard.press('Space')
-  await page.getByRole('checkbox', { name: '选项一', exact: true }).check()
-  await page.getByRole('checkbox', { name: '选项二', exact: true }).check()
-  await page.getByRole('checkbox', { name: '跳过此问题' }).check()
-  await page.getByLabel('补充或纠正', { exact: true }).fill('更正：我接受不限地点。')
-  await page.getByRole('button', { name: '发送并继续' }).click()
-  await expect(page.getByRole('heading', { name: '确认你的画像与搜索条件' })).toBeVisible()
+  await page.getByRole('checkbox', { name: 'Option one', exact: true }).check()
+  await page.getByRole('checkbox', { name: 'Option two', exact: true }).check()
+  await page.getByRole('checkbox', { name: 'Skip this question' }).check()
+  await page
+    .getByLabel('Add a note or correction', { exact: true })
+    .fill('Correction: I’m open to any location.')
+  await page.getByRole('button', { name: 'Send and continue' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Review your profile and search criteria' }),
+  ).toBeVisible()
   expect(state.requests[0]).toMatchObject({
     action: 'answer',
     expected_revision: 1,
@@ -200,16 +206,16 @@ test('three-step flow uses IDs, explicit confirmation, evidence, saved jobs and 
       { question_id: 'multiple', value: ['one-id', 'two-id'] },
     ],
     skipped_question_ids: ['optional'],
-    message: '更正：我接受不限地点。',
+    message: 'Correction: I’m open to any location.',
   })
-  await expect(page.getByText('已跳过（选填）', { exact: false })).toBeVisible()
+  await expect(page.getByText('Skipped (optional)', { exact: false })).toBeVisible()
   expect(state.requests.some((request) => request.action === 'confirm_search')).toBe(false)
-  await page.getByLabel('技能', { exact: true }).fill('React\nTypeScript')
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeDisabled()
-  await page.getByRole('button', { name: '保存修改' }).click()
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled()
+  await page.getByLabel('Skills', { exact: true }).fill('React\nTypeScript')
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests[1]?.profile_updates).toEqual({ skills: ['React', 'TypeScript'] })
-  await page.getByRole('button', { name: '确认并开始搜索' }).click()
+  await page.getByRole('button', { name: 'Confirm and search' }).click()
   await expect(page.getByRole('heading', { name: 'React Engineer' })).toBeVisible()
   expect(state.getTimes.length).toBe(2)
   expect(state.getTimes[1]! - state.getTimes[0]!).toBeGreaterThanOrEqual(850)
@@ -217,20 +223,26 @@ test('three-step flow uses IDs, explicit confirmation, evidence, saved jobs and 
   await page.waitForTimeout(1300)
   expect(state.getCount()).toBe(count)
   await expect(
-    page.locator('details').filter({ has: page.getByText('查看对话历史', { exact: true }) }),
+    page
+      .locator('details')
+      .filter({ has: page.getByText('View conversation history', { exact: true }) }),
   ).not.toHaveAttribute('open')
-  await page.getByText('岗位详情与准备建议', { exact: true }).click()
-  await expect(page.getByRole('heading', { name: '匹配理由与证据' })).toBeVisible()
+  await page.getByText('Job details and preparation tips', { exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Match reasons and evidence' })).toBeVisible()
   await expect(page.getByText('“React development experience required.”')).toBeVisible()
   await expect(
-    page.getByText('这仅表示所提供材料中未找到证据，并不代表你不具备该能力。'),
+    page.getByText(
+      'This means the evidence wasn’t found in the materials you shared; it doesn’t mean you lack this skill.',
+    ),
   ).toBeVisible()
-  await page.getByRole('button', { name: '收藏React Engineer', exact: true }).click()
-  await page.getByRole('link', { name: '收藏岗位', exact: false }).first().click()
+  await page.getByRole('button', { name: 'Save job: React Engineer', exact: true }).click()
+  await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
   await expect(page.getByRole('heading', { name: 'React Engineer' })).toBeVisible()
-  await page.getByRole('link', { name: '发现机会', exact: false }).first().click()
-  await page.getByRole('button', { name: '调整求职条件' }).click()
-  await expect(page.getByRole('heading', { name: '确认你的画像与搜索条件' })).toBeVisible()
+  await page.getByRole('link', { name: 'Explore opportunities', exact: false }).first().click()
+  await page.getByRole('button', { name: 'Edit search criteria' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Review your profile and search criteria' }),
+  ).toBeVisible()
   await expect(page.getByRole('heading', { name: 'React Engineer' })).toHaveCount(0)
   expect(state.createCount()).toBe(1)
   expect(state.requests.at(-1)?.action).toBe('edit_conditions')
@@ -251,15 +263,15 @@ test('network retry reuses create request ID; 409 refreshes instead of replaying
   const state = await mockSessions(page)
   state.dropNextCreate()
   await introduce(page)
-  await expect(page.getByText('无法连接服务', { exact: false })).toBeVisible()
-  await page.getByRole('button', { name: '重试', exact: true }).click()
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled()
+  await expect(page.getByText('Could not connect to the service', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: 'Retry', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.createBodies[0]?.request_id).toBe(state.createBodies[1]?.request_id)
   state.conflictNext()
-  await page.getByRole('button', { name: '确认并开始搜索' }).click()
+  await page.getByRole('button', { name: 'Confirm and search' }).click()
   await expect.poll(state.getCount).toBe(1)
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled()
-  await page.getByRole('button', { name: '确认并开始搜索' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Confirm and search' }).click()
   await expect(page.getByRole('heading', { name: 'React Engineer' })).toBeVisible()
   expect(state.requests[1]?.expected_revision).toBe(2)
   expect(state.requests[1]?.request_id).not.toBe(state.requests[0]?.request_id)
@@ -271,12 +283,12 @@ test('reload recovers by ID; running polls once a second and delete prevents res
   const state = await mockSessions(page)
   state.runFor(50, createSessionFixture())
   await introduce(page)
-  await expect(page.getByRole('heading', { name: '正在理解你的经历' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Reviewing your experience' })).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('heading', { name: '正在理解你的经历' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Reviewing your experience' })).toBeVisible()
   expect(state.createCount()).toBe(1)
-  await page.getByRole('button', { name: '清除会话' }).click()
-  await expect(page.getByRole('button', { name: '开始分析与对话' })).toBeVisible()
+  await page.getByRole('button', { name: 'Clear session' }).click()
+  await expect(page.getByRole('button', { name: 'Analyze and continue' })).toBeVisible()
   const count = state.getCount()
   await page.waitForTimeout(1300)
   expect(state.getCount()).toBe(count)
@@ -291,20 +303,25 @@ test('workflow failure uses backend retry without creating a second session', as
       current_stage: 'failed',
       retryable: true,
       errors: [
-        { code: 'MODEL_UNAVAILABLE', stage: 'extract', message: '模型暂不可用', details: null },
+        {
+          code: 'MODEL_UNAVAILABLE',
+          stage: 'extract',
+          message: 'Model temporarily unavailable',
+          details: null,
+        },
       ],
     }),
   )
   await introduce(page)
-  await page.getByRole('button', { name: '重新尝试' }).click()
-  await expect(page.getByRole('heading', { name: '确认你的画像与搜索条件' })).toBeVisible()
+  await page.getByRole('button', { name: 'Try again' }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Review your profile and search criteria' }),
+  ).toBeVisible()
   expect(state.requests[0]?.action).toBe('retry')
   expect(state.createCount()).toBe(1)
 })
 
-test('resume-only input is valid and disclosure is present; required text control accepts free text', async ({
-  page,
-}) => {
+test('resume-only input is valid; required text control accepts free text', async ({ page }) => {
   const state = await mockSessions(
     page,
     createSessionFixture({
@@ -314,20 +331,17 @@ test('resume-only input is valid and disclosure is present; required text contro
     }),
   )
   await page.goto('/')
-  await expect(
-    page.getByText('个人介绍和简历文本将发送给后端配置的模型服务商', { exact: false }),
-  ).toBeVisible()
-  await page.getByRole('button', { name: '开始分析与对话' }).click()
-  await expect(page.getByText('请填写个人介绍，或添加一份简历。')).toBeVisible()
+  await page.getByRole('button', { name: 'Analyze and continue' }).click()
+  await expect(page.getByText('Add an introduction or upload a resume.')).toBeVisible()
   await page.locator('input[type=file]').setInputFiles({
     name: 'synthetic.txt',
     mimeType: 'text/plain',
     buffer: Buffer.from('Synthetic React project, no real personal data.'),
   })
-  await page.getByRole('button', { name: '开始分析与对话' }).click()
-  await page.getByLabel('text 问题', { exact: true }).fill('香港')
-  await page.getByRole('button', { name: '发送并继续' }).click()
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Analyze and continue' }).click()
+  await page.getByLabel('text question', { exact: true }).fill('香港')
+  await page.getByRole('button', { name: 'Send and continue' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.createBodies[0]?.description).toBe('')
   expect(state.requests[0]?.answers).toEqual([{ question_id: 'text', value: '香港' }])
 })
@@ -345,12 +359,16 @@ test('resume network retry preserves the complete typed request and visible corr
   )
   await introduce(page)
   state.dropNextAnswer()
-  await page.getByLabel('补充或纠正', { exact: true }).fill('只使用补充文字更新条件')
-  await page.getByRole('button', { name: '发送并继续' }).click()
-  await expect(page.getByText('无法连接服务', { exact: false })).toBeVisible()
-  await expect(page.getByLabel('补充或纠正', { exact: true })).toHaveValue('只使用补充文字更新条件')
-  await page.getByRole('button', { name: '重试', exact: true }).click()
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled()
+  await page
+    .getByLabel('Add a note or correction', { exact: true })
+    .fill('Only use the additional text to update the criteria.')
+  await page.getByRole('button', { name: 'Send and continue' }).click()
+  await expect(page.getByText('Could not connect to the service', { exact: false })).toBeVisible()
+  await expect(page.getByLabel('Add a note or correction', { exact: true })).toHaveValue(
+    'Only use the additional text to update the criteria.',
+  )
+  await page.getByRole('button', { name: 'Retry', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests).toHaveLength(2)
   expect(state.requests[1]).toEqual(state.requests[0])
   expect(state.requests[0]?.answers).toEqual([])
@@ -369,10 +387,10 @@ test('incomplete summary requires updates; explicit unrestricted flags use flat 
     },
   })
   await introduce(page)
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeDisabled()
-  await page.getByRole('checkbox', { name: '不限地点', exact: true }).check()
-  await page.getByRole('button', { name: '保存修改' }).click()
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeDisabled()
+  await page.getByRole('checkbox', { name: 'I’m open to any location', exact: true }).check()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests[0]?.profile_updates).toEqual({
     'preferences.location_unrestricted': true,
     'preferences.location': null,
@@ -384,8 +402,12 @@ test('stale summary cannot be confirmed even when marked ready', async ({ page }
   const fixture = createSessionFixture({ revision: 2 })
   const state = await mockSessions(page, fixture)
   await introduce(page)
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeDisabled()
-  await expect(page.getByText('摘要版本已过期，请刷新会话后再确认搜索。')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeDisabled()
+  await expect(
+    page.getByText(
+      'This summary is out of date. Refresh the session before confirming your search.',
+    ),
+  ).toBeVisible()
   expect(state.requests).toEqual([])
 })
 
@@ -397,9 +419,9 @@ test('expired recovered session offers a fresh start without persisting private 
     route.fulfill({ status: 404, json: { detail: 'not found' } }),
   )
   await page.goto('/')
-  await expect(page.getByText('会话已不存在', { exact: false })).toBeVisible()
-  await page.getByRole('button', { name: '重新开始', exact: true }).click()
-  await expect(page.getByRole('button', { name: '开始分析与对话' })).toBeEnabled()
+  await expect(page.getByText('no longer available', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: 'Start over', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Analyze and continue' })).toBeEnabled()
   expect(await page.evaluate(() => sessionStorage.getItem('jobscout.session_id'))).toBeNull()
 })
 
@@ -408,7 +430,7 @@ test('empty result and source outage remain distinct without invented vacancies'
 }) => {
   const outcome = {
     request_index: 0,
-    target_direction: '前端开发',
+    target_direction: 'Frontend development',
     candidate_count: 0,
     returned_count: 0,
     incomplete_count: 0,
@@ -424,8 +446,8 @@ test('empty result and source outage remain distinct without invented vacancies'
         session_id: 'session-1',
         generated_at: '2026-10-03T00:00:00Z',
         jobs: [],
-        warnings: ['一个来源暂不可用'],
-        introduction: '没有可验证的合适岗位。',
+        warnings: ['One source is temporarily unavailable.'],
+        introduction: 'No suitable jobs with verifiable evidence were found.',
       },
       source_outcomes: [
         { ...outcome, source: 'JobsDB', status: 'ok' },
@@ -434,11 +456,13 @@ test('empty result and source outage remain distinct without invented vacancies'
     }),
   )
   await introduce(page)
-  await page.getByText('检索来源与覆盖情况', { exact: true }).click()
+  await page.getByText('Sources and search coverage', { exact: true }).click()
   await expect(
-    page.getByText('JobsDB · 前端开发：检索成功，无结果', { exact: false }),
+    page.getByText('JobsDB · Frontend development: Search complete, no results', { exact: false }),
   ).toBeVisible()
-  await expect(page.getByText('Liepin · 前端开发：访问受限', { exact: false })).toBeVisible()
+  await expect(
+    page.getByText('Liepin · Frontend development: Access restricted', { exact: false }),
+  ).toBeVisible()
   await expect(page.getByRole('heading', { name: 'React Engineer' })).toHaveCount(0)
 })
 
@@ -449,13 +473,13 @@ test('conversation renders structured and recovered answers without wire-format 
     current_stage: 'clarify',
     search_summary: null,
     clarification_questions: [
-      { ...makeQuestion('location', 'text'), question: '你偏好的工作地点是？' },
+      { ...makeQuestion('location', 'text'), question: 'Where would you like to work?' },
     ],
     conversation: [
       {
         message_id: 'assistant-1',
         role: 'assistant',
-        text: '你希望寻找哪些方向的职位？',
+        text: 'What kind of roles are you looking for?',
         question_ids: [],
         created_at: '2026-10-03T00:00:00Z',
       },
@@ -473,21 +497,25 @@ test('conversation renders structured and recovered answers without wire-format 
         question_ids: [],
         created_at: '2026-10-03T00:00:00Z',
         responses: [
-          { label: '求职方向', value: ['前端开发', '数据分析'], status: 'answered' },
-          { label: '工作地点', value: '香港', status: 'answered' },
-          { label: '行业偏好', value: '', status: 'skipped' },
+          {
+            label: 'Job directions',
+            value: ['Frontend development', 'Data analysis'],
+            status: 'answered',
+          },
+          { label: 'Work location', value: 'Hong Kong', status: 'answered' },
+          { label: 'Industry', value: '', status: 'skipped' },
         ],
       },
     ],
   })
   await mockSessions(page, fixture)
   await introduce(page)
-  const history = page.getByRole('log', { name: '对话记录' })
-  await expect(history).toContainText('求职方向')
+  const history = page.getByRole('log', { name: 'Conversation history' })
+  await expect(history).toContainText('Job directions')
   await expect(history).toContainText('技术/研发')
-  await expect(history).toContainText('全职')
+  await expect(history).toContainText('Full-time')
   await expect(history).toContainText('我希望有导师指导。')
-  await expect(history).toContainText('已跳过（选填）')
+  await expect(history).toContainText('Skipped (optional)')
   await expect(history).not.toContainText('target_directions')
   await expect(history).not.toContainText('preferences.')
   await expect(history).not.toContainText("['")
@@ -531,26 +559,30 @@ test('clarification drafts preserve choices, skips and text across workspace nav
     }),
   )
   await introduce(page)
-  await page.getByRole('radio', { name: '选项一' }).check()
-  await page.getByRole('checkbox', { name: '选项二', exact: true }).check()
-  await page.getByRole('checkbox', { name: '跳过此问题' }).check()
-  await page.getByLabel('补充或纠正', { exact: true }).fill('也接受深圳。')
-  await page.getByRole('link', { name: '收藏岗位', exact: false }).first().click()
+  await page.getByRole('radio', { name: 'Option one' }).check()
+  await page.getByRole('checkbox', { name: 'Option two', exact: true }).check()
+  await page.getByRole('checkbox', { name: 'Skip this question' }).check()
+  await page
+    .getByLabel('Add a note or correction', { exact: true })
+    .fill('Shenzhen works for me too.')
+  await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
   await expect(page).toHaveURL(/\/saved$/)
-  await page.getByRole('link', { name: '发现机会', exact: true }).first().click()
-  await expect(page.getByRole('radio', { name: '选项一' })).toBeChecked()
-  await expect(page.getByRole('checkbox', { name: '选项二', exact: true })).toBeChecked()
-  await expect(page.getByRole('checkbox', { name: '跳过此问题' })).toBeChecked()
-  await expect(page.getByLabel('补充或纠正', { exact: true })).toHaveValue('也接受深圳。')
-  await page.getByRole('button', { name: '发送并继续' }).click()
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled()
+  await page.getByRole('link', { name: 'Explore opportunities', exact: false }).first().click()
+  await expect(page.getByRole('radio', { name: 'Option one' })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'Option two', exact: true })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: 'Skip this question' })).toBeChecked()
+  await expect(page.getByLabel('Add a note or correction', { exact: true })).toHaveValue(
+    'Shenzhen works for me too.',
+  )
+  await page.getByRole('button', { name: 'Send and continue' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests[0]).toMatchObject({
     answers: [
       { question_id: 'single', value: 'one-id' },
       { question_id: 'multiple', value: ['two-id'] },
     ],
     skipped_question_ids: ['optional'],
-    message: '也接受深圳。',
+    message: 'Shenzhen works for me too.',
   })
 })
 
@@ -559,9 +591,14 @@ test('direction choices enforce three selections without dropping user choices',
 }) => {
   const question = {
     ...makeQuestion('directions', 'multiple_choice'),
-    question: '你希望寻找哪些方向的职位？',
+    question: 'What kind of roles are you looking for?',
     field: 'target_directions',
-    options: ['前端开发', '数据分析', '产品设计', '软件工程'].map((label, index) => ({
+    options: [
+      'Frontend development',
+      'Data analysis',
+      'Product design',
+      'Software engineering',
+    ].map((label, index) => ({
       id: `direction-${index}`,
       label,
     })),
@@ -575,10 +612,12 @@ test('direction choices enforce three selections without dropping user choices',
     }),
   )
   await introduce(page)
-  for (const label of ['前端开发', '数据分析', '产品设计'])
+  for (const label of ['Frontend development', 'Data analysis', 'Product design'])
     await page.getByRole('checkbox', { name: label, exact: true }).check()
-  await expect(page.getByRole('checkbox', { name: '软件工程', exact: true })).toBeDisabled()
-  await expect(page.getByText('最多选择三个方向 · 已选择 3 / 3')).toBeVisible()
+  await expect(
+    page.getByRole('checkbox', { name: 'Software engineering', exact: true }),
+  ).toBeDisabled()
+  await expect(page.getByText('Choose up to three directions · 3 / 3 selected')).toBeVisible()
   if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
     await mkdir('.tools/review', { recursive: true })
     await page.setViewportSize({ width: 1440, height: 1100 })
@@ -596,8 +635,10 @@ test('direction choices enforce three selections without dropping user choices',
       animations: 'disabled',
     })
   }
-  await page.getByRole('checkbox', { name: '产品设计', exact: true }).uncheck()
-  await expect(page.getByRole('checkbox', { name: '软件工程', exact: true })).toBeEnabled()
+  await page.getByRole('checkbox', { name: 'Product design', exact: true }).uncheck()
+  await expect(
+    page.getByRole('checkbox', { name: 'Software engineering', exact: true }),
+  ).toBeEnabled()
   expect(state.requests).toEqual([])
 })
 
@@ -606,23 +647,27 @@ test('summary edits survive navigation, local overflow preserves entries and new
 }) => {
   const state = await mockSessions(page)
   await introduce(page)
-  const directions = page.getByLabel('求职方向（最多三个）', { exact: true })
-  await directions.fill('前端开发\n数据分析\n产品设计\n软件工程')
-  await expect(page.getByRole('button', { name: '保存修改' })).toBeDisabled()
-  await expect(directions).toHaveValue('前端开发\n数据分析\n产品设计\n软件工程')
-  await directions.fill('前端开发')
-  await page.getByLabel('技能', { exact: true }).fill('React\nSQL')
-  await page.getByLabel('补充或纠正搜索条件', { exact: true }).fill('希望有导师指导。')
-  await page.getByRole('link', { name: '收藏岗位', exact: false }).first().click()
-  await expect(page).toHaveURL(/\/saved$/)
-  await page.getByRole('link', { name: '发现机会', exact: true }).first().click()
-  await expect(page.getByLabel('技能', { exact: true })).toHaveValue('React\nSQL')
-  await expect(page.getByLabel('补充或纠正搜索条件', { exact: true })).toHaveValue(
-    '希望有导师指导。',
+  const directions = page.getByLabel('Job directions (up to 3)', { exact: true })
+  await directions.fill('Frontend development\nData analysis\nProduct design\nSoftware engineering')
+  await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  await expect(directions).toHaveValue(
+    'Frontend development\nData analysis\nProduct design\nSoftware engineering',
   )
-  await page.getByRole('button', { name: '保存修改' }).click()
-  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled()
-  await expect(page.getByLabel('补充或纠正搜索条件', { exact: true })).toHaveValue('')
+  await directions.fill('Frontend development')
+  await page.getByLabel('Skills', { exact: true }).fill('React\nSQL')
+  await page
+    .getByLabel('Add or correct search criteria', { exact: true })
+    .fill('I’d like mentorship.')
+  await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
+  await expect(page).toHaveURL(/\/saved$/)
+  await page.getByRole('link', { name: 'Explore opportunities', exact: false }).first().click()
+  await expect(page.getByLabel('Skills', { exact: true })).toHaveValue('React\nSQL')
+  await expect(page.getByLabel('Add or correct search criteria', { exact: true })).toHaveValue(
+    'I’d like mentorship.',
+  )
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+  await expect(page.getByLabel('Add or correct search criteria', { exact: true })).toHaveValue('')
   expect(state.requests[0]?.profile_updates).toEqual({ skills: ['React', 'SQL'] })
   expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual(['jobscout.session_id'])
 })

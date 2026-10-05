@@ -10,17 +10,19 @@ export function WorkspaceHeader() {
   return (
     <header className="flex min-h-20 flex-wrap items-center justify-between gap-3 border-b border-base-300 px-5 py-4 sm:px-8 xl:px-12">
       <p className="flex items-center gap-2 text-xs text-base-content/55">
-        工作空间
+        Workspace
         <Icon name="chevron" size={12} />
-        <span className="text-base-content/85">{savedView ? '收藏岗位' : '发现机会'}</span>
+        <span className="text-base-content/85">
+          {savedView ? 'Saved jobs' : 'Explore opportunities'}
+        </span>
       </p>
       {session && (
         <div className="flex items-center gap-2.5 text-xs">
           <button className="btn btn-ghost btn-sm" disabled={busy} onClick={refresh}>
-            刷新会话
+            Refresh session
           </button>
           <button className="btn btn-ghost btn-sm" onClick={deleteSession}>
-            清除会话
+            Clear session
           </button>
         </div>
       )}

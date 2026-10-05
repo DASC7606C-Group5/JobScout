@@ -112,7 +112,7 @@ def test_background_affects_ranking_without_claiming_a_skill(field: str) -> None
     assert [item.job.job_id for item in result.jobs] == ["z", "a"]
     assert result.jobs[0].missing_skills == ["Python"]
     assert any(
-        "Python" in text and "证据" in text for text in result.jobs[0].preparation_suggestions
+        "Python" in text and "evidence" in text for text in result.jobs[0].preparation_suggestions
     )
 
 
@@ -125,21 +125,21 @@ def test_education_is_compared_to_explicit_job_requirements() -> None:
         ],
     )
     assert [item.job.job_id for item in result.jobs] == ["z", "a"]
-    assert any("未证明" in text for text in result.jobs[1].preparation_suggestions)
+    assert any("does not show" in text for text in result.jobs[1].preparation_suggestions)
 
 
 def test_degree_alternatives_accept_the_lower_stated_degree() -> None:
     result = run(
         make_profile(), [make_job("a", responsibilities=["Bachelor's or Master's degree required"])]
     )
-    assert any("对应的教育经历" in text for text in result.jobs[0].preparation_suggestions)
+    assert any("education that meets" in text for text in result.jobs[0].preparation_suggestions)
 
 
 def test_years_of_experience_are_not_invented_from_projects() -> None:
     profile = make_profile()
     profile.projects = ["Python project, 3 years"]
     result = run(profile, [make_job("a", responsibilities=["Minimum 3 years of work experience"])])
-    assert any("经验年限" in text for text in result.jobs[0].preparation_suggestions)
+    assert any("experience requirements" in text for text in result.jobs[0].preparation_suggestions)
 
 
 def test_expired_is_excluded_and_unknown_preserved_after_active() -> None:
@@ -171,7 +171,10 @@ def test_confirmed_location_filters_mismatches_but_keeps_unknown() -> None:
         ],
     )
     assert {item.job.job_id for item in result.jobs} == {"b", "c"}
-    assert any("c" in warning and "地点未知" in warning for warning in result.warnings)
+    assert any(
+        "c" in warning and "location" in warning and "unknown" in warning
+        for warning in result.warnings
+    )
 
 
 @pytest.mark.parametrize("requested", ["香港", "Hong Kong", "HK", "ＨＫ", "Hong Kong SAR"])
@@ -266,7 +269,7 @@ def test_confirmed_employment_filters_mismatch_and_warns_on_unknown() -> None:
         ],
     )
     assert {item.job.job_id for item in result.jobs} == {"b", "c"}
-    assert any("b" in warning and "工作类型" in warning for warning in result.warnings)
+    assert any("b" in warning and "employment type" in warning for warning in result.warnings)
 
 
 def test_employment_label_is_used_but_colleague_mentions_are_not() -> None:
@@ -279,7 +282,7 @@ def test_employment_label_is_used_but_colleague_mentions_are_not() -> None:
         ],
     )
     assert {item.job.job_id for item in result.jobs} == {"b", "c"}
-    assert any("b" in warning and "工作类型" in warning for warning in result.warnings)
+    assert any("b" in warning and "employment type" in warning for warning in result.warnings)
 
 
 def test_structured_employment_metadata_takes_precedence_over_title() -> None:
@@ -297,7 +300,7 @@ def test_explicit_unrestricted_employment_overrides_stale_type() -> None:
     profile.confirmed_fields.append("preferences.employment_type_unrestricted")
     result = run(profile, [make_job("a", title="Full-time Analyst")])
     assert len(result.jobs) == 1
-    assert not any("工作类型" in warning for warning in result.warnings)
+    assert not any("employment type" in warning for warning in result.warnings)
 
 
 def test_merged_direction_tags_retain_an_eligible_vacancy() -> None:
@@ -338,7 +341,8 @@ def test_skill_names_do_not_match_substrings_or_other_languages() -> None:
     result = run(profile, [make_job("a", skills=["Java", "C", "C#"])])
     assert result.jobs[0].missing_skills == ["Java", "C"]
     assert not any(
-        "相关的项目或实习证据" in text for text in result.jobs[0].preparation_suggestions
+        "project or internship evidence related to" in text
+        for text in result.jobs[0].preparation_suggestions
     )
 
 
@@ -352,22 +356,24 @@ def test_chinese_evidence_location_and_education() -> None:
     )
     assert len(result.jobs) == 1
     assert any(
-        "Python" in text and "证据" in text for text in result.jobs[0].preparation_suggestions
+        "Python" in text and "evidence" in text for text in result.jobs[0].preparation_suggestions
     )
-    assert any("教育经历" in text for text in result.jobs[0].preparation_suggestions)
+    assert any("education that meets" in text for text in result.jobs[0].preparation_suggestions)
 
 
 def test_missing_job_skills_do_not_claim_a_perfect_match() -> None:
     result = run(make_profile(), [make_job("a", skills=[]), make_job("z")])
     assert [item.job.job_id for item in result.jobs] == ["z", "a"]
-    assert any("技能匹配依据不足" in text for text in result.warnings)
+    assert any(
+        "limited evidence for assessing the skills match" in text for text in result.warnings
+    )
 
 
 @pytest.mark.parametrize("jobs", [[], [make_job("expired", status=FreshnessStatus.EXPIRED)]])
 def test_empty_or_fully_filtered_input_returns_empty_result(jobs: list[JobPosting]) -> None:
     result = run(make_profile(), jobs)
     assert result.jobs == []
-    assert any("没有符合" in warning for warning in result.warnings)
+    assert any("No recommended jobs match" in warning for warning in result.warnings)
 
 
 def test_fewer_than_five_jobs_are_not_padded() -> None:
@@ -379,7 +385,7 @@ def test_duplicate_id_does_not_occupy_multiple_slots_or_merge_here() -> None:
     result = run(make_profile(), [first, make_job("a", skills=["Rust"])])
     assert len(result.jobs) == 1
     assert result.jobs[0].job == first
-    assert any("岗位处理模块" in warning for warning in result.warnings)
+    assert any("job processing module" in warning for warning in result.warnings)
 
 
 def test_stable_order_and_no_mutation_or_shared_result_objects() -> None:

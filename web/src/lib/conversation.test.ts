@@ -69,9 +69,9 @@ test('legacy evidence lines become human-readable answers without changing ordin
   ).toEqual({
     text: '测试\n备注: 使用 [React]。',
     responses: [
-      { label: '求职方向', value: ['技术/研发', '产品/项目'], status: 'answered' },
-      { label: '工作地点', value: '不限', status: 'answered' },
-      { label: '工作类型', value: '全职', status: 'answered' },
+      { label: 'Job directions', value: ['技术/研发', '产品/项目'], status: 'answered' },
+      { label: 'Work location', value: 'No preference', status: 'answered' },
+      { label: 'Employment type', value: 'Full-time', status: 'answered' },
     ],
   })
 })
@@ -84,8 +84,8 @@ test('legacy unrestricted updates produce one meaningful row and safely decode q
       ),
     ).responses,
   ).toEqual([
-    { label: '项目经历', value: ["O'Brien project", 'React, SQL'], status: 'answered' },
-    { label: '工作地点', value: '不限', status: 'answered' },
+    { label: 'Projects', value: ["O'Brien project", 'React, SQL'], status: 'answered' },
+    { label: 'Work location', value: 'No preference', status: 'answered' },
   ])
 })
 
@@ -93,17 +93,17 @@ test('new structured messages preserve free text and skipped answers', () => {
   const structured: ConversationMessage = {
     ...message('仍然希望做前端开发。'),
     responses: [
-      { label: '求职方向', value: ['前端开发'], status: 'answered' },
-      { label: '行业偏好', value: '', status: 'skipped' },
+      { label: 'Job directions', value: ['前端开发'], status: 'answered' },
+      { label: 'Industry', value: '', status: 'skipped' },
     ],
   }
   expect(presentConversation(structured)).toEqual({
     text: structured.text,
     responses: structured.responses ?? [],
   })
-  expect(presentConversation({ ...message('skills: 请补充技能。'), role: 'assistant' }).text).toBe(
-    'skills: 请补充技能。',
-  )
+  expect(
+    presentConversation({ ...message('skills: Please add your skills.'), role: 'assistant' }).text,
+  ).toBe('skills: Please add your skills.')
   expect(presentConversation({ ...message('skills: Python'), responses: [] })).toEqual({
     text: 'skills: Python',
     responses: [],
@@ -114,10 +114,12 @@ test('answer history resolves option IDs while direction validation preserves al
   expect(presentQuestionAnswer({ ...question('skill'), answer: 'react-id' })).toEqual(['React'])
   const directions = { ...question('directions'), field: 'target_directions' }
   const four = ['a', 'b', 'c', 'd']
-  expect(answerValidation([directions], { directions: four }, [])).toContain('最多选择三个')
+  expect(answerValidation([directions], { directions: four }, [])).toContain(
+    'Choose no more than three',
+  )
   expect(answerValidation([directions], { directions: four.slice(0, 3) }, [])).toBe('')
   expect(
     answerValidation([directions], { directions: '前端开发\n数据分析\n产品设计\n软件工程' }, []),
-  ).toContain('最多选择三个')
+  ).toContain('Choose no more than three')
   expect(four).toEqual(['a', 'b', 'c', 'd'])
 })

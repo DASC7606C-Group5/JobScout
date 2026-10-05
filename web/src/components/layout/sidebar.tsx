@@ -12,7 +12,7 @@ export function Sidebar() {
       <Link
         to="/"
         className="flex shrink-0 items-center gap-2.5 self-start rounded-md md:px-1"
-        aria-label="JobScout 首页"
+        aria-label="JobScout home"
       >
         <span className="flex size-9 items-center justify-center rounded-xl bg-primary/55 text-primary-content">
           <Icon name="compass" size={24} />
@@ -23,27 +23,27 @@ export function Sidebar() {
       </Link>
       <div className="ml-auto md:mt-12 md:ml-0">
         <p className="mb-3 hidden px-3 text-[10px] font-semibold tracking-[0.15em] text-base-content/40 md:block">
-          我的求职空间
+          Explore
         </p>
-        <nav aria-label="主导航" className="flex gap-1 md:flex-col md:gap-2">
+        <nav aria-label="Main navigation" className="flex gap-1 md:flex-col md:gap-2">
           <Link
             to="/"
             activeOptions={{ exact: true }}
-            aria-label="发现机会"
+            aria-label="Explore opportunities"
             aria-current={!savedView ? 'page' : undefined}
             className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors disabled:opacity-50 ${!savedView ? 'bg-primary/20 font-semibold text-primary-content' : 'text-base-content/60 hover:bg-base-200/50'}`}
           >
             <Icon name="compass" size={19} />
-            <span className="hidden sm:inline">发现机会</span>
+            <span className="hidden sm:inline">Explore</span>
           </Link>
           <Link
             to="/saved"
-            aria-label={`收藏岗位，${savedCount} 个`}
+            aria-label={`Saved jobs, ${savedCount}`}
             aria-current={savedView ? 'page' : undefined}
             className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-colors disabled:opacity-50 ${savedView ? 'bg-secondary/45 font-semibold' : 'text-base-content/60 hover:bg-base-200/50'}`}
           >
             <Icon name="bookmark" size={19} />
-            <span className="hidden sm:inline">收藏岗位</span>
+            <span className="hidden sm:inline">Saved jobs</span>
             <span className="ml-auto rounded-md bg-base-200 px-1.5 py-0.5 text-[10px] tabular-nums">
               {savedCount}
             </span>
@@ -53,19 +53,19 @@ export function Sidebar() {
       <div className="mt-auto hidden md:block">
         <div className="rounded-xl border border-base-300 bg-base-200/25 p-4">
           <Icon name="leaf" size={22} className="text-primary-content" />
-          <p className="mt-3 text-xs font-semibold">好工作，也要适合你。</p>
+          <p className="mt-3 text-xs font-semibold">A good job should be right for you.</p>
           <p className="mt-2 text-[11px] leading-5 text-base-content/55">
-            少一点海投，
+            Less applying to everything,
             <br />
-            多一点有方向的探索。
+            more focused exploration.
           </p>
         </div>
         <div className="mt-6 flex items-center gap-2.5 border-t border-base-300 pt-5">
           <span className="flex size-8 items-center justify-center rounded-full bg-secondary/40 text-xs font-semibold">
-            我
+            Me
           </span>
           <div>
-            <p className="text-xs font-medium">我的工作空间</p>
+            <p className="text-xs font-medium">My workspace</p>
           </div>
         </div>
       </div>

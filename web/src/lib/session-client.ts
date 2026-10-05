@@ -11,13 +11,14 @@ export class SessionHttpError extends Error {
 }
 
 function errorMessage(status: number, body: unknown): string {
-  if (status === 404) return '会话已不存在，请重新搜索。'
-  if (status === 409) return '会话状态已更新，请刷新会话查看最新结果。'
-  if (status === 422) return '提交的资料格式不正确，请检查求职条件后再试。'
-  if (status >= 500) return '服务暂时不可用，请稍后重试。'
+  if (status === 404) return 'This session is no longer available. Start a new search.'
+  if (status === 409) return 'The session has changed. Refresh it to see the latest results.'
+  if (status === 422)
+    return 'Some submitted information is invalid. Check your search criteria and try again.'
+  if (status >= 500) return 'The service is temporarily unavailable. Try again later.'
   if (body && typeof body === 'object' && 'detail' in body && typeof body.detail === 'string')
     return body.detail
-  return `请求未完成（HTTP ${status}），请重试。`
+  return `Request failed (HTTP ${status}). Please try again.`
 }
 
 export function createSessionClient(
@@ -42,7 +43,7 @@ export function createSessionClient(
       })
     } catch (error) {
       if (signal?.aborted) throw error
-      throw new Error('无法连接服务，请检查网络或稍后重试。')
+      throw new Error('Could not connect to the service. Check your network or try again later.')
     }
     if (!response.ok) {
       const data: unknown = await response.json().catch(() => null)
@@ -56,7 +57,7 @@ export function createSessionClient(
     try {
       data = (await response.json()) as ScoutSession
     } catch {
-      throw new Error('服务返回了无法读取的数据，请稍后重试。')
+      throw new Error('The service returned unreadable data. Try again later.')
     }
     if (
       !data ||
@@ -72,7 +73,9 @@ export function createSessionClient(
       !Array.isArray(data.errors) ||
       !Array.isArray(data.warnings)
     )
-      throw new Error('服务返回的会话格式不正确，请检查 API 配置。')
+      throw new Error(
+        'The service returned an invalid session response. Check your API configuration.',
+      )
     return data
   }
   const pathFor = (id: string) => `/sessions/${encodeURIComponent(id)}`

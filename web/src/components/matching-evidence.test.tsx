@@ -8,16 +8,24 @@ import { MatchingEvidence } from './matching-evidence'
 test('matching evidence preserves quotes and source links while presenting readable provenance', () => {
   const reason = createRecommendationFixture().matching_reasons[0]!
   reason.profile_evidence = [
-    { document_id: 'profile:session-secret:resume', excerpt: '简历项目经历', source_url: null },
-    { document_id: 'profile:session-secret:description', excerpt: '自述经历', source_url: null },
+    {
+      document_id: 'profile:session-secret:resume',
+      excerpt: 'Resume project experience',
+      source_url: null,
+    },
+    {
+      document_id: 'profile:session-secret:description',
+      excerpt: 'Experience from introduction',
+      source_url: null,
+    },
     {
       document_id: 'profile:session-secret:answer:request-secret',
-      excerpt: '补充经历',
+      excerpt: 'Additional experience',
       source_url: null,
     },
   ]
   const html = renderToStaticMarkup(<MatchingEvidence reasons={[reason]} />)
-  for (const label of ['岗位来源', '已上传简历', '自我介绍', '补充回答'])
+  for (const label of ['Job listing', 'Uploaded resume', 'Introduction', 'Additional answer'])
     expect(html).toContain(label)
   for (const reference of [...reason.job_evidence, ...reason.profile_evidence]) {
     expect(html).toContain(`“${reference.excerpt}”`)

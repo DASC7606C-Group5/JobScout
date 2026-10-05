@@ -9,7 +9,7 @@ export function sessionQueryOptions(client: SessionClient, sessionId: string | n
   return queryOptions({
     queryKey: sessionKey(sessionId),
     queryFn: ({ signal }) => {
-      if (!sessionId) throw new Error('尚未创建会话。')
+      if (!sessionId) throw new Error('No session has been created yet.')
       return client.get(sessionId, signal)
     },
     enabled: sessionId !== null,

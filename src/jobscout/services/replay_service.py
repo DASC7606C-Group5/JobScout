@@ -66,9 +66,9 @@ class ReplayProvider:
                     options = [
                         {"id": key, "label": label}
                         for key, label in (
-                            ("Hong Kong", "香港"),
-                            ("深圳", "深圳"),
-                            ("unrestricted", "不限地点"),
+                            ("Hong Kong", "Hong Kong"),
+                            ("Shenzhen", "Shenzhen"),
+                            ("unrestricted", "Any location"),
                         )
                     ]
                 elif field == "preferences.employment_type":
@@ -76,22 +76,22 @@ class ReplayProvider:
                     options = [
                         {"id": key, "label": label}
                         for key, label in (
-                            ("internship", "实习"),
-                            ("full-time", "全职"),
-                            ("part-time", "兼职"),
-                            ("unrestricted", "不限类型"),
+                            ("internship", "Internship"),
+                            ("full-time", "Full-time"),
+                            ("part-time", "Part-time"),
+                            ("unrestricted", "Any employment type"),
                         )
                     ]
                 label = {
-                    "target_directions": "请选择最多三个求职方向。",
-                    "preferences.location": "希望在哪个地点工作？",
-                    "preferences.employment_type": "希望寻找哪种工作类型？",
-                }.get(field, f"请直接补充 {field}。")
+                    "target_directions": "Choose up to three job directions.",
+                    "preferences.location": "Where would you like to work?",
+                    "preferences.employment_type": "What type of employment are you looking for?",
+                }.get(field, f"Please provide information for {field}.")
                 output["questions"].append(
                     {
                         "field": field,
                         "question": label,
-                        "reason": "搜索前需要明确此条件。",
+                        "reason": "This must be clear before we search.",
                         "control_type": control,
                         "options": options,
                     }
@@ -201,7 +201,9 @@ class ReplaySearchService:
         if timeout <= 0:
             raise TimeoutError("Replay retrieval deadline exhausted")
         dataset = json.loads(DATA.read_text(encoding="utf-8"))
-        result = SearchResult(warnings=["演示回放：岗位为合成样例，不是真实招聘信息。"])
+        result = SearchResult(
+            warnings=["Replay demo: these are sample listings, not real job postings."]
+        )
         for index, request in enumerate(requests):
             selected = []
             for row in dataset["vacancies"]:

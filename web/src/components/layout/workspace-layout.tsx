@@ -12,7 +12,7 @@ export function WorkspaceLayout() {
         href="#main-content"
         className="sr-only z-50 rounded-lg bg-base-content p-3 text-base-100 focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
       >
-        跳转到主要内容
+        Skip to main content
       </a>
       <Sidebar />
       <div className="min-w-0">
@@ -23,7 +23,7 @@ export function WorkspaceLayout() {
         >
           <Outlet />
           <footer className="mt-9 flex flex-wrap items-center justify-end gap-2 border-t border-base-300 pt-5 text-[10px] text-base-content/45">
-            <span>岗位信息以来源页面为准</span>
+            <span>Refer to the source page for job details</span>
           </footer>
         </main>
       </div>

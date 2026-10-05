@@ -22,7 +22,7 @@ def recommend_node(state: AgentState) -> RecommendationNodeUpdate:
             "errors": [
                 WorkflowError(
                     code="recommendation_missing_profile",
-                    message="无法生成推荐：缺少 UserProfile。",
+                    message="Could not generate recommendations: UserProfile is missing.",
                     stage="recommend",
                 )
             ],

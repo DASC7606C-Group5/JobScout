@@ -50,8 +50,8 @@ describe('resume file input', () => {
       [new File(['sample'], 'resume.doc'), 'PDF'],
       [new File(['sample'], 'pdf'), 'PDF'],
       [new File(['sample'], 'resume.rtf'), 'PDF'],
-      [new File([], 'resume.pdf'), '文件为空'],
-      [new File(['  '], 'resume.txt'), '没有文字'],
+      [new File([], 'resume.pdf'), 'file is empty'],
+      [new File(['  '], 'resume.txt'), 'contains no text'],
       [new File(['bad\u0000text'], 'resume.txt'), 'UTF-8'],
       [new File([new Uint8Array([0xff])], 'resume.txt'), 'UTF-8'],
       [new File([new Uint8Array(MAX_RESUME_BYTES + 1)], 'resume.pdf'), '10 MB'],
@@ -63,10 +63,14 @@ describe('resume file input', () => {
   test('preserves useful parser errors and handles proxy and network failures', async () => {
     const file = new File(['sample'], 'resume.pdf')
     for (const [status, body, expected] of [
-      [422, { detail: { code: 'no_extractable_text', message: '扫描件请先进行 OCR。' } }, 'OCR'],
-      [415, { detail: '不支持这种文件格式。' }, '不支持'],
+      [
+        422,
+        { detail: { code: 'no_extractable_text', message: 'Run OCR on this scan first.' } },
+        'OCR',
+      ],
+      [415, { detail: 'This file format is not supported.' }, 'not supported'],
       [413, {}, '10 MB'],
-      [503, { detail: 'internal diagnostics' }, '暂时不可用'],
+      [503, { detail: 'internal diagnostics' }, 'temporarily unavailable'],
     ] as const) {
       const read = createResumeReader('/api/v1', () =>
         Promise.resolve(Response.json(body, { status })),
@@ -76,25 +80,25 @@ describe('resume file input', () => {
     const proxyError = createResumeReader('/api/v1', () =>
       Promise.resolve(new Response('<html>Bad gateway</html>', { status: 502 })),
     )
-    await expectFailure(proxyError(file), '暂时不可用')
+    await expectFailure(proxyError(file), 'temporarily unavailable')
     const offline = createResumeReader('/api/v1', () => Promise.reject(new TypeError('offline')))
-    await expectFailure(offline(file), '无法连接')
+    await expectFailure(offline(file), 'Could not connect')
   })
 
   test('rejects invalid successful responses', async () => {
     const file = new File(['sample'], 'resume.pdf')
     for (const body of [{ name: 'resume.pdf' }, { name: '', text: 'Python' }, null]) {
       const read = createResumeReader('/api/v1', () => Promise.resolve(Response.json(body)))
-      await expectFailure(read(file), '简历格式不正确')
+      await expectFailure(read(file), 'invalid resume format')
     }
     const invalidJson = createResumeReader('/api/v1', () =>
       Promise.resolve(new Response('<html>Not JSON</html>')),
     )
-    await expectFailure(invalidJson(file), '简历格式不正确')
+    await expectFailure(invalidJson(file), 'invalid resume format')
     const empty = createResumeReader('/api/v1', () =>
       Promise.resolve(Response.json({ name: file.name, text: ' ' })),
     )
-    await expectFailure(empty(file), '没有文字')
+    await expectFailure(empty(file), 'contains no text')
   })
 
   test('passes cancellation to fetch and preserves abort errors', async () => {

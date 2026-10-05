@@ -1,4 +1,4 @@
-const FALLBACK_WARNING_MARKER = '模型分析不可用或证据未通过核验；已使用确定性保守回退。'
+const FALLBACK_WARNING_MARKER = 'a deterministic fallback was used.'
 const MERGED_JOB_WARNING_MARKER = 'no responsibilities or required skills extracted.'
 
 type WarningGroup = {
@@ -11,7 +11,7 @@ function WarningGroup({ label, warnings }: WarningGroup) {
   return (
     <details className="collapse-arrow collapse mb-5 rounded-xl border border-base-300 bg-base-100 text-left text-xs leading-6 text-base-content/70">
       <summary className="collapse-title text-sm font-medium">
-        {label}（{warnings.length} 条）
+        {label} ({warnings.length})
       </summary>
       <div className="collapse-content space-y-2">
         {warnings.map((warning) => (
@@ -37,9 +37,9 @@ export function ResultWarnings({ warnings }: { warnings: string[] }) {
       fallbackWarnings.push(warning)
     } else if (warning.includes(MERGED_JOB_WARNING_MARKER)) {
       mergedJobWarnings.push(warning)
-    } else if (warning.startsWith('岗位 ')) {
+    } else if (warning.startsWith('Job ')) {
       jobQualityWarnings.push(warning)
-    } else if (warning.startsWith('无法可靠验证 ')) {
+    } else if (warning.startsWith('Could not reliably verify ')) {
       preferenceWarnings.push(warning)
     } else if (warning.includes('/') && warning.includes(':')) {
       sourceWarnings.push(warning)
@@ -50,12 +50,12 @@ export function ResultWarnings({ warnings }: { warnings: string[] }) {
 
   return (
     <>
-      <WarningGroup label="模型分析回退" warnings={fallbackWarnings} />
-      <WarningGroup label="岗位描述字段缺失" warnings={mergedJobWarnings} />
-      <WarningGroup label="岗位证据与时效提示" warnings={jobQualityWarnings} />
-      <WarningGroup label="偏好核验提示" warnings={preferenceWarnings} />
-      <WarningGroup label="来源检索与覆盖提示" warnings={sourceWarnings} />
-      <WarningGroup label="其他提示" warnings={otherWarnings} />
+      <WarningGroup label="Model analysis fallback" warnings={fallbackWarnings} />
+      <WarningGroup label="Missing job description fields" warnings={mergedJobWarnings} />
+      <WarningGroup label="Job evidence and status" warnings={jobQualityWarnings} />
+      <WarningGroup label="Preference checks" warnings={preferenceWarnings} />
+      <WarningGroup label="Source search and coverage" warnings={sourceWarnings} />
+      <WarningGroup label="Other notices" warnings={otherWarnings} />
     </>
   )
 }

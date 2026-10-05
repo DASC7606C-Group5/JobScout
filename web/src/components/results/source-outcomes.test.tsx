@@ -7,7 +7,7 @@ import { SourceOutcomes } from './source-outcomes'
 
 const outcome: SourceOutcome = {
   request_index: 0,
-  target_direction: '前端开发',
+  target_direction: 'Frontend development',
   source: 'JobsDB',
   candidate_count: 3,
   returned_count: 0,
@@ -21,8 +21,8 @@ test('source coverage distinguishes an empty successful search from an outage', 
   const html = renderToStaticMarkup(
     <SourceOutcomes outcomes={[outcome, { ...outcome, source: 'Liepin', status: 'blocked' }]} />,
   )
-  expect(html).toContain('检索成功，无结果')
-  expect(html).toContain('访问受限')
+  expect(html).toContain('Search complete, no results')
+  expect(html).toContain('Access restricted')
   expect(html).toContain('collapse-content')
   expect(html).not.toContain('open=""')
 })
@@ -41,9 +41,9 @@ test('source coverage includes incomplete and excerpt counts without displaying 
       ]}
     />,
   )
-  expect(html).toContain('3 个结果')
-  expect(html).toContain('2 份仅有摘要')
-  expect(html).toContain('1 份信息待补充')
-  expect(html).toContain('检索状态待确认')
+  expect(html).toContain('3 results')
+  expect(html).toContain('2 summaries only')
+  expect(html).toContain('1 incomplete listing')
+  expect(html).toContain('Search status unconfirmed')
   expect(html).not.toContain('new_status')
 })

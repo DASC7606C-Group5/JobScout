@@ -12,7 +12,7 @@ function Responses({ responses }: { responses: ConversationResponse[] }) {
           <dt className="mb-1.5 text-xs font-medium text-base-content/60">{response.label}</dt>
           <dd className="text-sm leading-6">
             {response.status === 'skipped' ? (
-              <span className="badge badge-ghost text-xs badge-sm">已跳过（选填）</span>
+              <span className="badge badge-ghost text-xs badge-sm">Skipped (optional)</span>
             ) : Array.isArray(response.value) ? (
               response.value.length ? (
                 <div className="flex flex-wrap gap-2">
@@ -26,10 +26,10 @@ function Responses({ responses }: { responses: ConversationResponse[] }) {
                   ))}
                 </div>
               ) : (
-                '未填写'
+                'Not provided'
               )
             ) : (
-              <span className="whitespace-pre-wrap">{response.value || '未填写'}</span>
+              <span className="whitespace-pre-wrap">{response.value || 'Not provided'}</span>
             )}
           </dd>
         </div>
@@ -62,7 +62,7 @@ export function ConversationHistory({
   const history = (
     <div
       role="log"
-      aria-label="对话记录"
+      aria-label="Conversation history"
       className={`space-y-4 ${collapsed ? 'collapse-content px-5 sm:px-7' : 'p-5 sm:p-7'}`}
     >
       {messages.map((message) => (
@@ -71,7 +71,7 @@ export function ConversationHistory({
           className={`chat min-w-0 ${message.role === 'user' ? 'chat-end' : 'chat-start'}`}
         >
           <div className="chat-header mb-1.5 text-xs font-medium text-base-content/55">
-            {message.role === 'user' ? '你' : 'JobScout 助手'}
+            {message.role === 'user' ? 'You' : 'JobScout assistant'}
           </div>
           <div
             className={`chat-bubble max-w-[92%] space-y-3 rounded-2xl p-4 text-base-content shadow-none sm:max-w-[85%] ${message.role === 'user' ? 'bg-primary/15' : 'bg-base-200/65'}`}
@@ -98,14 +98,14 @@ export function ConversationHistory({
   )
   return collapsed ? (
     <details className="collapse-arrow collapse mb-5 rounded-xl border border-base-300 bg-base-100">
-      <summary className="collapse-title text-sm font-semibold">查看对话历史</summary>
+      <summary className="collapse-title text-sm font-semibold">View conversation history</summary>
       {history}
     </details>
   ) : (
     <section className="card mb-5 border border-base-300 bg-base-100 shadow-sm">
       <h2 className="flex items-center gap-2 border-b border-base-300 px-5 py-4 text-sm font-semibold sm:px-7">
         <Icon name="sparkles" size={16} />
-        我们的对话
+        Conversation
       </h2>
       {history}
     </section>

@@ -80,45 +80,45 @@ _CONFIRM_MESSAGES = {
     "search now",
 }
 _FIELD_LABELS = {
-    "education": "教育背景",
-    "skills": "技能",
-    "internships": "实习经历",
-    "projects": "项目经历",
-    "target_directions": "求职方向",
-    "preferences.location": "工作地点",
-    "preferences.location_unrestricted": "工作地点",
-    "preferences.employment_type": "工作类型",
-    "preferences.employment_type_unrestricted": "工作类型",
-    "preferences.salary_range": "期望薪资",
-    "preferences.work_mode": "工作方式",
-    "preferences.industry": "行业偏好",
+    "education": "Education",
+    "skills": "Skills",
+    "internships": "Internships",
+    "projects": "Projects",
+    "target_directions": "Job directions",
+    "preferences.location": "Work location",
+    "preferences.location_unrestricted": "Work location",
+    "preferences.employment_type": "Employment type",
+    "preferences.employment_type_unrestricted": "Employment type",
+    "preferences.salary_range": "Expected salary",
+    "preferences.work_mode": "Work arrangement",
+    "preferences.industry": "Industry preference",
 }
 _PREFERENCE_LABELS = {
     "preferences.employment_type": {
-        "full-time": "全职",
-        "part-time": "兼职",
-        "internship": "实习",
-        "contract": "合同制",
-        "freelance": "自由职业",
-        "unrestricted": "不限",
+        "full-time": "Full-time",
+        "part-time": "Part-time",
+        "internship": "Internship",
+        "contract": "Contract",
+        "freelance": "Freelance",
+        "unrestricted": "No preference",
     },
     "preferences.work_mode": {
-        "onsite": "现场办公",
-        "on-site": "现场办公",
-        "hybrid": "混合办公",
-        "remote": "远程办公",
-        "unrestricted": "不限",
+        "onsite": "On-site",
+        "on-site": "On-site",
+        "hybrid": "Hybrid",
+        "remote": "Remote",
+        "unrestricted": "No preference",
     },
 }
 
 
 def _display_value(field: str, value: str | list[str] | bool | None) -> str | list[str]:
     if isinstance(value, list):
-        return value if value else "未填写"
+        return value if value else "Not provided"
     if isinstance(value, bool):
-        return "不限" if value else "按指定条件"
+        return "No preference" if value else "As specified"
     if value is None or not value.strip():
-        return "未填写"
+        return "Not provided"
     return _PREFERENCE_LABELS.get(field, {}).get(value.casefold(), value)
 
 
@@ -135,7 +135,7 @@ def _edited_responses(
         if primary in {"preferences.location", "preferences.employment_type"}:
             name = primary.removeprefix("preferences.")
             unrestricted = getattr(profile.preferences, name + "_unrestricted")
-            value = "不限" if unrestricted else getattr(profile.preferences, name)
+            value = "No preference" if unrestricted else getattr(profile.preferences, name)
         responses.append(
             ConversationResponse(label=_FIELD_LABELS[field], value=_display_value(primary, value))
         )
@@ -167,11 +167,11 @@ def _message(role: str, text: str, question_ids: list[str] | None = None) -> Con
 
 def _failure(code: str, stage: str, *, retryable: bool = True) -> dict[str, Any]:
     messages = {
-        "profile_input": "请提供简历或个人描述后重试。",
-        "invalid_answer": "回答格式无效，请检查问题选项或直接编辑条件。",
-        "search_unavailable": "招聘来源暂时不可用，请稍后重试。",
-        "operation_timeout": "本次搜索已达到时间上限，请重试。",
-        "model_auth": "模型服务认证失败，请检查服务配置。",
+        "profile_input": "Provide a resume or personal introduction, then try again.",
+        "invalid_answer": "The answer format is invalid. Check the question options or edit your criteria directly.",
+        "search_unavailable": "Job sources are temporarily unavailable. Try again later.",
+        "operation_timeout": "This search reached its time limit. Please try again.",
+        "model_auth": "Model service authentication failed. Check the service configuration.",
     }
     return {
         "current_stage": "failed",
@@ -180,7 +180,9 @@ def _failure(code: str, stage: str, *, retryable: bool = True) -> dict[str, Any]
         "errors": [
             WorkflowError(
                 code=code,
-                message=messages.get(code, "本次分析未完成；输入已保留，可重试。"),
+                message=messages.get(
+                    code, "Analysis did not finish. Your input has been saved; you can try again."
+                ),
                 stage=stage,
             )
         ],
@@ -314,7 +316,9 @@ def build_live_graph(
                 profile = await conversation.extract(inputs, state["session_id"])
             history = list(state.get("conversation", []))
             if not history:
-                history.append(_message("user", str(inputs.get("description") or "已上传简历。")))
+                history.append(
+                    _message("user", str(inputs.get("description") or "Resume uploaded."))
+                )
             return {
                 "profile": profile,
                 "profile_documents": documents,
@@ -384,20 +388,24 @@ def build_live_graph(
             return {
                 "clarification_questions": [],
                 "direct_edit_fields": profile.missing_required_fields,
-                "warnings": ["追问生成暂不可用，请在摘要中直接编辑条件。"],
+                "warnings": [
+                    "Follow-up question generation is unavailable. Edit your criteria directly in the summary."
+                ],
             }
         except Exception:
             return {
                 "clarification_questions": [],
                 "direct_edit_fields": profile.missing_required_fields,
-                "warnings": ["追问生成暂不可用，请在摘要中直接编辑条件。"],
+                "warnings": [
+                    "Follow-up question generation is unavailable. Edit your criteria directly in the summary."
+                ],
             }
         history = list(state.get("conversation", []))
         if questions:
             history.append(
                 _message(
                     "assistant",
-                    "请补充以下信息；可同时输入更正或跳过可选问题。\n"
+                    "Please provide the following information. You can also enter corrections or skip optional questions.\n"
                     + "\n".join(question.question for question in questions),
                     [q.question_id for q in questions],
                 )
@@ -521,7 +529,7 @@ def build_live_graph(
                     statuses[question.question_id] = (ClarificationStatus.SKIPPED, None)
                     responses.append(
                         ConversationResponse(
-                            label=question.question, value="已跳过", status="skipped"
+                            label=question.question, value="Skipped", status="skipped"
                         )
                     )
             questions = [
@@ -540,7 +548,11 @@ def build_live_graph(
                 _message(
                     "user",
                     request.message.strip()
-                    or ("确认搜索。" if is_confirm else "已提交回答或更新条件。"),
+                    or (
+                        "Search confirmed."
+                        if is_confirm
+                        else "Answer submitted or criteria updated."
+                    ),
                 ),
             ]
             history[-1] = history[-1].model_copy(
@@ -654,9 +666,9 @@ def build_live_graph(
             missing_fields=missing,
         )
         text = (
-            "请检查并确认检索条件；确认后才会搜索。"
+            "Review and confirm your search criteria. The search will begin after you confirm."
             if summary.ready
-            else "仍有必须确认的条件，请直接编辑摘要；最多选择三个方向，地点须为受支持地区或不限。"
+            else "Some required criteria still need confirmation. Edit the summary directly; choose up to three directions and select a supported location or no preference."
         )
         return {
             "search_summary": summary,
@@ -704,7 +716,12 @@ def build_live_graph(
             state["operation_deadline"] - start,
         )
         if budget <= 0:
-            return {"retrieval_round": 2, "warnings": ["已达到累计检索时限，保留已取得的岗位。"]}
+            return {
+                "retrieval_round": 2,
+                "warnings": [
+                    "The cumulative search time limit was reached. Keeping the jobs found so far."
+                ],
+            }
         try:
             async with asyncio.timeout(budget):
                 # Let cooperative sources aggregate completed results before our hard cutoff.
@@ -730,7 +747,10 @@ def build_live_graph(
                 "source_outcomes": outcomes,
                 "warnings": [
                     *found.warnings,
-                    *(f"部分来源未完成：{error.code}" for error in found.errors),
+                    *(
+                        f"Some sources could not be searched: {error.code}"
+                        for error in found.errors
+                    ),
                 ],
                 "retrieval_seconds": state.get("retrieval_seconds", 0.0)
                 + asyncio.get_running_loop().time()
@@ -745,14 +765,18 @@ def build_live_graph(
                 return {
                     "retrieval_round": 2,
                     "retrieval_seconds": RETRIEVAL_SECONDS,
-                    "warnings": ["检索超时，保留前一轮取得的岗位。"],
+                    "warnings": [
+                        "The search timed out. Keeping the jobs found in the previous round."
+                    ],
                 }
             return _failure("operation_timeout", "retrieve")
         except Exception:
             if state.get("raw_jobs"):
                 return {
                     "retrieval_round": 2,
-                    "warnings": ["补充检索未完成，保留前一轮取得的岗位。"],
+                    "warnings": [
+                        "The additional search did not finish. Keeping the jobs found in the previous round."
+                    ],
                 }
             return _failure("search_unavailable", "retrieve")
 
@@ -806,7 +830,7 @@ def build_live_graph(
                     update["jd_cache"] = export()
                 except Exception:
                     update["warnings"] = [
-                        "已完成岗位分析，但缓存未保存；后续搜索可能需要重新分析。"
+                        "Job analysis finished, but the cache was not saved. A later search may need to analyze these jobs again."
                     ]
                     logger.warning(
                         "workflow_cache_export_failed",
@@ -824,7 +848,9 @@ def build_live_graph(
             return {
                 "assessment": assessment,
                 "current_stage": "coverage",
-                "warnings": ["模型证据分析未完成，保留确定性分析结果。"],
+                "warnings": [
+                    "Model evidence analysis did not finish. Keeping the deterministic analysis results."
+                ],
             }
 
     def coverage(state: AgentState) -> dict[str, Any]:
@@ -858,9 +884,9 @@ def build_live_graph(
             session_id=state["session_id"], generated_at=datetime.now(UTC)
         )
         intro = (
-            f"已按确认条件整理 {len(result.jobs)} 个岗位，请结合来源链接核实职位详情。"
+            f"Found {len(result.jobs)} jobs matching your confirmed criteria. Check the source links to verify the details."
             if result.jobs
-            else "本次未找到符合已确认条件的岗位；未自动放宽条件，你可以编辑后重新搜索。"
+            else "No jobs matched your confirmed criteria. We did not broaden your search automatically; you can edit your criteria and search again."
         )
         result = result.model_copy(
             update={

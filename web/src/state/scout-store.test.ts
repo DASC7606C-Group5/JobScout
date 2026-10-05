@@ -23,7 +23,7 @@ describe('workspace state', () => {
     expect(createScoutStore().getState().saved).toEqual([])
     store.getState().toggleSaved(item)
     expect(store.getState().saved).toEqual([])
-    expect(store.getState().announcement).toContain('已取消收藏')
+    expect(store.getState().announcement).toContain('Removed from saved jobs')
   })
 
   test('merges the returned profile without replacing the description or resume', () => {

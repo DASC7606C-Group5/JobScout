@@ -33,22 +33,22 @@ export function JourneyAside() {
             A LITTLE GUIDANCE, A NEW BEGINNING
           </p>
           <h2 className="text-xl leading-relaxed font-semibold">
-            下一站，
+            Your next step,
             <br />
-            更适合你的地方。
+            somewhere that suits you.
           </h2>
           <p className="mt-3 text-xs leading-6 text-base-content/65">
-            从你的经历出发，逐步明确方向，
+            Start with your experience and clarify what you’re looking for,
             <br className="hidden xl:block" />
-            让每一次投递都多一分准备。
+            so you can feel more prepared with every application.
           </p>
         </div>
       </section>
       <p className="flex items-start gap-2 px-2 text-xs leading-5 text-base-content/50">
         <Icon name="footsteps" size={17} className="mt-0.5 shrink-0" />
-        每个人都有自己的节奏。
+        Everyone moves at their own pace.
         <br />
-        先迈出一小步，也很好。
+        Taking one small step is a good start.
       </p>
     </aside>
   )

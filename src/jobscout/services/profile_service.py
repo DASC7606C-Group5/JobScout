@@ -544,31 +544,31 @@ def _has_text(value: str | None) -> bool:
 
 
 # User-visible question copy. The frontend renders ``question`` and ``reason``
-# verbatim, so this text is Chinese and stays aligned with the copy used by the
-# demo adapter in ``web/src/lib/session-client.ts``.
+# verbatim, so this English text stays aligned with the copy used by the demo
+# adapter in ``web/src/lib/session-client.ts``.
 _MISSING_FIELD_QUESTIONS: dict[str, tuple[str, str]] = {
     "target_directions": (
-        "你希望寻找哪一类岗位？",
-        "求职方向用于确定搜索范围；多个方向可以用逗号分隔。",
+        "What kind of roles are you looking for?",
+        "Job directions define the search scope. Separate multiple directions with commas.",
     ),
     "preferences.location": (
-        "你希望在哪个城市工作？",
-        "请填写城市；如果没有地点偏好，可以回答“不限”。",
+        "Which city would you like to work in?",
+        "Enter a city. If you have no location preference, answer “No preference.”",
     ),
     "preferences.employment_type": (
-        "你更倾向哪种工作类型？",
-        "例如全职、实习或兼职；如果没有偏好，可以回答“不限”。",
+        "What type of employment are you looking for?",
+        "For example, full-time, internship, or part-time. If you have no preference, answer “No preference.”",
     ),
     "preferences.work_mode": (
-        "你对工作方式有什么偏好？",
-        "可以选择办公室、混合办公、远程，或者回答“不限”。",
+        "What is your preferred work arrangement?",
+        "Choose on-site, hybrid, or remote, or answer “No preference.”",
     ),
 }
 
 _CONFLICT_QUESTIONS: dict[str, tuple[str, str]] = {
     "skills": (
-        "你的简历和个人描述里提到的技能不一致，应该以哪一份为准？",
-        "请给出完整的技能列表，回答会整体替换当前的技能集合。",
+        "Your resume and introduction list different skills. Which should we use?",
+        "Provide your complete skills list. Your answer will replace the current list.",
     ),
 }
 
@@ -600,8 +600,8 @@ def build_clarification_questions(profile: UserProfile | None) -> list[Clarifica
 def _generic_question(field: str) -> tuple[str, str]:
     """Fallback copy for a field that has no curated question template."""
     return (
-        f"请补充「{field}」的相关信息。",
-        "该字段是开始岗位检索前必须确认的信息。",
+        f"Please provide information about {field}.",
+        "This information must be confirmed before we search for jobs.",
     )
 
 

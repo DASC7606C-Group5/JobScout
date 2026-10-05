@@ -18,9 +18,9 @@ from jobscout.services.profile_service import dedupe, parse_profile_input, split
 BACKGROUND_FIELDS = ("education", "skills", "internships", "projects")
 REQUIRED_FIELDS = ("target_directions", "preferences.location", "preferences.employment_type")
 _REQUIRED_QUESTIONS = {
-    "target_directions": "请选择最多三个明确的求职方向。",
-    "preferences.location": "请明确填写工作地点（香港、中国内地或不限）。",
-    "preferences.employment_type": "请明确填写工作类型（全职、实习、兼职、合同制、自由职业或不限）。",
+    "target_directions": "Choose up to three specific job directions.",
+    "preferences.location": "Specify your work location (Hong Kong, mainland China, or any location).",
+    "preferences.employment_type": "Specify your employment type (full-time, internship, part-time, contract, freelance, or no preference).",
 }
 OPTIONAL_FIELDS = (
     *BACKGROUND_FIELDS,
@@ -264,7 +264,7 @@ class ConversationService:
         draft = await self.provider.structured(
             QuestionGeneration,
             _messages(
-                "Ask at most three concise Chinese clarification questions. Only use allowed_fields. If required_fields exist, ask only those fields. Otherwise ask only useful missing context, and return [] when sufficient. Never ask a suppressed field. Directions must be explicitly user-chosen, at most three; offer choices but never choose. Location supports Hong Kong/mainland China or unrestricted. Employment accepts full-time/part-time/internship/contract/freelance or unrestricted. Informational messages are not questions. Options must have unique IDs; use a text control when free editing is needed.",
+                "Ask at most three concise clarification questions in English. Always write questions, reasons, and informational messages in English. Only use allowed_fields. If required_fields exist, ask only those fields. Otherwise ask only useful missing context, and return [] when sufficient. Never ask a suppressed field. Directions must be explicitly user-chosen, at most three; offer choices but never choose. Location supports Hong Kong/mainland China or unrestricted. Employment accepts full-time/part-time/internship/contract/freelance or unrestricted. Informational messages are not questions. Options must have unique IDs; use a text control when free editing is needed.",
                 {
                     "profile": profile.model_dump(),
                     "allowed_fields": allowed,
@@ -296,8 +296,10 @@ class ConversationService:
                 result.append(
                     ClarificationMessage(
                         field=field,
-                        question=_REQUIRED_QUESTIONS.get(field, "请补充此项求职条件。"),
-                        reason="开始检索前需要确认此条件。",
+                        question=_REQUIRED_QUESTIONS.get(
+                            field, "Please provide this job search preference."
+                        ),
+                        reason="This must be confirmed before we search.",
                         question_id=f"q{turn}:{field}",
                     )
                 )
@@ -309,7 +311,7 @@ class ConversationService:
         result = await self.provider.structured(
             AnswerInterpretation,
             _messages(
-                "Interpret this user's explicit additions and corrections only. Return changes to editable_fields; no inferred preferences. Preserve uncertain answers as no changes. Explicit corrections use replace; complementary background uses merge. Never truncate directions. Do not modify unrelated facts. A request merely to confirm/search yields no changes. Return Chinese/English text faithfully.",
+                "Interpret this user's explicit additions and corrections only. Return changes to editable_fields; no inferred preferences. Preserve uncertain answers as no changes. Explicit corrections use replace; complementary background uses merge. Never truncate directions. Do not modify unrelated facts. A request merely to confirm/search yields no changes. Preserve user-provided text in its original language.",
                 {
                     "profile": profile.model_dump(),
                     "message": message,

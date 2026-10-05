@@ -2,25 +2,25 @@ import type { ResumeSessionRequest, UserProfile } from './contracts'
 import { parseDirections } from './profile-form'
 
 export const summaryFields = [
-  ['education', '教育背景', 'array'],
-  ['skills', '技能', 'array'],
-  ['internships', '实习经历', 'array'],
-  ['projects', '项目经历', 'array'],
-  ['target_directions', '求职方向（最多三个）', 'array'],
-  ['preferences.location', '工作地点', 'text'],
-  ['preferences.location_unrestricted', '不限地点', 'boolean'],
-  ['preferences.employment_type', '工作类型', 'text'],
-  ['preferences.employment_type_unrestricted', '不限工作类型', 'boolean'],
-  ['preferences.salary_range', '期望薪资', 'text'],
-  ['preferences.work_mode', '工作方式', 'text'],
-  ['preferences.industry', '行业', 'text'],
+  ['education', 'Education', 'array'],
+  ['skills', 'Skills', 'array'],
+  ['internships', 'Internships', 'array'],
+  ['projects', 'Projects', 'array'],
+  ['target_directions', 'Job directions (up to 3)', 'array'],
+  ['preferences.location', 'Work location', 'text'],
+  ['preferences.location_unrestricted', 'Any location', 'boolean'],
+  ['preferences.employment_type', 'Employment type', 'text'],
+  ['preferences.employment_type_unrestricted', 'Any employment type', 'boolean'],
+  ['preferences.salary_range', 'Expected salary', 'text'],
+  ['preferences.work_mode', 'Work arrangement', 'text'],
+  ['preferences.industry', 'Industry', 'text'],
 ] as const
 export type SummaryKey = (typeof summaryFields)[number][0]
 export type SummaryDraft = Record<SummaryKey, string | boolean>
 
 export function summaryDirectionError(draft: SummaryDraft): string | null {
   return parseDirections(String(draft.target_directions)).length > 3
-    ? '最多选择三个求职方向，请减少方向后再保存。'
+    ? 'Choose no more than three job directions. Remove some before saving.'
     : null
 }
 

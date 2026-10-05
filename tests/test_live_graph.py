@@ -65,7 +65,11 @@ class FakeProvider:
             self.question_fields.append(fields)
             data = {
                 "questions": [
-                    {"field": field, "question": f"请补充 {field}", "reason": "完善条件"}
+                    {
+                        "field": field,
+                        "question": f"Please provide {field}",
+                        "reason": "This will help refine your search.",
+                    }
                     for field in fields[:3]
                 ]
             }
@@ -280,7 +284,7 @@ def test_three_optional_rounds_and_skipped_fields_never_repeat() -> None:
             submitted = state["conversation"][-2]
             assert submitted.responses[0].label == question.question
             assert submitted.responses[0].status == "skipped"
-            assert submitted.responses[0].value == "已跳过"
+            assert submitted.responses[0].value == "Skipped"
         assert len(set(asked)) == 3
         assert state["current_stage"] == "confirm"
         assert state["optional_rounds"] == 3
@@ -913,27 +917,27 @@ def test_conversation_keeps_free_text_and_displays_choice_labels_without_evidenc
                         "questions": [
                             {
                                 "field": "target_directions",
-                                "question": "你希望寻找哪些方向的职位？",
-                                "reason": "确认求职方向",
+                                "question": "What kind of roles are you looking for?",
+                                "reason": "Confirm your job directions.",
                                 "control_type": "multiple_choice",
                                 "options": [
-                                    {"id": "data", "label": "数据分析师"},
-                                    {"id": "backend", "label": "后端工程师"},
+                                    {"id": "data", "label": "Data Analyst"},
+                                    {"id": "backend", "label": "Backend Engineer"},
                                 ],
                             },
                             {
                                 "field": "preferences.location",
-                                "question": "你偏好的工作地点是？",
-                                "reason": "确认工作地点",
+                                "question": "Where would you like to work?",
+                                "reason": "Confirm your work location.",
                                 "control_type": "single_choice",
-                                "options": [{"id": "anywhere", "label": "不限"}],
+                                "options": [{"id": "anywhere", "label": "Any location"}],
                             },
                             {
                                 "field": "preferences.employment_type",
-                                "question": "你偏好的工作类型是？",
-                                "reason": "确认工作类型",
+                                "question": "What type of employment are you looking for?",
+                                "reason": "Confirm your employment type.",
                                 "control_type": "single_choice",
-                                "options": [{"id": "full", "label": "全职"}],
+                                "options": [{"id": "full", "label": "Full-time"}],
                             },
                         ]
                     }
@@ -961,23 +965,32 @@ def test_conversation_keeps_free_text_and_displays_choice_labels_without_evidenc
         assert submitted.text == "I also know SQL"
         assert [response.model_dump() for response in submitted.responses] == [
             {
-                "label": "你希望寻找哪些方向的职位？",
-                "value": ["数据分析师", "后端工程师"],
+                "label": "What kind of roles are you looking for?",
+                "value": ["Data Analyst", "Backend Engineer"],
                 "status": "answered",
             },
-            {"label": "你偏好的工作地点是？", "value": "不限", "status": "answered"},
-            {"label": "你偏好的工作类型是？", "value": "全职", "status": "answered"},
+            {
+                "label": "Where would you like to work?",
+                "value": "Any location",
+                "status": "answered",
+            },
+            {
+                "label": "What type of employment are you looking for?",
+                "value": "Full-time",
+                "status": "answered",
+            },
         ]
         assert "target_directions" not in submitted.model_dump_json()
         assert "preferences.location" not in submitted.model_dump_json()
         assert (
-            "target_directions: ['数据分析师', '后端工程师']" in state["profile_documents"][-1].text
+            "target_directions: ['Data Analyst', 'Backend Engineer']"
+            in state["profile_documents"][-1].text
         )
 
     asyncio.run(scenario())
 
 
-def test_edited_conditions_have_localized_values_and_one_response_per_preference() -> None:
+def test_edited_conditions_have_english_values_and_one_response_per_preference() -> None:
     async def scenario() -> None:
         graph, _, _, _ = setup()
         await graph.ainvoke(initial(), configuration())
@@ -998,14 +1011,14 @@ def test_edited_conditions_have_localized_values_and_one_response_per_preference
             configuration(),
         )
         submitted = state["conversation"][-2]
-        assert submitted.text == "已提交回答或更新条件。"
+        assert submitted.text == "Answer submitted or criteria updated."
         assert [(item.label, item.value) for item in submitted.responses] == [
-            ("工作类型", "不限"),
-            ("工作地点", "Shanghai"),
-            ("工作方式", "混合办公"),
-            ("期望薪资", "未填写"),
-            ("教育背景", "未填写"),
-            ("求职方向", ["data analyst", "backend engineer"]),
+            ("Employment type", "No preference"),
+            ("Work location", "Shanghai"),
+            ("Work arrangement", "Hybrid"),
+            ("Expected salary", "Not provided"),
+            ("Education", "Not provided"),
+            ("Job directions", ["data analyst", "backend engineer"]),
         ]
 
     asyncio.run(scenario())
@@ -1025,8 +1038,8 @@ def test_required_question_fallbacks_are_readable_and_empty_choices_allow_text()
                     "questions": [
                         {
                             "field": "target_directions",
-                            "question": "你希望寻找哪些方向的职位？",
-                            "reason": "确认求职方向",
+                            "question": "What kind of roles are you looking for?",
+                            "reason": "Confirm your job directions.",
                             "control_type": "multiple_choice",
                             "options": [],
                         }
@@ -1040,10 +1053,13 @@ def test_required_question_fallbacks_are_readable_and_empty_choices_allow_text()
         questions = await service.questions(UserProfile(profile_id="p"), fields, [], 1)
         assert len(questions) == 3
         assert questions[0].control_type == "text"
-        assert questions[1].question == "请明确填写工作地点（香港、中国内地或不限）。"
+        assert (
+            questions[1].question
+            == "Specify your work location (Hong Kong, mainland China, or any location)."
+        )
         assert (
             questions[2].question
-            == "请明确填写工作类型（全职、实习、兼职、合同制、自由职业或不限）。"
+            == "Specify your employment type (full-time, internship, part-time, contract, freelance, or no preference)."
         )
         assert all(question.required for question in questions)
         assert all("preferences." not in question.question for question in questions)

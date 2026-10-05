@@ -50,7 +50,7 @@ class SearchSummary(BaseModel):
     confirmed: bool = False
     editable_fields: list[str] = Field(default_factory=list)
     missing_fields: list[str] = Field(default_factory=list)
-    coverage_notice: str = "检索香港及中国内地受支持的招聘来源。"
+    coverage_notice: str = "Search supported job sources in Hong Kong and mainland China."
 
 
 class EvidenceReference(BaseModel):

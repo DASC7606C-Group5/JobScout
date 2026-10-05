@@ -36,7 +36,7 @@ describe('session query lifecycle', () => {
     const error: unknown = await cache
       .fetchQuery(sessionQueryOptions(client, 'missing'))
       .catch((cause: unknown) => cause)
-    expect(error).toHaveProperty('message', expect.stringContaining('会话已不存在'))
+    expect(error).toHaveProperty('message', expect.stringContaining('no longer available'))
     expect(requests).toBe(1)
     cache.clear()
   })

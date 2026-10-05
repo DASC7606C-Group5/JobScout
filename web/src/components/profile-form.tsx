@@ -50,8 +50,10 @@ export function ProfileForm() {
                 <Icon name="file" />
               </span>
               <div>
-                <h2 className="text-lg font-semibold">先认识一下你</h2>
-                <p className="mt-1 text-xs text-base-content/60">你的经历，是发现好机会的起点</p>
+                <h2 className="text-lg font-semibold">Let’s get to know you</h2>
+                <p className="mt-1 text-xs text-base-content/60">
+                  Your experience is a great place to start.
+                </p>
               </div>
             </div>
           </div>
@@ -75,7 +77,7 @@ export function ProfileForm() {
               className="btn min-w-40 rounded-xl border-0 btn-primary"
               disabled={reading}
             >
-              {reading ? '正在读取…' : '开始分析与对话'}
+              {reading ? 'Reading…' : 'Analyze and continue'}
               <Icon name="arrow" size={18} />
             </button>
           </div>

@@ -148,7 +148,9 @@ def _preference_check(profile: UserProfile, job: JobPosting) -> tuple[bool, list
     )
     if _confirmed(profile, "location") and preferences.location and not unrestricted:
         if not job.location.strip() or _normalize(job.location) == "unknown":
-            warnings.append(f"岗位 {job.job_id} 的地点未知，申请前请确认。")
+            warnings.append(
+                f"The location of job {job.job_id} is unknown. Confirm it before applying."
+            )
         elif not _location_matches(job.location, preferences.location):
             return False, []
     employment_unrestricted = preferences.employment_type_unrestricted and _confirmed(
@@ -162,7 +164,9 @@ def _preference_check(profile: UserProfile, job: JobPosting) -> tuple[bool, list
         requested = _employment_type(preferences.employment_type)
         actual = _job_employment_type(job)
         if requested is None or actual is None:
-            warnings.append(f"岗位 {job.job_id} 的工作类型无法验证，申请前请确认。")
+            warnings.append(
+                f"The employment type of job {job.job_id} could not be verified. Confirm it before applying."
+            )
         elif requested != actual:
             return False, []
     return True, warnings
@@ -244,31 +248,50 @@ def _evaluate(profile: UserProfile, job: JobPosting, warnings: list[str]) -> _Ca
         score += 70 * Fraction(len(requirements) - len(missing), len(requirements))
         score += 20 * Fraction(len(relevant), len(requirements))
     else:
-        warnings.append(f"岗位 {job.job_id} 缺少结构化技能要求，技能匹配依据不足。")
+        warnings.append(
+            f"Job {job.job_id} has no structured skill requirements, so there is limited evidence for assessing the skills match."
+        )
 
-    suggestions = [f"补充 {skill} 的学习与实践，并准备可展示的练习或项目。" for skill in missing]
+    suggestions = [
+        f"Build your {skill} skills through study or practice, and prepare an exercise or project to demonstrate them."
+        for skill in missing
+    ]
     if relevant:
-        suggestions.append(f"整理与 {', '.join(relevant)} 相关的项目或实习证据，说明职责与成果。")
+        suggestions.append(
+            f"Gather project or internship evidence related to {', '.join(relevant)}, and describe your responsibilities and results."
+        )
     else:
-        suggestions.append("对照岗位职责准备相关项目或实习案例，说明个人贡献与成果。")
+        suggestions.append(
+            "Prepare project or internship examples that relate to the job responsibilities, and describe your contributions and results."
+        )
 
     required_degree = _required_degree(job)
     if required_degree:
         if _degree_level(profile.education) >= required_degree:
             score += 10
-            suggestions.append("在简历中列明与岗位学历要求对应的教育经历。")
+            suggestions.append(
+                "List the education that meets the job’s education requirements on your resume."
+            )
         else:
             suggestions.append(
-                "当前教育信息未证明满足岗位学历要求，申请前请核实资格或同等经验条件。"
+                "Your current education information does not show that you meet the job’s education requirements. Verify your eligibility or equivalent experience before applying."
             )
     if any(re.search(r"\d+\s*(?:years?|年)", text, re.IGNORECASE) for text in job.responsibilities):
-        suggestions.append("核对 JD 中的经验年限要求；项目经历不能直接视为等量的全职工作年限。")
+        suggestions.append(
+            "Check the experience requirements in the job description. Time spent on projects does not automatically count as equivalent full-time work experience."
+        )
     if job.freshness_status == FreshnessStatus.UNKNOWN:
-        warnings.append(f"岗位 {job.job_id} 的有效状态为 unknown，申请前请访问来源确认。")
-        suggestions.append("访问岗位来源链接，确认岗位仍开放申请。")
+        warnings.append(
+            f"The status of job {job.job_id} is unknown. Check the source before applying."
+        )
+        suggestions.append("Visit the job source to confirm that applications are still open.")
     if warnings:
-        suggestions.append("核实岗位提示中的未知信息，再决定是否申请。")
-    suggestions.append("根据岗位职责调整简历，准备面试示例，并通过来源链接查看完整申请要求。")
+        suggestions.append(
+            "Verify any unknown details in the job listing before deciding whether to apply."
+        )
+    suggestions.append(
+        "Tailor your resume to the job responsibilities, prepare interview examples, and check the source link for the full application requirements."
+    )
     return _Candidate(
         item=RecommendationItem(
             job=job.model_copy(deep=True),
@@ -295,23 +318,31 @@ def recommend_jobs(
     break ties. Scores stay internal. Upstream warnings are preserved in the result.
     """
     if not session_id.strip():
-        raise RecommendationError("recommendation_invalid_session", "推荐需要非空的 session_id。")
+        raise RecommendationError(
+            "recommendation_invalid_session",
+            "A non-empty session_id is required for recommendations.",
+        )
     if (
         profile.missing_required_fields
         or profile.conflicts
         or not any(direction.strip() for direction in profile.target_directions)
     ):
         raise RecommendationError(
-            "recommendation_profile_not_ready", "画像存在缺失信息或待确认冲突。"
+            "recommendation_profile_not_ready",
+            "The profile has missing information or unresolved conflicts.",
         )
     generated_at = datetime.now(UTC) if now is None else now
     if generated_at.tzinfo is None or generated_at.utcoffset() is None:
-        raise RecommendationError("recommendation_invalid_time", "生成时间必须包含时区。")
+        raise RecommendationError(
+            "recommendation_invalid_time", "The generation time must include a time zone."
+        )
     generated_at = generated_at.astimezone(UTC)
     result_warnings = list(warnings)
     for field in ("salary_range", "work_mode", "industry"):
         if _confirmed(profile, field) and getattr(profile.preferences, field):
-            result_warnings.append(f"Schema v1 无法可靠验证 {field} 偏好，请在来源 JD 中核实。")
+            result_warnings.append(
+                f"Schema v1 cannot reliably verify the {field} preference. Check the original job description."
+            )
 
     candidates: list[_Candidate] = []
     seen_ids: set[str] = set()
@@ -319,7 +350,7 @@ def recommend_jobs(
     for job in jobs:
         if job.job_id in seen_ids:
             result_warnings.append(
-                f"岗位标识 {job.job_id} 重复，已跳过后续记录；请由岗位处理模块合并来源。"
+                f"Duplicate job ID {job.job_id}; later records were skipped. Merge their sources in the job processing module."
             )
             continue
         seen_ids.add(job.job_id)
@@ -342,10 +373,16 @@ def recommend_jobs(
     selected = candidates[:5]
     for candidate in selected:
         result_warnings.extend(candidate.warnings)
-    if excluded:
-        result_warnings.append(f"已排除 {excluded} 条过期、方向不符或已确认偏好不符的岗位。")
+    if excluded == 1:
+        result_warnings.append(
+            "Excluded 1 job because it was expired, outside your selected directions, or conflicted with confirmed preferences."
+        )
+    elif excluded > 1:
+        result_warnings.append(
+            f"Excluded {excluded} jobs because they were expired, outside your selected directions, or conflicted with confirmed preferences."
+        )
     if not selected:
-        result_warnings.append("没有符合当前条件的可推荐岗位。")
+        result_warnings.append("No recommended jobs match the current criteria.")
     return RecommendationResult(
         session_id=session_id,
         generated_at=generated_at,

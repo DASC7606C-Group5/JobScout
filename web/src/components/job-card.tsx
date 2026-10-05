@@ -4,9 +4,9 @@ import { Icon } from './icon'
 import { MatchingEvidence } from './matching-evidence'
 
 const statusLabels = {
-  active: { label: '招聘中', style: 'bg-primary/20 text-primary-content' },
-  unknown: { label: '时效待确认', style: 'bg-accent/40 text-accent-content' },
-  expired: { label: '已过期', style: 'bg-base-200 text-base-content/65' },
+  active: { label: 'Active', style: 'bg-primary/20 text-primary-content' },
+  unknown: { label: 'Status unconfirmed', style: 'bg-accent/40 text-accent-content' },
+  expired: { label: 'Expired', style: 'bg-base-200 text-base-content/65' },
 }
 
 export function JobCard({
@@ -41,7 +41,7 @@ export function JobCard({
           </div>
           <button
             className={`btn btn-square shrink-0 btn-ghost btn-sm ${saved ? 'text-secondary-content' : 'text-base-content/50'}`}
-            aria-label={`${saved ? '取消收藏' : '收藏'}${job.title}`}
+            aria-label={`${saved ? 'Remove saved job' : 'Save job'}: ${job.title}`}
             aria-pressed={saved}
             onClick={onToggle}
           >
@@ -59,7 +59,7 @@ export function JobCard({
           </span>
           <span className={`badge border-0 badge-sm ${status.style}`}>{status.label}</span>
         </div>
-        <p className="mt-4 text-sm font-semibold">{job.salary || '薪资未提供'}</p>
+        <p className="mt-4 text-sm font-semibold">{job.salary || 'Salary not provided'}</p>
         <div className="mt-3 flex flex-wrap gap-1.5">
           {job.required_skills.map((skill) => (
             <span
@@ -72,7 +72,7 @@ export function JobCard({
         </div>
         <details className="group mt-5 border-t border-base-300 pt-4">
           <summary className="flex cursor-pointer list-none items-center justify-between rounded text-xs font-medium">
-            岗位详情与准备建议
+            Job details and preparation tips
             <Icon name="chevron" size={16} className="transition-transform group-open:rotate-90" />
           </summary>
           <div className="mt-5 space-y-5 text-sm leading-6">
@@ -84,11 +84,12 @@ export function JobCard({
             ))}
             {job.description_is_excerpt && (
               <p className="text-xs text-base-content/60">
-                当前岗位说明仅有摘要，完整要求请核对来源页面。
+                This listing includes only a summary. Check the source page for the full
+                requirements.
               </p>
             )}
             <section>
-              <h4 className="mb-2 font-semibold">你将参与</h4>
+              <h4 className="mb-2 font-semibold">What you’ll do</h4>
               {job.responsibilities.length ? (
                 <ul className="list-disc space-y-1 pl-4 text-base-content/70">
                   {job.responsibilities.map((responsibility) => (
@@ -96,18 +97,18 @@ export function JobCard({
                   ))}
                 </ul>
               ) : (
-                <p className="text-base-content/60">暂未提供职责说明。</p>
+                <p className="text-base-content/60">No responsibilities provided.</p>
               )}
             </section>
             <section className="rounded-xl bg-secondary/25 p-4">
               <h4 className="mb-2 flex items-center gap-2 font-semibold">
                 <Icon name="sparkles" size={16} />
-                可以提前准备
+                How to prepare
               </h4>
               <p className="text-xs text-base-content/65">
                 {item.missing_skills.length
-                  ? `所提供材料中未体现或证据待补充：${item.missing_skills.join('、')}`
-                  : '暂未列出需要补充证据的技能。'}
+                  ? `Not found in the materials you shared, or more evidence is needed: ${item.missing_skills.join(', ')}`
+                  : 'No skills requiring additional evidence were listed.'}
               </p>
               {item.preparation_suggestions.length ? (
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-base-content/75">
@@ -116,34 +117,36 @@ export function JobCard({
                   ))}
                 </ul>
               ) : (
-                <p className="mt-2 text-base-content/65">暂未提供准备建议。</p>
+                <p className="mt-2 text-base-content/65">No preparation tips provided.</p>
               )}
             </section>
             <dl className="grid grid-cols-2 gap-3 text-xs">
               <div>
-                <dt className="text-base-content/50">信息来源</dt>
+                <dt className="text-base-content/50">Source</dt>
                 <dd className="mt-1">{job.source}</dd>
               </div>
               <div>
-                <dt className="text-base-content/50">获取时间</dt>
+                <dt className="text-base-content/50">Retrieved</dt>
                 <dd className="mt-1">{dateLabel(job.fetched_at)}</dd>
               </div>
               <div>
-                <dt className="text-base-content/50">发布时间</dt>
+                <dt className="text-base-content/50">Posted</dt>
                 <dd className="mt-1">{dateLabel(job.posted_at)}</dd>
               </div>
               <div>
-                <dt className="text-base-content/50">截止时间</dt>
+                <dt className="text-base-content/50">Deadline</dt>
                 <dd className="mt-1">{dateLabel(job.expiry_at)}</dd>
               </div>
             </dl>
             {job.freshness_status === 'unknown' && (
               <p className="rounded-lg bg-accent/30 p-3 text-xs text-accent-content">
-                尚未确认是否仍在招聘，请以来源页面为准。
+                We haven’t confirmed whether this role is still open. Check the source page.
               </p>
             )}
             {job.freshness_status === 'expired' && (
-              <p className="text-xs text-base-content/60">该岗位已过期，保留供参考。</p>
+              <p className="text-xs text-base-content/60">
+                This listing has expired and is shown for reference.
+              </p>
             )}
             <div className="flex flex-wrap gap-3">
               {links.map((href, linkIndex) => (
@@ -154,7 +157,7 @@ export function JobCard({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-xs text-primary-content underline-offset-4 hover:underline"
                 >
-                  {linkIndex ? `其他来源 ${linkIndex}` : '查看来源'}
+                  {linkIndex ? `Other source ${linkIndex}` : 'View source'}
                   <Icon name="external" size={12} />
                 </a>
               ))}
