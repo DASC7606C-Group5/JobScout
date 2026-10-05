@@ -1,5 +1,5 @@
 import { applicantErrorMessage } from '../../lib/applicant-errors'
-import type { ApplicantError, ScoutSession, StopReason } from '../../lib/contracts'
+import type { ApplicantError, ScoutSession } from '../../lib/contracts'
 import { Icon } from '../icon'
 const stages: Record<string, string> = {
   ingest: 'Reading your information',
@@ -16,13 +16,6 @@ const stages: Record<string, string> = {
   recommend: 'Assessing job matches',
   present: 'Preparing your recommendations',
 }
-const stopMessages: Record<StopReason, string> = {
-  target_reached: '',
-  source_exhausted: 'No more matching jobs were found for these criteria.',
-  budget_exhausted: 'Search finished with the matches found so far.',
-  user_stopped: 'Search ended. Your results are saved below.',
-  error: 'The search ended early. You can review the results below.',
-}
 const activities: Record<string, string> = {
   search_started: 'Looking for roles that fit your search',
   search_jobs: 'Looking for roles that fit your search',
@@ -35,10 +28,7 @@ const activities: Record<string, string> = {
 
 export function SearchActivity({ session }: { session: ScoutSession }) {
   const { progress } = session
-  if (!session.run_id) return null
-  const running = session.outcome === 'running'
-  const message = session.stop_reason && stopMessages[session.stop_reason]
-  if (!running) return message ? <p className="text-sm text-base-content/65">{message}</p> : null
+  if (!session.run_id || session.outcome !== 'running') return null
   const target = session.profile?.search_options.result_count ?? 10
   const matched = Math.min(progress.matched_count, target)
   return (

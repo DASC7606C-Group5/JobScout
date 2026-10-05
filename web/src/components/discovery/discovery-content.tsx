@@ -9,7 +9,7 @@ import { ProfileForm } from '../profile-form'
 import { Results } from '../results'
 import { SourceOutcomes } from '../results/source-outcomes'
 import { SearchSummary } from '../search-summary'
-import { SearchActivity, SearchFailure, SearchLoading } from './search-status'
+import { SearchFailure, SearchLoading } from './search-status'
 
 export function DiscoveryContent() {
   const { session, busy, error, retry, recovery } = useScoutSession()
@@ -93,7 +93,6 @@ function SessionContent() {
             retryable={session.retryable}
           />
           <div className="mt-5 space-y-5">
-            <SearchActivity session={session} />
             <SourceOutcomes outcomes={session.source_outcomes} />
             <ConversationHistory session={session} collapsed />
           </div>
@@ -102,11 +101,6 @@ function SessionContent() {
     case 'completed':
       return (
         <>
-          {session.run_id && session.stop_reason && session.stop_reason !== 'target_reached' && (
-            <div className="mb-6">
-              <SearchActivity session={session} />
-            </div>
-          )}
           <Results
             key={session.session_id}
             result={session.recommendation}
