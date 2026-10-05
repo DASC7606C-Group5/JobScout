@@ -15,7 +15,7 @@ from jobscout.schemas.job import FreshnessStatus, JobPosting
 from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.profile import ProfilePreferences, UserProfile
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult
-from jobscout.schemas.session import SessionResumeRequest
+from jobscout.schemas.session import SessionResponse, SessionResumeRequest
 from jobscout.services.job_processing_service import process_jobs
 from jobscout.services.job_retrieval.models import SourceOutcome
 from jobscout.services.notice_service import (
@@ -59,7 +59,7 @@ def test_notices_follow_final_merged_listing_instead_of_raw_record_gaps() -> Non
     raw_result = RecommendationResult(
         session_id="s",
         generated_at=NOW,
-        jobs=[RecommendationItem(job=processed.jobs[0])],
+        jobs=[RecommendationItem(job=processed.jobs[0], verification_status="confirmed")],
         notices=[make_notice("analysis_unavailable", job_id="discarded")],
     )
     result = finalize_recommendation(raw_result)
@@ -78,7 +78,14 @@ def test_job_notices_are_deduplicated_and_do_not_become_search_notices() -> None
         RecommendationResult(
             session_id="s",
             generated_at=NOW,
-            jobs=[RecommendationItem(job=job, notices=[notice], analysis_status="partial")],
+            jobs=[
+                RecommendationItem(
+                    job=job,
+                    notices=[notice],
+                    analysis_status="partial",
+                    verification_status="confirmed",
+                )
+            ],
             notices=[notice, notice, make_notice("analysis_unavailable", job_id="not-selected")],
         )
     )
@@ -135,24 +142,113 @@ def test_source_failures_aggregate_across_rounds_and_preserve_source_identity() 
     ]
 
 
-def test_only_confirmed_unverified_preferences_produce_notices() -> None:
+def test_preferences_do_not_create_blanket_notices_but_job_uncertainty_is_retained() -> None:
     profile = UserProfile(
         profile_id="p",
         preferences=ProfilePreferences(salary_range="30000", work_mode="remote", location="HK"),
-        confirmed_fields=["preferences.salary_range", "preferences.location"],
+        confirmed_fields=[
+            "preferences.salary_range",
+            "preferences.work_mode",
+            "preferences.location",
+        ],
+    )
+    recommendation = RecommendationResult(
+        session_id="s",
+        generated_at=NOW,
+        pending_jobs=[
+            RecommendationItem(
+                job=posting(location=""),
+                verification_status="pending",
+                unknown_conditions=["location"],
+            )
+        ],
+    )
+
+    async def project() -> SessionResponse:
+        manager = SessionService(object(), object())
+        manager.sessions["s"] = _Session(
+            "s", {"profile": profile, "recommendation": recommendation}, outcome="completed"
+        )
+        return await manager.get("s")
+
+    response = asyncio.run(project())
+    result = response.recommendation
+    assert result is not None
+    assert response.profile == profile
+    assert response.notices == result.notices == []
+    assert [
+        (notice.code, notice.preference, notice.job_id) for notice in result.pending_jobs[0].notices
+    ] == [("preference_unverified", "location", "selected")]
+
+
+def test_verified_conditions_remove_previous_job_notices_without_changing_source_facts() -> None:
+    original = RecommendationResult(
+        session_id="s",
+        generated_at=NOW,
+        pending_jobs=[
+            RecommendationItem(
+                job=posting(),
+                verification_status="pending",
+                unknown_conditions=["location", "employment_type"],
+            )
+        ],
+    )
+    pending = finalize_recommendation(original).pending_jobs[0]
+    assert {notice.preference for notice in pending.notices} == {"location", "employment_type"}
+    verified = pending.model_copy(
+        update={"verification_status": "confirmed", "unknown_conditions": []}
     )
     result = finalize_recommendation(
-        RecommendationResult(
-            session_id="s", generated_at=NOW, jobs=[RecommendationItem(job=posting(location=""))]
-        ),
-        profile=profile,
+        original.model_copy(update={"jobs": [verified], "pending_jobs": []})
     )
-    assert [(notice.code, notice.preference) for notice in result.notices] == [
-        ("preference_unverified", "salary_range")
+    assert result.jobs[0].job == original.pending_jobs[0].job
+    assert result.jobs[0].notices == []
+    assert {notice.preference for notice in pending.notices} == {"location", "employment_type"}
+
+
+def test_blanket_preference_notices_are_removed_without_hiding_source_failures() -> None:
+    source_failure = make_notice("source_unavailable", source="jobsdb")
+    result = RecommendationResult(
+        session_id="s",
+        generated_at=NOW,
+        notices=[
+            ApplicantNotice(
+                code="preference_unverified",
+                scope="session",
+                preference="salary_range",
+                message="Blanket preference reminder.",
+            ),
+            source_failure,
+        ],
+    )
+    updated = finalize_recommendation(result)
+    assert updated.notices == [source_failure]
+    assert finalize_recommendation(updated) == updated
+
+
+def test_preference_notice_requires_a_specific_job() -> None:
+    with pytest.raises(ValueError, match="^preference_unverified_requires_job$"):
+        make_notice("preference_unverified", preference="work_mode")
+
+
+@pytest.mark.parametrize("analysis_status", ["partial", "unavailable"])
+def test_incomplete_analysis_does_not_invent_unresolved_preferences(analysis_status: str) -> None:
+    item = RecommendationItem.model_validate(
+        {
+            "job": posting(),
+            "verification_status": "pending",
+            "analysis_status": analysis_status,
+            "unknown_conditions": [],
+        }
+    )
+    result = finalize_recommendation(
+        RecommendationResult(session_id="s", generated_at=NOW, pending_jobs=[item])
+    )
+    assert [(notice.code, notice.job_id) for notice in result.pending_jobs[0].notices] == [
+        (f"analysis_{analysis_status}", "selected")
     ]
-    assert [
-        (notice.code, notice.preference, notice.job_id) for notice in result.jobs[0].notices
-    ] == [("preference_unverified", "location", "selected")]
+    assert result.pending_jobs[0].unknown_conditions == []
+    assert result.pending_jobs[0].job == item.job
 
 
 def test_session_projection_keeps_diagnostics_private_and_honors_retryability() -> None:

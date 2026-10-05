@@ -6,7 +6,6 @@ from typing import Literal
 from jobscout.schemas.errors import ApplicantError
 from jobscout.schemas.job import FreshnessStatus
 from jobscout.schemas.notices import ApplicantNotice, NoticeCode
-from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
 from jobscout.services.job_retrieval.models import SourceOutcome
 
@@ -16,6 +15,7 @@ _PREFERENCES = {
     "industry": "industry",
     "location": "work location",
     "employment_type": "employment type",
+    "target_direction": "job direction",
 }
 _SOURCES = {
     "jobsdb": "JobsDB",
@@ -25,7 +25,13 @@ _SOURCES = {
     "remotive": "Remotive",
     "arbeitnow": "Arbeitnow",
     "careerjet": "Careerjet",
+    "careerjet_hk": "Careerjet",
+    "careerjet_cn": "Careerjet",
 }
+
+
+def source_label(source: str | None) -> str:
+    return _SOURCES.get(source or "", "A job source")
 
 
 def make_notice(
@@ -37,17 +43,20 @@ def make_notice(
     job_title: str | None = None,
 ) -> ApplicantNotice:
     """Only trusted templates supply copy; references never become diagnostic prose."""
+    if code == "preference_unverified" and not job_id:
+        raise ValueError("preference_unverified_requires_job")
     title = f"“{job_title}”" if job_title else "This role"
-    source_name = _SOURCES.get(source or "", "A job source")
+    source_name = source_label(source)
+    preference_name = _PREFERENCES.get(preference or "", "search criteria")
     messages: dict[NoticeCode, str] = {
-        "source_unavailable": f"{source_name} could not be searched. These results may miss some openings; try again later.",
-        "source_partial": f"Some listings from {source_name} could not be checked. You can still explore the available roles.",
+        "source_unavailable": f"{source_name} was unavailable, so these results cover fewer openings.",
+        "source_partial": f"Only some listings from {source_name} were available.",
         "coverage_limited": "These results cover a selection of openings. Change your search criteria to explore other roles.",
-        "listing_incomplete": f"{title} has a limited job description. Open the original listing for the full responsibilities and requirements.",
-        "listing_status_unverified": f"Check the original listing for {title} to confirm that applications are still open.",
-        "preference_unverified": f"The available listings do not confirm your {_PREFERENCES.get(preference or '', 'search')} preference. Check this before applying.",
-        "analysis_partial": f"Some requirements for {title} could not be assessed. The available matches are shown below; review the full listing before applying.",
-        "analysis_unavailable": f"Personal matching for {title} is temporarily limited. You can still read the job details and open the original listing.",
+        "listing_incomplete": f"Only a summary is available for {title}. See the full listing for details.",
+        "listing_status_unverified": f"Check whether applications for {title} are still open.",
+        "preference_unverified": f"Confirm the {preference_name} for {title} before applying.",
+        "analysis_partial": f"The match review for {title} covers only some requirements.",
+        "analysis_unavailable": f"A personal match review for {title} is unavailable. You can still view the listing.",
     }
     action: Literal["retry", "edit_conditions", "open_listing"] | None
     action = "open_listing" if job_id else "edit_conditions" if code == "coverage_limited" else None
@@ -87,23 +96,17 @@ def source_notices(outcomes: Iterable[SourceOutcome]) -> list[ApplicantNotice]:
 def finalize_recommendation(
     result: RecommendationResult,
     *,
-    profile: UserProfile | None = None,
     notices: Sequence[ApplicantNotice] = (),
 ) -> RecommendationResult:
     """Attach notices only to final selected, merged jobs, without changing ordering."""
-    # Import locally to avoid a cycle with the deterministic recommendation producer.
-    from jobscout.services.recommendation_service import _employment_type, _job_employment_type
-
     incoming = dedupe_notices([*result.notices, *notices])
-    global_notices = [notice for notice in incoming if not notice.job_id]
-    if profile is not None:
-        for field in ("salary_range", "work_mode", "industry"):
-            if f"preferences.{field}" in profile.confirmed_fields and getattr(
-                profile.preferences, field
-            ):
-                global_notices.append(make_notice("preference_unverified", preference=field))
+    global_notices = [
+        notice
+        for notice in incoming
+        if not notice.job_id and notice.code != "preference_unverified"
+    ]
     items = []
-    for item in result.jobs:
+    for item in [*result.jobs, *result.pending_jobs]:
         job = item.job
         values = dedupe_notices(
             [*item.notices, *(notice for notice in incoming if notice.job_id == job.job_id)]
@@ -119,6 +122,7 @@ def finalize_recommendation(
             "listing_status_unverified",
             "analysis_partial",
             "analysis_unavailable",
+            "preference_unverified",
         }
         values = [notice for notice in values if notice.code not in derived_codes]
         if not complete_description:
@@ -134,25 +138,14 @@ def finalize_recommendation(
                     job_id=job.job_id,
                 )
             )
-        if profile is not None:
-            preferences = profile.preferences
-            for field, unknown in (
-                ("location", not job.location.strip() or job.location.casefold() == "unknown"),
-                (
-                    "employment_type",
-                    _job_employment_type(job) is None
-                    or _employment_type(preferences.employment_type or "") is None,
-                ),
-            ):
-                if (
-                    unknown
-                    and f"preferences.{field}" in profile.confirmed_fields
-                    and getattr(preferences, field)
-                    and not getattr(preferences, field + "_unrestricted")
-                ):
-                    values.append(
-                        make_notice("preference_unverified", job_id=job.job_id, preference=field)
-                    )
+        if item.verification_status != "confirmed":
+            unknown = item.unknown_conditions
+            if not unknown and item.analysis_status == "complete":
+                unknown = ["search"]
+            for field in unknown:
+                values.append(
+                    make_notice("preference_unverified", job_id=job.job_id, preference=field)
+                )
         values = dedupe_notices(
             make_notice(
                 notice.code,
@@ -164,7 +157,13 @@ def finalize_recommendation(
             for notice in values
         )
         items.append(item.model_copy(update={"notices": values}))
-    return result.model_copy(update={"jobs": items, "notices": dedupe_notices(global_notices)})
+    return result.model_copy(
+        update={
+            "jobs": items[: len(result.jobs)],
+            "pending_jobs": items[len(result.jobs) :],
+            "notices": dedupe_notices(global_notices),
+        }
+    )
 
 
 _ERRORS: dict[str, tuple[str, str | None]] = {

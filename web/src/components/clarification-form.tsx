@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import type { ClarificationMessage } from '../lib/contracts'
-import { answerValidation, collectAnswers, pendingQuestions } from '../lib/conversation'
+import { collectAnswers, pendingQuestions } from '../lib/conversation'
 import { useScoutSession } from '../state/session-context'
 import { useSessionDraft, type SessionDraftValues } from '../state/use-session-draft'
 import { DraftStatus } from './draft-status'
@@ -28,11 +28,6 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
       onCompositionEnd={draft.onCompositionEnd}
       onSubmit={(event) => {
         event.preventDefault()
-        const validation = answerValidation(pending, values, skipped)
-        if (validation) {
-          setError(validation)
-          return
-        }
         const answers = collectAnswers(pending, values, skipped)
         if (!answers.length && !message.trim() && !skipped.length) {
           setError('Answer the questions, skip optional ones, or add a note.')
@@ -85,7 +80,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
           </label>
           <textarea
             id="conversation-message"
-            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 p-3 text-sm leading-6"
+            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 text-sm leading-6"
             value={message}
             onChange={(event) =>
               setDraft((previous) => ({ ...previous, message: event.target.value }))

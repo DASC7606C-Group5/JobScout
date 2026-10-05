@@ -2,7 +2,9 @@
 
 import re
 from dataclasses import dataclass
+from typing import get_args
 
+from jobscout.schemas.profile import EmploymentType
 from jobscout.schemas.search import SearchRequest
 
 from .models import RetrievalFailure
@@ -13,104 +15,12 @@ REGIONAL_SOURCES = {"hk": ("jobsdb",), "cn": ("zhaopin", "liepin", "shixiseng")}
 
 
 def location_region(location: str | None) -> str | None:
-    """Small explicit routing table, not a geocoder; unknown locations stay unknown."""
-    value = (location or "").strip().casefold()
-    aliases = {
-        "hk": (
-            "hong kong",
-            "hongkong",
-            "香港",
-            "kowloon",
-            "九龍",
-            "九龙",
-            "新界",
-            "new territories",
-        ),
-        "cn": (
-            "mainland china",
-            "中国大陆",
-            "中國大陸",
-            "中国内地",
-            "中國內地",
-            "beijing",
-            "shanghai",
-            "shenzhen",
-            "guangzhou",
-            "hangzhou",
-            "chengdu",
-            "北京",
-            "上海",
-            "深圳",
-            "广州",
-            "廣州",
-            "杭州",
-            "成都",
-            "武汉",
-            "武漢",
-            "南京",
-            "苏州",
-            "蘇州",
-            "天津",
-            "重庆",
-            "重慶",
-            "西安",
-            "厦门",
-            "廈門",
-            "广东",
-            "廣東",
-            "浙江",
-            "江苏",
-            "江蘇",
-            "四川",
-            "湖北",
-            "福建",
-            "山东",
-            "山東",
-        ),
-        "de": (
-            "germany",
-            "deutschland",
-            "德国",
-            "德國",
-            "berlin",
-            "munich",
-            "hamburg",
-            "cologne",
-            "frankfurt",
-        ),
-    }
-    if value in {"hk", "香港特别行政区", "香港特別行政區"}:
-        return "hk"
-    if value in {"cn", "china", "中国", "中國", "中国大陆", "中國大陸", "全国"}:
-        return "cn"
-    for region, names in aliases.items():
-        if any(
-            name in value
-            if any(ord(c) > 127 for c in name)
-            else re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", value)
-            for name in names
-        ):
-            return region
-    return None
+    """Use only cached directory facts; semantic parsing belongs to the model."""
+    from jobscout.services.location_service import get_location_catalog
 
-
-EMPLOYMENT_ALIASES = {
-    "full-time": {
-        "full time",
-        "fulltime",
-        "fulltime permanent",
-        "fulltime fixed term",
-        "full time permanent",
-        "permanent full time",
-        "employee / full time",
-        "full time (100%)",
-        "vollzeit",
-    },
-    "part-time": {"part time", "parttime", "parttime permanent", "parttime fixed term", "teilzeit"},
-    "internship": {"internship", "intern", "praktikum"},
-    "contract": {"contract"},
-    "freelance": {"freelance"},
-}
+    candidates = get_location_catalog().find(location or "")
+    regions = {item.region for item in candidates}
+    return next(iter(regions)) if len(regions) == 1 else None
 
 
 def normalized(value: str) -> str:
@@ -129,7 +39,7 @@ def validate_request(request: SearchRequest) -> None:
             "SEARCH_INPUT", "Specify employment_type OR employment_type_unrestricted=true."
         )
     if not request.employment_type_unrestricted and normalized(request.employment_type) not in {
-        normalized(k) for k in EMPLOYMENT_ALIASES
+        normalized(k) for k in get_args(EmploymentType)
     }:
         raise RetrievalFailure("SEARCH_INPUT", "Unsupported employment_type; see retrieval guide.")
     if request.work_mode and normalized(request.work_mode) not in {
@@ -158,7 +68,9 @@ def select_sources(request: SearchRequest) -> list[str]:
             or request.employment_type_unrestricted
             or normalized(request.employment_type) == "internship"
         ]
-    region = location_region(request.location)
+    region = (
+        request.location_ref.region if request.location_ref else location_region(request.location)
+    )
     if region in REGIONAL_SOURCES:
         return [
             s

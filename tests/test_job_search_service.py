@@ -133,12 +133,9 @@ def test_multiple_directions_reuse_snapshot_without_deduplicating() -> None:
     assert [o.request_index for o in result.outcomes] == [0, 1]
 
 
-@pytest.mark.parametrize(
-    "records", [[], [row(title="Unrelated", description="Unrelated")], [row(job_type="")]]
-)
-def test_normal_empty_is_not_source_error(records: list[JsonValue]) -> None:
+def test_normal_empty_is_not_source_error() -> None:
     result = asyncio.run(
-        service(Pages(page(records=records))).search_many_async([request(sources=["remotive"])])
+        service(Pages(page(records=[]))).search_many_async([request(sources=["remotive"])])
     )
     assert not result.raw_jobs and not result.errors
     assert result.outcomes[0].status == "empty"
@@ -280,25 +277,28 @@ def test_hard_location_and_type_match() -> None:
     assert len(result.raw_jobs) == 1
 
 
-def test_keyword_and_semantics() -> None:
+def test_missing_keyword_and_unknown_conditions_remain_available_for_semantic_assessment() -> None:
     result = asyncio.run(
-        service(Pages(page())).search_many_async(
-            [request(keywords=["Data Analyst", "Python"], sources=["remotive"])]
-        )
+        service(
+            Pages(page(records=[row(job_type="", candidate_required_location="Flexible")]))
+        ).search_many_async([request(keywords=["Data Analyst", "Python"], sources=["remotive"])])
     )
-    assert not result.raw_jobs
+    assert [job.source_job_id for job in result.raw_jobs] == ["10"]
+    assert result.raw_jobs[0].employment_type is None
+    assert result.raw_jobs[0].location == "Flexible"
     assert not result.errors
 
 
 def test_work_mode_does_not_infer_onsite_from_false() -> None:
-    client = Pages()
+    client = Pages(page("arbeitnow", [row(remote=False)]))
     result = asyncio.run(
         service(client, "arbeitnow").search_many_async(
             [request(work_mode="onsite", sources=["arbeitnow"])]
         )
     )
-    assert not result.raw_jobs and not client.urls
-    assert any("cannot verify" in w for w in result.warnings)
+    assert [job.source_job_id for job in result.raw_jobs] == ["fixture-10"]
+    assert result.raw_jobs[0].raw_payload["remote"] is False
+    assert not result.errors
 
 
 def test_remote_filter_keeps_only_remote_jobs() -> None:

@@ -2,18 +2,20 @@
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, get_args
 from urllib.parse import urlencode, urlparse
 
 from pydantic import JsonValue, ValidationError
 
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.notices import ApplicantNotice
+from jobscout.schemas.profile import EmploymentType
 from jobscout.schemas.search import SearchRequest
 from jobscout.services.notice_service import make_notice
 
+from .employment import source_employment_label
 from .models import RawJob, RetrievalFailure, workflow_error
-from .planning import EMPLOYMENT_ALIASES, matches_text, normalized, plan_source_query
+from .planning import matches_text, normalized, plan_source_query
 from .transport import JsonClient, Page
 
 URLS = {
@@ -69,23 +71,7 @@ def map_job(source: str, record: dict[str, JsonValue], page: Page, direction: st
         "title": record.get("title"),
         "company": record.get("company_name"),
         "description": record.get("description"),
-        "employment_type": next(
-            (
-                kind
-                for kind, aliases in EMPLOYMENT_ALIASES.items()
-                if any(
-                    isinstance(label, str) and normalized(label) in aliases
-                    for label in (
-                        [job_types]
-                        if isinstance(job_types, str)
-                        else job_types
-                        if isinstance(job_types, list)
-                        else []
-                    )
-                )
-            ),
-            None,
-        ),
+        "employment_type": source_employment_label(job_types),
         "salary": None if record.get("salary") == "" else record.get("salary"),
         "location": record.get(
             "candidate_required_location" if source == "remotive" else "location"
@@ -109,29 +95,26 @@ def map_job(source: str, record: dict[str, JsonValue], page: Page, direction: st
 
 
 def matches_request(job: RawJob, request: SearchRequest) -> bool:
+    """Reject only verified native contradictions; semantics are assessed after retrieval."""
+    from jobscout.services.location_service import get_location_catalog, within
+
     query = plan_source_query(request, job.source)
-    text = f"{job.title or ''} {job.description or ''}"
-    if not all(matches_text(text, phrase) for phrase in query.keywords):
-        return False
-    if query.location and not matches_text(job.location or "", query.location):
-        return False
-    types = (
-        job.raw_payload.get("job_type")
-        if job.source == "remotive"
-        else job.raw_payload.get("job_types")
-    )
-    labels = [types] if isinstance(types, str) else types if isinstance(types, list) else []
-    if not request.employment_type_unrestricted:
-        aliases = next(
-            v for k, v in EMPLOYMENT_ALIASES.items() if normalized(k) == query.employment_type
-        )
-        if not any(isinstance(t, str) and normalized(t) in aliases for t in labels):
+    wanted = request.location_ref
+    actual = get_location_catalog().find(job.location or "")
+    if wanted is not None and len(actual) == 1:
+        if not within(actual[0], wanted) and not within(wanted, actual[0]):
             return False
+    if (
+        not request.employment_type_unrestricted
+        and job.employment_type in get_args(EmploymentType)
+        and normalized(job.employment_type or "") != query.employment_type
+    ):
+        return False
     if request.work_mode:
-        # remote=false cannot distinguish onsite from hybrid: never infer it.
-        if normalized(request.work_mode) != "remote":
+        mode = normalized(request.work_mode)
+        if job.source == "remotive" and mode in {"on site", "onsite"}:
             return False
-        if job.source != "remotive" and job.raw_payload.get("remote") is not True:
+        if mode == "remote" and job.raw_payload.get("remote") is False:
             return False
     return True
 
@@ -169,7 +152,7 @@ class FeedAdapter:
         result = SourceResult() if result is None else result
         label = f"{self.name}/{request.target_direction}"
         result.warnings.append(
-            f"{label}: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded."
+            f"{label}: bounded feed; native contradictions excluded, uncertain conditions retained for semantic assessment."
         )
         if self.name == "remotive":
             result.warnings.append(
@@ -183,11 +166,6 @@ class FeedAdapter:
             result.warnings.append(
                 f"{label}: salary_range is an optional preference and is not applied; Group 6 must evaluate it."
             )
-        if request.work_mode and normalized(request.work_mode) != "remote":
-            result.warnings.append(
-                f"{label}: cannot verify onsite/hybrid mode; no candidates returned from this source."
-            )
-            return result
         pages = 1 if self.name == "remotive" else self.max_pages
         for number in range(1, pages + 1):
             query = plan_source_query(
@@ -228,7 +206,23 @@ class FeedAdapter:
                     f"{label}: using cached page {number}, fetched_at={page.fetched_at.isoformat()}."
                 )
             remaining = self.candidate_limit - result.candidate_count
-            for index, record in enumerate(records[:remaining]):
+            # Literal overlap is a bounded retrieval priority, never proof of relevance.
+            prioritized = sorted(
+                enumerate(records[:remaining]),
+                key=lambda indexed: (
+                    sum(
+                        matches_text(
+                            f"{indexed[1].get('title', '')} {indexed[1].get('description', '')}",
+                            phrase,
+                        )
+                        for phrase in query.keywords
+                    )
+                    if isinstance(indexed[1], dict)
+                    else 0
+                ),
+                reverse=True,
+            )
+            for index, record in prioritized:
                 await asyncio.sleep(0)
                 result.candidate_count += 1
                 try:

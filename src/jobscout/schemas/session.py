@@ -1,11 +1,13 @@
+from collections.abc import ItemsView, ValuesView
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from jobscout.schemas.conversation import ConversationMessage, QuestionAnswer, SearchSummary
 from jobscout.schemas.errors import ApplicantError
+from jobscout.schemas.execution import SearchProgress, StopReason
 from jobscout.schemas.notices import ApplicantNotice
-from jobscout.schemas.profile import ProfilePreferences, UserProfile
+from jobscout.schemas.profile import RawProfilePreferences, SearchOptions, UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
 from jobscout.schemas.search import ClarificationMessage
 from jobscout.services.job_retrieval.models import SourceOutcome
@@ -25,7 +27,44 @@ class SessionCreateRequest(BaseModel):
     description: str = ""
     resume: ResumeInput | None = None
     target_directions: list[str] = Field(default_factory=list)
-    preferences: ProfilePreferences = Field(default_factory=ProfilePreferences)
+    preferences: RawProfilePreferences = Field(default_factory=RawProfilePreferences)
+    search_options: SearchOptions = Field(default_factory=SearchOptions)
+
+
+type PatchValue = str | list[str] | bool | None
+
+
+class ProfilePatch(BaseModel):
+    """Only supplied fields change; null clears text and an empty list clears a list."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, serialize_by_alias=True)
+
+    education: list[str] = Field(default_factory=list)
+    skills: list[str] = Field(default_factory=list)
+    internships: list[str] = Field(default_factory=list)
+    projects: list[str] = Field(default_factory=list)
+    target_directions: list[str] = Field(default_factory=list)
+    location: str | None = Field(default=None, alias="preferences.location")
+    location_unrestricted: bool = Field(default=False, alias="preferences.location_unrestricted")
+    employment_type: str | None = Field(default=None, alias="preferences.employment_type")
+    employment_type_unrestricted: bool = Field(
+        default=False, alias="preferences.employment_type_unrestricted"
+    )
+    salary_range: str | None = Field(default=None, alias="preferences.salary_range")
+    work_mode: str | None = Field(default=None, alias="preferences.work_mode")
+    industry: str | None = Field(default=None, alias="preferences.industry")
+
+    def supplied(self) -> dict[str, PatchValue]:
+        return self.model_dump(by_alias=True, exclude_unset=True)
+
+    def items(self) -> ItemsView[str, PatchValue]:
+        return self.supplied().items()
+
+    def values(self) -> ValuesView[PatchValue]:
+        return self.supplied().values()
+
+    def __bool__(self) -> bool:
+        return bool(self.model_fields_set)
 
 
 class SessionResumeRequest(BaseModel):
@@ -37,7 +76,20 @@ class SessionResumeRequest(BaseModel):
     answers: list[QuestionAnswer] = Field(default_factory=list)
     skipped_question_ids: list[str] = Field(default_factory=list)
     action: Literal["answer", "confirm_search", "edit_conditions", "retry"] = "answer"
-    profile_updates: dict[str, str | list[str] | bool | None] = Field(default_factory=dict)
+    profile_updates: ProfilePatch = Field(default_factory=ProfilePatch)
+    search_options: SearchOptions | None = None
+
+    @field_serializer("profile_updates")
+    def serialize_updates(self, value: ProfilePatch) -> dict[str, PatchValue]:
+        return value.supplied()
+
+
+class SessionStopRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: str = Field(min_length=1, max_length=128)
+    expected_revision: int = Field(ge=0)
+    run_id: str = Field(min_length=1, max_length=128)
 
 
 class SessionResponse(BaseModel):
@@ -57,3 +109,6 @@ class SessionResponse(BaseModel):
     notices: list[ApplicantNotice] = Field(default_factory=list)
     retryable: bool = False
     mode: Literal["live", "replay"] = "live"
+    run_id: str | None = None
+    progress: SearchProgress = Field(default_factory=SearchProgress)
+    stop_reason: StopReason | None = None

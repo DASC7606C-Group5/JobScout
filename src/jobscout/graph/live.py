@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 from uuid import uuid4
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -30,22 +31,18 @@ from jobscout.services.conversation_service import (
     missing_fields,
     profile_documents,
 )
-from jobscout.services.job_assessment_service import JobAssessmentService, eligible_jobs
-from jobscout.services.job_processing_service import process_jobs, select_balanced_candidates
+from jobscout.services.job_assessment_service import JobAssessmentService
 from jobscout.services.job_retrieval.models import SearchResult
 from jobscout.services.job_search_service import JobSearchService
 from jobscout.services.llm_service import LLMProvider, ModelServiceError
 from jobscout.services.notice_service import (
     finalize_recommendation,
-    make_notice,
     source_notices,
 )
 from jobscout.services.profile_service import dedupe
-from jobscout.services.recommendation_service import recommend_jobs
+from jobscout.services.search_agent import SearchAgent
 
-OPERATION_SECONDS = 180.0
-RETRIEVAL_SECONDS = 60.0
-MAX_CANDIDATES = 20
+OPERATION_SECONDS = 300.0
 logger = logging.getLogger(__name__)
 _USAGE_FIELDS = (
     "structured_calls",
@@ -73,16 +70,6 @@ _SAFE_ERROR_CODES = {
     "model_transport",
     "model_http",
     "model_output",
-}
-_CONFIRM_MESSAGES = {
-    "确认",
-    "确认搜索",
-    "确认检索",
-    "开始搜索",
-    "开始检索",
-    "confirm",
-    "confirm search",
-    "search now",
 }
 _FIELD_LABELS = {
     "education": "Education",
@@ -264,6 +251,12 @@ def build_live_graph(
             "retrieval_round": 0,
             "retrieval_seconds": 0.0,
             "operation_deadline": 0.0,
+            "run_id": None,
+            "progress": {},
+            "progress_seq": 0,
+            "stop_reason": None,
+            "model_usage": {},
+            "agent_error_code": None,
             "resume_payload": {},
             "failed_resume_payload": None,
             "clarification_questions": [],
@@ -439,6 +432,12 @@ def build_live_graph(
             "recommendation": None,
             "outcome": "running",
             "current_stage": "validate",
+            "run_id": None,
+            "progress": {},
+            "progress_seq": 0,
+            "stop_reason": None,
+            "model_usage": {},
+            "agent_error_code": None,
         }
 
     def await_answers(state: AgentState) -> dict[str, Any]:
@@ -502,16 +501,18 @@ def build_live_graph(
                     )
             # Apply free-text corrections after structured answers, then explicit editor patches.
             profile = apply_changes(profile, updates)
+            summary = state.get("search_summary")
+            interpretation = await conversation.interpret(
+                profile,
+                request.message,
+                confirmation_ready=summary is not None and summary.ready,
+            )
             is_confirm = (
-                request.action == "confirm_search"
-                or request.message.strip().casefold().rstrip("。.!！") in _CONFIRM_MESSAGES
+                interpretation.intent == "confirm_search"
+                or request.action == "confirm_search"
+                and interpretation.intent == "answer"
             )
-            text_changes = (
-                []
-                if request.message.strip().casefold().rstrip("。.!！") in _CONFIRM_MESSAGES
-                else await conversation.interpret(profile, request.message)
-            )
-            profile = apply_changes(profile, text_changes)
+            profile = apply_changes(profile, interpretation.changes)
             profile = apply_changes(
                 profile,
                 [
@@ -519,6 +520,9 @@ def build_live_graph(
                     for field, value in request.profile_updates.items()
                 ],
             )
+            if request.search_options is not None:
+                profile = profile.model_copy(update={"search_options": request.search_options})
+            profile = await conversation.resolve_preferences(profile)
             original = state["profile"]
             assert original is not None
             changed = profile.model_dump(
@@ -710,253 +714,53 @@ def build_live_graph(
         )
         return accept_resume(state, payload)
 
-    async def plan(state: AgentState) -> dict[str, Any]:
+    async def search_agent(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
         profile = state["confirmed_profile"]
         assert profile is not None
-        try:
-            async with asyncio.timeout_at(state["operation_deadline"]):
-                requests = await conversation.plan(
-                    profile.model_copy(deep=True),
-                    round_number=state.get("retrieval_round", 0) + 1,
-                    deadline=state["operation_deadline"],
-                )
-            return {"search_requests": requests, "current_stage": "retrieve"}
-        except asyncio.CancelledError:
-            raise
-        except TimeoutError:
-            return _failure("operation_timeout", "plan")
-        except ModelServiceError as error:
-            return _failure(error.code, "plan")
-        except Exception:
-            return _failure("search_plan", "plan")
-
-    async def retrieve(state: AgentState) -> dict[str, Any]:
-        start = asyncio.get_running_loop().time()
-        budget = min(
-            RETRIEVAL_SECONDS - state.get("retrieval_seconds", 0.0),
-            state["operation_deadline"] - start,
+        service = await session_assessment(
+            state["session_id"], state["revision"], state.get("jd_cache")
         )
-        if budget <= 0:
-            return {
-                "retrieval_round": 2,
-                "notices": [make_notice("coverage_limited")],
-                "warnings": [
-                    "The cumulative search time limit was reached. Keeping the jobs found so far."
-                ],
-            }
-        try:
-            async with asyncio.timeout(budget):
-                # Let cooperative sources aggregate completed results before our hard cutoff.
-                source_budget = max(0.0, budget - min(0.05, budget * 0.05))
-                found = await search.search_many_async(
-                    state.get("search_requests", []), timeout=source_budget
-                )
-            logger.debug(
-                "retrieval_diagnostics",
-                extra={
-                    "session_id": state["session_id"],
-                    "diagnostic_count": len(found.warnings),
-                    "source_error_count": len(found.errors),
-                },
-            )
-            notices = list(found.notices)
-            if found.errors and not found.outcomes:
-                notices.append(
-                    make_notice("source_partial" if found.raw_jobs else "source_unavailable")
-                )
-            raw = [
-                *state.get("raw_jobs", []),
-                *(job.model_dump(mode="json") for job in found.raw_jobs),
-            ]
-            outcomes = [*state.get("source_outcomes", []), *found.outcomes]
-            successful = bool(raw) or any(
-                outcome.status in {"ok", "empty", "partial"} for outcome in outcomes
-            )
-            if not successful and (found.errors or outcomes):
-                return _failure("search_unavailable", "retrieve") | {
-                    "source_outcomes": outcomes,
-                    "source_errors": found.errors,
-                    "warnings": found.warnings,
-                    "notices": notices,
-                }
-            return {
-                "raw_jobs": raw,
-                "source_outcomes": outcomes,
-                "source_errors": found.errors,
-                "notices": notices,
-                "warnings": [
-                    *found.warnings,
-                    *(
-                        f"Some sources could not be searched: {error.code}"
-                        for error in found.errors
-                    ),
-                ],
-                "retrieval_seconds": state.get("retrieval_seconds", 0.0)
-                + asyncio.get_running_loop().time()
-                - start,
-                "retrieval_round": state.get("retrieval_round", 0) + 1,
-                "current_stage": "normalize",
-            }
-        except asyncio.CancelledError:
-            raise
-        except TimeoutError:
-            if state.get("raw_jobs"):
-                return {
-                    "retrieval_round": 2,
-                    "retrieval_seconds": RETRIEVAL_SECONDS,
-                    "notices": [make_notice("coverage_limited")],
-                    "warnings": [
-                        "The search timed out. Keeping the jobs found in the previous round."
-                    ],
-                }
-            return _failure("operation_timeout", "retrieve")
-        except Exception:
-            if state.get("raw_jobs"):
-                return {
-                    "retrieval_round": 2,
-                    "notices": [make_notice("source_partial")],
-                    "warnings": [
-                        "The additional search did not finish. Keeping the jobs found in the previous round."
-                    ],
-                }
-            return _failure("search_unavailable", "retrieve")
-
-    def normalize(state: AgentState) -> dict[str, Any]:
-        try:
-            profile = state["confirmed_profile"]
-            assert profile is not None
-            jobs, warnings = process_jobs(state.get("raw_jobs", []))
-            logger.debug(
-                "normalization_diagnostics",
-                extra={"session_id": state["session_id"], "diagnostic_count": len(warnings)},
-            )
-            eligible = eligible_jobs(profile, jobs)
-            old_ids = set(state.get("analyzed_job_ids", []))
-            retained = [job for job in eligible if job.job_id in old_ids]
-            added = select_balanced_candidates(
-                [job for job in eligible if job.job_id not in old_ids],
-                limit=max(0, MAX_CANDIDATES - len(old_ids)),
-            )
-            selected = [*retained, *added]
-            return {
-                "normalized_jobs": jobs,
-                "analysis_jobs": selected,
-                "analyzed_job_ids": dedupe(
-                    [*state.get("analyzed_job_ids", []), *(job.job_id for job in added)]
-                ),
-                "warnings": warnings,
-                "current_stage": "understand",
-            }
-        except Exception:
-            return _failure("normalization_failed", "normalize")
-
-    async def understand(state: AgentState) -> dict[str, Any]:
-        profile = state["confirmed_profile"]
-        assert profile is not None
-        try:
-            async with asyncio.timeout_at(state["operation_deadline"]):
-                service = await session_assessment(
-                    state["session_id"], state["revision"], state.get("jd_cache")
-                )
-                assessment = await service.assess(
-                    profile.model_copy(deep=True),
-                    state.get("analysis_jobs", []),
-                    {
-                        document.document_id: document.text
-                        for document in state.get("profile_documents", [])
-                    },
-                    state["session_id"],
-                    deadline=state["operation_deadline"],
-                )
-            update: dict[str, Any] = {
-                "assessment": assessment,
-                "current_stage": "check_result_count",
-            }
-            try:
-                update["jd_cache"] = service.export_cache()
-            except Exception:
-                update["warnings"] = [
-                    "Job analysis finished, but the cache was not saved. A later search may need to analyze these jobs again."
-                ]
-                logger.warning(
-                    "workflow_cache_export_failed",
-                    extra={"error_code": "checkpoint_cache_unavailable"},
-                )
-            return update
-        except asyncio.CancelledError:
-            raise
-        except TimeoutError:
-            return _failure("operation_timeout", "understand")
-        except Exception:
-            assessment = recommend_jobs(
-                profile, state.get("analysis_jobs", []), session_id=state["session_id"]
-            )
-            assessment = assessment.model_copy(
-                update={
-                    "jobs": [
-                        item.model_copy(update={"analysis_status": "unavailable"})
-                        for item in assessment.jobs
-                    ]
-                }
-            )
-            return {
-                "assessment": assessment,
-                "current_stage": "check_result_count",
-                "warnings": [
-                    "Model job analysis did not finish. Keeping the deterministic analysis results."
-                ],
-            }
-
-    def check_result_count(state: AgentState) -> dict[str, Any]:
-        return {"current_stage": "check_result_count"}
-
-    async def route_after_result_count(state: AgentState) -> str:
-        profile = state["confirmed_profile"]
-        assert profile is not None
-        remaining = state["operation_deadline"] - asyncio.get_running_loop().time()
-        if (
-            len(eligible_jobs(profile, state.get("normalized_jobs", []))) < 5
-            and state.get("retrieval_round", 0) < 2
-            and state.get("retrieval_seconds", 0.0) < RETRIEVAL_SECONDS
-            and remaining > 0
-        ):
-            return "plan"
-        return "recommend"
-
-    async def recommend(state: AgentState) -> dict[str, Any]:
-        if asyncio.get_running_loop().time() >= state["operation_deadline"]:
-            return _failure("operation_timeout", "recommend")
-        return {"recommendation": state.get("assessment"), "current_stage": "present"}
-
-    async def present(state: AgentState) -> dict[str, Any]:
-        if (
-            state.get("current_stage") == "failed"
-            or asyncio.get_running_loop().time() >= state["operation_deadline"]
-        ):
-            return _failure("operation_timeout", "present")
-        result = state.get("recommendation") or RecommendationResult(
-            session_id=state["session_id"], generated_at=datetime.now(UTC)
-        )
-        intro = (
-            f"Found {len(result.jobs)} roles for you to explore. Open a role to see the details."
-            if result.jobs
-            else "No roles were found for these criteria. Adjust your search to explore other opportunities."
+        runtime = config.get("configurable", {})
+        agent = SearchAgent(provider, search, service)
+        update = await agent.run(
+            profile,
+            {
+                document.document_id: document.text
+                for document in state.get("profile_documents", [])
+            },
+            state["session_id"],
+            deadline=state["operation_deadline"],
+            run_id=runtime.get("run_id"),
+            stop_event=runtime.get("stop_event"),
+            on_progress=runtime.get("on_progress"),
         )
         result = finalize_recommendation(
-            result.model_copy(update={"introduction": intro}),
-            profile=state.get("confirmed_profile"),
-            notices=[
-                *state.get("notices", []),
-                *source_notices(state.get("source_outcomes", [])),
-            ],
+            update["recommendation"],
+            notices=[*update["notices"], *source_notices(update["source_outcomes"])],
         )
-        return {
-            "recommendation": result,
-            "conversation": [*state.get("conversation", []), _message("assistant", intro)],
-            "current_stage": "completed",
-            "outcome": "completed",
-            "retryable": False,
-        }
+        update.update(
+            {
+                "recommendation": result,
+                "conversation": [
+                    *state.get("conversation", []),
+                    _message("assistant", result.introduction),
+                ],
+                "current_stage": "completed",
+                "outcome": "completed",
+                "retryable": update["stop_reason"] == "error",
+            }
+        )
+        if update["stop_reason"] == "error" and not result.jobs and not result.pending_jobs:
+            update.update(
+                _failure(update.get("agent_error_code") or "search_unavailable", "search")
+            )
+        try:
+            update["jd_cache"] = service.export_cache()
+        except Exception:
+            logger.warning(
+                "workflow_cache_export_failed", extra={"error_code": "checkpoint_cache_unavailable"}
+            )
+        return update
 
     def failed(state: AgentState) -> dict[str, Any]:
         return {"current_stage": "failed", "outcome": "failed"}
@@ -965,7 +769,7 @@ def build_live_graph(
         if state.get("current_stage") == "failed":
             return "failed"
         if state.get("confirmed_profile") is not None:
-            return "plan"
+            return "search_agent"
         if (
             state.get("search_summary") is not None
             or state.get("current_stage") == "edit_conditions"
@@ -987,13 +791,13 @@ def build_live_graph(
             return {}
 
     def timed(stage: str, node: Callable[..., Any]) -> Callable[..., Any]:
-        async def invoke(state: AgentState) -> dict[str, Any]:
+        async def invoke(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
             started = asyncio.get_running_loop().time()
             status = "failed"
             update: dict[str, Any] = {}
             error_codes: list[str] = []
             try:
-                result = node(state)
+                result = node(state, config) if stage == "search_agent" else node(state)
                 update = await result if inspect.isawaitable(result) else result
                 status = "failed" if update.get("current_stage") == "failed" else "ok"
                 returned_errors = update.get("errors", [])
@@ -1049,13 +853,7 @@ def build_live_graph(
         "apply": apply,
         "build_summary": build_summary,
         "await_confirmation": await_confirmation,
-        "plan": plan,
-        "retrieve": retrieve,
-        "normalize": normalize,
-        "understand": understand,
-        "check_result_count": check_result_count,
-        "recommend": recommend,
-        "present": present,
+        "search_agent": search_agent,
         "failed": failed,
     }
     for name, node in nodes.items():
@@ -1097,28 +895,11 @@ def build_live_graph(
     )
     graph.add_edge("await_answers", "apply")
     graph.add_conditional_edges(
-        "apply", cast(Any, after_apply), ["failed", "plan", "validate", "build_summary"]
+        "apply", cast(Any, after_apply), ["failed", "search_agent", "validate", "build_summary"]
     )
     graph.add_edge("build_summary", "await_confirmation")
     graph.add_edge("await_confirmation", "apply")
-    for name, successor in (
-        ("plan", "retrieve"),
-        ("retrieve", "normalize"),
-        ("normalize", "understand"),
-        ("understand", "check_result_count"),
-    ):
-        graph.add_conditional_edges(
-            name,
-            lambda state, next_node=successor: (
-                "failed" if state.get("current_stage") == "failed" else next_node
-            ),
-            ["failed", successor],
-        )
-    graph.add_conditional_edges(
-        "check_result_count", cast(Any, route_after_result_count), ["plan", "recommend"]
-    )
-    graph.add_edge("recommend", "present")
-    graph.add_edge("present", END)
+    graph.add_edge("search_agent", END)
     graph.add_edge("failed", END)
     compiled = graph.compile(checkpointer=checkpointer)
     cast(Any, compiled).cleanup_session = cleanup_session

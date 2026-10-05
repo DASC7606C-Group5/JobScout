@@ -40,7 +40,6 @@ export function Sidebar({
   sessionId,
   expanded,
   mobile,
-  onHistory,
   onToggleDrawer,
   onNavigate,
 }: {
@@ -48,7 +47,6 @@ export function Sidebar({
   sessionId: string | undefined
   expanded: boolean
   mobile: boolean
-  onHistory: () => void
   onToggleDrawer: () => void
   onNavigate: () => void
 }) {
@@ -64,17 +62,8 @@ export function Sidebar({
   const historyHeading = useRef<HTMLHeadingElement>(null)
   const [candidate, setCandidate] = useState<HistorySearch | null>(null)
   const [announcement, setAnnouncement] = useState('')
-  const [historyVisible, setHistoryVisible] = useState(true)
   const savedCount = saved.data?.length ?? 0
-  const historyExpanded = expanded && historyVisible
   const drawerAction = mobile ? 'Close sidebar' : expanded ? 'Collapse sidebar' : 'Expand sidebar'
-
-  function toggleHistory() {
-    if (!expanded) {
-      setHistoryVisible(true)
-      onHistory()
-    } else setHistoryVisible((visible) => !visible)
-  }
 
   function beforeNavigate(event: MouseEvent<HTMLAnchorElement>) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
@@ -170,33 +159,9 @@ export function Sidebar({
           savedCount={savedCount}
           beforeNavigate={beforeNavigate}
         />
-        <div className="mx-3 mt-5 shrink-0 border-t border-base-300 pt-4">
-          <div
-            className="is-drawer-close:tooltip is-drawer-close:tooltip-right"
-            data-tip="Search history"
-          >
-            <button
-              type="button"
-              className={`btn h-11 w-full flex-nowrap justify-start gap-3 border-0 btn-ghost p-0 text-sm font-medium shadow-none ${sessionId && !expanded ? 'bg-primary/15 text-primary-content' : 'text-base-content/70'}`}
-              aria-label="Search history"
-              aria-controls="search-history"
-              aria-expanded={historyExpanded}
-              onClick={toggleHistory}
-            >
-              <span className="flex size-11 shrink-0 items-center justify-center">
-                <Icon name="clock" size={20} />
-              </span>
-              <span className="whitespace-nowrap is-drawer-close:hidden">Search history</span>
-              <Icon
-                name="chevron"
-                size={14}
-                className={`mr-3 ml-auto shrink-0 is-drawer-close:hidden ${historyExpanded ? 'rotate-90' : ''}`}
-              />
-            </button>
-          </div>
-        </div>
+        <div className="mx-3 mt-5 shrink-0 border-t border-base-300" />
         <HistoryMenu
-          hidden={!historyExpanded}
+          hidden={!expanded}
           sessionId={sessionId}
           beforeNavigate={beforeNavigate}
           historyHeading={historyHeading}
@@ -332,78 +297,82 @@ function HistoryMenu({
       id="search-history"
       hidden={hidden}
       aria-labelledby="search-history-heading"
-      className="min-h-0 flex-1 [scrollbar-gutter:stable] overflow-y-auto px-3 pt-3 pb-5 is-drawer-close:hidden"
+      className="@container min-h-0 flex-1 px-3 pt-4 pb-5 is-drawer-close:hidden"
     >
-      {current && (
-        <div className="mb-4">
-          <h2 className="px-3 text-[11px] font-semibold text-base-content/55">Current search</h2>
-          <ul className="mt-2 flex w-full flex-col gap-2">
+      <div className="-mx-3 h-full overflow-y-auto pl-3">
+        {current && (
+          <div className="mb-4 w-[100cqw]">
+            <h2 className="px-3 text-[11px] font-semibold text-base-content/55">Current search</h2>
+            <ul className="mt-2 flex w-full flex-col gap-1.5">
+              <HistoryRow
+                search={current}
+                sessionId={sessionId}
+                beforeNavigate={beforeNavigate}
+                onDelete={onDelete}
+              />
+            </ul>
+          </div>
+        )}
+        <h2
+          id="search-history-heading"
+          ref={historyHeading}
+          tabIndex={-1}
+          data-history-heading
+          className="w-[100cqw] px-3 text-[11px] font-medium text-base-content/50"
+        >
+          Recent searches
+        </h2>
+        {history.isPending && (
+          <output className="flex min-h-20 w-[100cqw] items-center gap-2 px-3 text-xs text-base-content/65">
+            <span className="loading loading-xs loading-spinner" aria-hidden="true" />
+            Loading searches
+          </output>
+        )}
+        {!history.isPending && searches.length === 0 && !history.isError && (
+          <div className="w-[100cqw] px-3 py-5 text-xs leading-5 text-base-content/60">
+            <p className="font-medium text-base-content/75">
+              A place to pick up where you left off.
+            </p>
+            <p className="mt-1">Start a search and find it here next time.</p>
+          </div>
+        )}
+        <ul className="mt-2 flex w-[100cqw] flex-col gap-1.5">
+          {searches.map((search) => (
             <HistoryRow
-              search={current}
+              key={search.session_id}
+              search={search}
               sessionId={sessionId}
               beforeNavigate={beforeNavigate}
               onDelete={onDelete}
             />
-          </ul>
-        </div>
-      )}
-      <h2
-        id="search-history-heading"
-        ref={historyHeading}
-        tabIndex={-1}
-        data-history-heading
-        className="px-3 text-[11px] font-medium text-base-content/50"
-      >
-        Recent searches
-      </h2>
-      {history.isPending && (
-        <output className="flex min-h-20 items-center gap-2 px-3 text-xs text-base-content/65">
-          <span className="loading loading-xs loading-spinner" aria-hidden="true" />
-          Loading searches
-        </output>
-      )}
-      {!history.isPending && searches.length === 0 && !history.isError && (
-        <div className="px-3 py-5 text-xs leading-5 text-base-content/60">
-          <p className="font-medium text-base-content/75">A place to pick up where you left off.</p>
-          <p className="mt-1">Start a search and find it here next time.</p>
-        </div>
-      )}
-      <ul className="mt-2 flex w-full flex-col gap-2">
-        {searches.map((search) => (
-          <HistoryRow
-            key={search.session_id}
-            search={search}
-            sessionId={sessionId}
-            beforeNavigate={beforeNavigate}
-            onDelete={onDelete}
-          />
-        ))}
-      </ul>
-      {history.isError && (
-        <div role="alert" className="px-3 py-4 text-xs">
-          <p className="text-error">Could not load your search history.</p>
+          ))}
+        </ul>
+        {history.isError && (
+          <div role="alert" className="w-[100cqw] px-3 py-4 text-xs">
+            <p className="text-error">Could not load your search history.</p>
+            <button
+              type="button"
+              className="btn mt-2 btn-ghost btn-xs"
+              onClick={() => void history.refetch()}
+            >
+              Try again
+            </button>
+          </div>
+        )}
+        {history.hasNextPage && (
           <button
             type="button"
-            className="btn mt-2 btn-ghost btn-xs"
-            onClick={() => void history.refetch()}
+            className="btn mt-3 w-[100cqw] btn-ghost btn-sm"
+            disabled={history.isFetchingNextPage}
+            onClick={() => void history.fetchNextPage()}
           >
-            Try again
+            {history.isFetchingNextPage && (
+              <span className="loading loading-xs loading-spinner" aria-hidden="true" />
+            )}
+            Load more
           </button>
-        </div>
-      )}
-      {history.hasNextPage && (
-        <button
-          type="button"
-          className="btn mt-3 w-full btn-ghost btn-sm"
-          disabled={history.isFetchingNextPage}
-          onClick={() => void history.fetchNextPage()}
-        >
-          {history.isFetchingNextPage && (
-            <span className="loading loading-xs loading-spinner" aria-hidden="true" />
-          )}
-          Load more
-        </button>
-      )}
+        )}
+      </div>
     </section>
   )
 }
@@ -491,48 +460,51 @@ function HistoryRow({
   const title = searchTitle(search)
   return (
     <li
-      className={`group card border transition-colors ${sessionId === search.session_id ? 'border-primary/30 bg-primary/10' : 'border-transparent focus-within:bg-base-200/60 hover:bg-base-200/60'}`}
+      className={`card relative w-full border motion-safe:transition-colors ${sessionId === search.session_id ? 'border-primary/20 bg-primary/10 hover:bg-primary/15' : 'border-transparent focus-within:bg-base-200/60 hover:bg-base-200/60'}`}
     >
-      <div className="flex min-w-0 items-start">
-        <Link
-          to="/searches/$sessionId"
-          params={{ sessionId: search.session_id }}
-          search={{}}
-          onClick={beforeNavigate}
-          data-session-id={search.session_id}
-          aria-current={sessionId === search.session_id ? 'page' : undefined}
-          className="flex min-w-0 flex-1 flex-col items-start gap-1.5 rounded-box px-3 py-3"
-        >
-          <span className="line-clamp-2 text-xs leading-5 font-medium">{search.title}</span>
-          {search.location && (
-            <span className="text-[11px] text-base-content/60">{search.location}</span>
-          )}
-          <span className="flex w-full items-center gap-1.5 text-[10px] font-normal text-base-content/65">
-            <span className={`status status-xs ${status.tone}`} aria-hidden="true" />
-            <span>{status.label}</span>
-            {search.updated_at && (
-              <time
-                dateTime={search.updated_at}
-                title={`${historyTimestamp.format(new Date(search.updated_at))} HKT`}
-                className="ml-auto shrink-0 tabular-nums"
-              >
-                {historyDate.format(new Date(search.updated_at))}
-                <span className="sr-only">
-                  {`, last updated ${historyTimestamp.format(new Date(search.updated_at))} HKT`}
-                </span>
-              </time>
-            )}
+      <Link
+        to="/searches/$sessionId"
+        params={{ sessionId: search.session_id }}
+        search={{}}
+        onClick={beforeNavigate}
+        data-session-id={search.session_id}
+        aria-current={sessionId === search.session_id ? 'page' : undefined}
+        className="block min-w-0 rounded-box px-3.5 py-3 outline-offset-[-2px] active:bg-base-200/40"
+      >
+        <span className="block text-[13px] leading-5 font-medium break-words">{search.title}</span>
+        {search.location && (
+          <span className="mt-0.5 block text-[11px] leading-4 break-words text-base-content/60">
+            {search.location}
           </span>
-        </Link>
-        <button
-          type="button"
-          className="btn mt-2 mr-1 btn-square shrink-0 btn-ghost text-base-content/45 shadow-none btn-xs hover:text-error"
-          aria-label={`Delete search: ${title}`}
-          onClick={(event) => onDelete(search, event.currentTarget)}
-        >
-          <Icon name="trash" size={15} />
-        </button>
-      </div>
+        )}
+        <span className="mt-2 flex min-h-4 items-center gap-2 pr-8 text-[11px] leading-4 font-normal text-base-content/65">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className={`status size-1.5 shrink-0 ${status.tone}`} aria-hidden="true" />
+            <span>{status.label}</span>
+          </span>
+          {search.updated_at && (
+            <time
+              dateTime={search.updated_at}
+              title={`${historyTimestamp.format(new Date(search.updated_at))} HKT`}
+              className="ml-auto shrink-0 tabular-nums"
+            >
+              {historyDate.format(new Date(search.updated_at))}
+              <span className="sr-only">
+                {`, last updated ${historyTimestamp.format(new Date(search.updated_at))} HKT`}
+              </span>
+            </time>
+          )}
+        </span>
+      </Link>
+      <button
+        type="button"
+        className="btn absolute right-2 bottom-1.5 btn-square size-7 btn-ghost text-base-content/45 shadow-none btn-xs hover:bg-error/10 hover:text-error focus-visible:text-error"
+        aria-label={`Delete search: ${title}`}
+        title={`Delete search: ${title}`}
+        onClick={(event) => onDelete(search, event.currentTarget)}
+      >
+        <Icon name="trash" size={15} />
+      </button>
     </li>
   )
 }

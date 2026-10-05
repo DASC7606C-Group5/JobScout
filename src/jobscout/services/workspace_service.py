@@ -143,7 +143,11 @@ class WorkspaceService:
             recommendation = self.sessions._response(record).recommendation
             item = (
                 next(
-                    (item for item in recommendation.jobs if item.job.job_id == job_id),
+                    (
+                        item
+                        for item in [*recommendation.jobs, *recommendation.pending_jobs]
+                        if item.job.job_id == job_id
+                    ),
                     None,
                 )
                 if recommendation

@@ -28,6 +28,7 @@ CREATE: dict[str, Any] = {
     "preferences": {"location": "Hong Kong", "employment_type": "internship"},
 }
 RAW_DRAFT: dict[str, Any] = {
+    "search_options": {"result_count": 10},
     "description": "  学生经历\nPython, SQL  ",
     "resume": {"name": "简历.txt", "text": "Education\n项目经历，SQL\n"},
     "directions": "数据分析， 前端开发，",
@@ -67,9 +68,11 @@ def summary_draft(profile: dict[str, Any]) -> dict[str, Any]:
         {
             f"preferences.{name}": value if value is not None else ""
             for name, value in profile["preferences"].items()
+            if name not in {"locations", "employment", "work_arrangement"}
         }
     )
     fields["target_directions"] = "  Data Analyst，\n"
+    fields["search_options.result_count"] = profile["search_options"]["result_count"]
     return {"fields": fields, "message": "  keep this unfinished note  "}
 
 

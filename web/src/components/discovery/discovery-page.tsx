@@ -1,86 +1,100 @@
-import type { UserProfile } from '../../lib/contracts'
+import type { ScoutSession } from '../../lib/contracts'
+import { searchPhase } from '../../lib/search-phase'
 import { useScoutSession } from '../../state/session-context'
-import { Icon } from '../icon'
 import { JourneyAside } from '../journey-aside'
 import { PageHeading } from '../layout/page-heading'
+import { StepTransition } from '../layout/step-transition'
 import { DiscoveryContent } from './discovery-content'
+import { SearchCriteria } from './search-criteria'
 import { WorkflowSteps } from './workflow-steps'
 
 const headings = {
   initial: 'Finding the right opportunity starts with getting to know you.',
-  paused: 'Let’s talk a little more about the right opportunity for you.',
-  running: 'We’re figuring out your next step.',
+  paused: 'Tell us a little more.',
+  running: 'Finding your next role.',
   failed: 'Let’s get your search back on track.',
 }
-const stageSteps = { initial: 0, paused: 1, running: 1, failed: 2 }
+function workflowStep(session: ScoutSession | null) {
+  if (!session) return 0
+  if (session.outcome === 'completed' || searchPhase(session) !== 'profile') return 2
+  if (
+    session.outcome === 'paused' ||
+    session.search_summary ||
+    session.clarification_questions.length
+  )
+    return 1
+  return 0
+}
+
+function transitionStep(session: ScoutSession | null) {
+  if (!session) return 'introduction'
+  if (session.outcome === 'running') {
+    const phase = searchPhase(session)
+    return phase === 'preparing' ? 'search' : phase
+  }
+  return `${session.outcome}-${session.current_stage}`
+}
+
+function discoveryTitle(session: ScoutSession | null) {
+  if (!session) return headings.initial
+  if (session.outcome === 'completed') {
+    const count = session.recommendation?.jobs.length ?? 0
+    return count > 0
+      ? `${count} ${count === 1 ? 'match' : 'matches'} to explore`
+      : 'Your search results'
+  }
+  if (session.outcome === 'running' && searchPhase(session) === 'profile')
+    return 'Reviewing your profile.'
+  if (session.outcome === 'paused' && session.current_stage === 'confirm')
+    return 'Confirm your search criteria.'
+  return headings[session.outcome]
+}
 
 function DiscoveryHeading() {
   const { session } = useScoutSession()
   const stage = session?.outcome ?? 'initial'
   const completed = stage === 'completed'
-  const count = session?.recommendation?.jobs.length ?? 0
-  const profile = session?.profile
-  const criteria = criteriaLabel(profile)
   return (
     <PageHeading
       eyebrow={completed ? 'YOUR OPPORTUNITIES' : 'YOUR NEXT CHAPTER'}
-      title={completed ? `${count} ${count === 1 ? 'job' : 'jobs'} to explore` : headings[stage]}
+      title={discoveryTitle(session)}
       description={
-        completed
-          ? criteria
-          : 'Tell us about your experience and goals to find a role that fits you better.'
+        stage === 'initial'
+          ? 'Tell us about your experience and goals to find a role that fits you better.'
+          : ''
       }
     />
   )
 }
 
 export function DiscoveryPage() {
-  const { session, busy, edit } = useScoutSession()
+  const { session, busy, canEdit, edit } = useScoutSession()
   const stage = session?.outcome ?? 'initial'
   const completed = stage === 'completed'
+  const focused = completed || stage === 'running' || Boolean(session?.run_id)
   return (
-    <>
+    <div className="[--job-detail-top:6rem]">
       <DiscoveryHeading />
-      {session?.profile && session.current_stage !== 'confirm' && (
-        <section
-          className="card mb-5 flex-row flex-wrap items-center justify-between gap-3 border border-base-300 bg-base-100 p-4"
-          aria-label="Search criteria"
+      <WorkflowSteps step={workflowStep(session)} />
+      <StepTransition step={transitionStep(session)}>
+        {session?.profile && session.current_stage !== 'confirm' && (
+          <SearchCriteria
+            key={session.session_id}
+            profile={session.profile}
+            canEdit={canEdit}
+            onEdit={edit}
+          />
+        )}
+        <div
+          aria-busy={busy}
+          className={`grid items-start gap-6 ${focused ? '' : 'min-[1100px]:grid-cols-[minmax(0,1fr)_280px]'}`}
         >
-          <div>
-            <h2 className="text-sm font-semibold">Search criteria</h2>
-            <p className="mt-1 text-sm text-base-content/65">{criteriaLabel(session.profile)}</p>
+          <div className="min-w-0">
+            <DiscoveryContent />
           </div>
-          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={edit}>
-            <Icon name="compass" size={15} />
-            Edit search criteria
-          </button>
-        </section>
-      )}
-      {!completed && (
-        <WorkflowSteps step={session?.search_summary?.confirmed ? 2 : stageSteps[stage]} />
-      )}
-      <div
-        aria-busy={busy}
-        className={`grid items-start gap-6 ${completed ? '' : 'min-[1100px]:grid-cols-[minmax(0,1fr)_280px]'}`}
-      >
-        <div className="min-w-0">
-          <DiscoveryContent />
+          {!focused && <JourneyAside />}
         </div>
-        {!completed && <JourneyAside />}
-      </div>
-    </>
+      </StepTransition>
+    </div>
   )
-}
-
-function criteriaLabel(profile: UserProfile | null | undefined) {
-  if (!profile) return ''
-  return [
-    ...profile.target_directions,
-    profile.preferences.location_unrestricted ? 'Any location' : profile.preferences.location,
-    profile.preferences.employment_type_unrestricted
-      ? 'Any employment type'
-      : profile.preferences.employment_type,
-  ]
-    .filter(Boolean)
-    .join(' · ')
 }

@@ -17,12 +17,8 @@ export function QuestionControl({
   const multiple = question.control_type === 'multiple_choice'
   const selected = Array.isArray(value) ? value : []
   const selectedIds = new Set(selected)
-  const limitDirections = multiple && question.field === 'target_directions'
   return (
-    <fieldset
-      className="fieldset min-w-0 gap-3"
-      aria-describedby={`${id}-reason${limitDirections ? ` ${id}-limit` : ''}`}
-    >
+    <fieldset className="fieldset min-w-0 gap-3" aria-describedby={`${id}-reason`}>
       <legend className="fieldset-legend flex flex-wrap items-center gap-2 text-sm">
         {question.question}
         <span className="badge border-0 bg-base-200 text-xs badge-sm font-normal text-base-content/60">
@@ -35,11 +31,6 @@ export function QuestionControl({
       >
         {question.reason}
       </p>
-      {limitDirections && (
-        <p id={`${id}-limit`} className="text-xs text-base-content/55">
-          Choose up to three directions · {selected.length} / 3 selected
-        </p>
-      )}
       <fieldset disabled={skipped} className="grid min-w-0 gap-2 sm:grid-cols-2">
         {question.control_type === 'text' ? (
           <input
@@ -53,11 +44,10 @@ export function QuestionControl({
         ) : (
           question.options.map((option) => {
             const checked = multiple ? selectedIds.has(option.id) : value === option.id
-            const disabled = limitDirections && selected.length >= 3 && !checked
             return (
               <label
                 key={option.id}
-                className={`flex min-w-0 items-center gap-3 rounded-selector border p-3 text-sm transition-colors ${checked ? 'border-base-content/25 bg-base-200/65' : 'border-base-300 bg-base-100'} ${disabled || skipped ? 'cursor-default opacity-55' : 'cursor-pointer hover:bg-base-200/40'}`}
+                className={`flex min-w-0 items-center gap-3 rounded-selector border p-3 text-sm transition-colors ${checked ? 'border-base-content/25 bg-base-200/65' : 'border-base-300 bg-base-100'} ${skipped ? 'cursor-default opacity-55' : 'cursor-pointer hover:bg-base-200/40'}`}
               >
                 <input
                   type={multiple ? 'checkbox' : 'radio'}
@@ -65,7 +55,6 @@ export function QuestionControl({
                   value={option.id}
                   className={multiple ? 'checkbox shrink-0 checkbox-sm' : 'radio shrink-0 radio-sm'}
                   checked={checked}
-                  disabled={disabled}
                   onChange={(event) =>
                     onChange(
                       multiple

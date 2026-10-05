@@ -68,6 +68,7 @@ export function createSessionClient(
     start: (input, signal) => session('/sessions', 'POST', input, signal),
     get: (id, signal) => session(pathFor(id), 'GET', undefined, signal),
     answer: (id, request, signal) => session(`${pathFor(id)}/resume`, 'POST', request, signal),
+    stop: (id, request, signal) => session(`${pathFor(id)}/stop`, 'POST', request, signal),
     delete: async (id, signal) => {
       await request(pathFor(id), 'DELETE', undefined, signal)
     },

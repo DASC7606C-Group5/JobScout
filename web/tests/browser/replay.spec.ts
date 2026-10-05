@@ -18,9 +18,7 @@ async function createFromForm(page: Page, complete: boolean) {
   await page.getByLabel('About you', { exact: true }).fill(description)
   await page.getByLabel('Job directions', { exact: false }).fill(complete ? 'Data Analyst' : '')
   await page.getByLabel('Work location', { exact: true }).fill(complete ? 'Hong Kong' : '')
-  await page
-    .getByLabel('Employment type', { exact: true })
-    .selectOption(complete ? 'internship' : '')
+  await page.getByLabel('Employment type', { exact: true }).fill(complete ? 'internship' : '')
   const accepted = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' && response.url().endsWith('/api/v1/sessions'),
@@ -77,7 +75,7 @@ async function confirmAndVerifyResults(page: Page, id: string) {
   expect(results.errors).toEqual([])
   const jobs = results.recommendation?.jobs ?? []
   expect(jobs.length).toBeGreaterThan(0)
-  expect(jobs.length).toBeLessThanOrEqual(5)
+  expect(jobs.length).toBeLessThanOrEqual(results.profile!.search_options.result_count)
   expect(new Set(jobs.map((item) => item.job.job_id)).size).toBe(jobs.length)
   expect(results.source_outcomes.some((outcome) => outcome.source === 'synthetic-replay')).toBe(
     true,

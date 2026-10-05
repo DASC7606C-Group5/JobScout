@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from jobscout.schemas.conversation import QuestionOption
+from jobscout.schemas.profile import LocationRef
 
 
 class ClarificationStatus(StrEnum):
@@ -26,6 +27,8 @@ class SearchRequest(BaseModel):
     salary_range: str | None = None
     work_mode: str | None = None
     sources: list[str] = Field(default_factory=list)
+    location_ref: LocationRef | None = None
+    page: int = Field(default=1, ge=1, le=5)
 
 
 class ClarificationMessage(BaseModel):

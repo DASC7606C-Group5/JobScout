@@ -1,14 +1,21 @@
 import { expect, test } from 'bun:test'
 
 import { createUserProfileFixture } from '../../tests/fixtures'
-import {
-  summaryDirectionError,
-  summaryDraft,
-  summaryFields,
-  summaryUpdates,
-} from './search-summary'
+import { summaryDraft, summaryFields, summaryUpdates } from './search-summary'
 
 const editable = summaryFields.map(([key]) => key)
+
+test('summary edits preserve punctuation within qualifications, experience and compound roles', () => {
+  const original = summaryDraft(createUserProfileFixture())
+  const education = 'BSc, Computer Science\nHigher Diploma; awarded with distinction'
+  const target_directions = 'Engineer, AI/ML\nUI/UX Designer'
+  expect(summaryUpdates(original, { ...original, education, target_directions }, editable)).toEqual(
+    {
+      education: ['BSc, Computer Science', 'Higher Diploma; awarded with distinction'],
+      target_directions: ['Engineer, AI/ML', 'UI/UX Designer'],
+    },
+  )
+})
 
 test('summary posts changed flat keys only and splits arrays', () => {
   const original = summaryDraft(createUserProfileFixture())
@@ -16,7 +23,7 @@ test('summary posts changed flat keys only and splits arrays', () => {
   expect(
     summaryUpdates(
       original,
-      { ...original, skills: 'React\nSQL，SQL', 'preferences.location': ' 深圳 ' },
+      { ...original, skills: 'React\nSQL\nSQL', 'preferences.location': ' 深圳 ' },
       editable,
     ),
   ).toEqual({ skills: ['React', 'SQL'], 'preferences.location': '深圳' })
@@ -43,18 +50,13 @@ test('unrestricted fields explicitly clear constrained values; noneditable field
   expect(summaryUpdates(original, { ...original, skills: 'SQL' }, [])).toEqual({})
 })
 
-test('confirmation editing requires an explicit choice when the direction list exceeds three', () => {
+test('confirmation editing preserves more than three directions', () => {
   const original = summaryDraft(createUserProfileFixture())
-  const draft = { ...original, target_directions: '前端开发\n数据分析，产品设计、项目管理' }
-  expect(summaryDirectionError(draft)).toBeTruthy()
+  const draft = { ...original, target_directions: '前端开发\n数据分析\n产品设计\n项目管理' }
   expect(summaryUpdates(original, draft, editable).target_directions).toEqual([
     '前端开发',
     '数据分析',
     '产品设计',
     '项目管理',
   ])
-  expect(
-    summaryDirectionError({ ...draft, target_directions: '前端开发\n数据分析，产品设计' }),
-  ).toBeNull()
-  expect(summaryDirectionError({ ...draft, target_directions: '前端开发\n前端开发' })).toBeNull()
 })

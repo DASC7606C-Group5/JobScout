@@ -1,15 +1,24 @@
 """Bounded asynchronous retrieval with cooperative cancellation."""
 
 import asyncio
+import json
 import math
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 
+from jobscout.schemas.job import JobPosting, SourceDocument
 from jobscout.schemas.search import SearchRequest
+from jobscout.services.job_processing_service import process_jobs
 from jobscout.services.job_retrieval.async_transport import AsyncHttpWebClient
 from jobscout.services.job_retrieval.careerjet import CareerjetAdapter
-from jobscout.services.job_retrieval.local_sources import LocalAdapter
+from jobscout.services.job_retrieval.local_sources import (
+    HOSTS,
+    LocalAdapter,
+    add_detail,
+    detail_url,
+)
 from jobscout.services.job_retrieval.models import (
+    RawJob,
     RetrievalFailure,
     SearchResult,
     SourceOutcome,
@@ -45,13 +54,16 @@ class JobSearchService:
         if not 1 <= concurrency <= 16:
             raise ValueError("concurrency must be between 1 and 16")
         self.concurrency = concurrency
+        # The search agent owns the one retry per query/detail action, so this
+        # transport must not multiply that action budget with internal retries.
+        self.public_client = async_web_client or AsyncHttpWebClient(retries=0)
         if adapters is not None:
             self.adapters = dict(adapters)
         else:
             injected_client = client
             client = client or HttpJsonClient()
             self.adapters = {name: FeedAdapter(name, client) for name in FEED_SOURCES}
-            public_client = async_web_client or AsyncHttpWebClient()
+            public_client = self.public_client
             self.adapters.update(
                 {
                     name: LocalAdapter(
@@ -73,8 +85,102 @@ class JobSearchService:
                 }
             )
 
+    async def fetch_details(
+        self, jobs: Sequence[JobPosting], *, timeout: float = 30.0
+    ) -> list[JobPosting]:
+        """Fetch only source-owned URLs attached to existing candidate identities."""
+        if not math.isfinite(timeout) or timeout < 0:
+            raise ValueError("timeout must be finite and nonnegative")
+        semaphore = asyncio.Semaphore(self.concurrency)
+
+        async def fetch(job: JobPosting) -> JobPosting | None:
+            if job.source not in HOSTS:
+                return None
+            raw = RawJob(
+                source=job.source,
+                source_url=job.source_url,
+                fetched_at=job.fetched_at,
+                target_direction=job.target_direction,
+                title=job.title,
+                company=job.company,
+                location=job.location,
+                salary=job.salary,
+                description=job.description,
+                employment_type=job.employment_type,
+                posted_at=job.posted_at.isoformat() if job.posted_at else None,
+                expiry_at=job.expiry_at.isoformat() if job.expiry_at else None,
+                raw_payload={},
+            )
+            try:
+                url = detail_url(raw)
+                if url is None:
+                    return None
+                async with semaphore:
+                    page = await self.public_client.request_async(url)
+                add_detail(raw, page)
+            except RetrievalFailure:
+                return None
+            document = SourceDocument(
+                document_id=f"job:{job.job_id}:detail",
+                source=job.source,
+                source_url=job.source_url,
+                text=raw.description or "",
+                fetched_at=page.fetched_at,
+            )
+            documents = [
+                item for item in job.source_documents if item.document_id != document.document_id
+            ]
+            documents.append(document)
+            if raw.raw_payload.get("detail_structured"):
+                documents.append(
+                    document.model_copy(
+                        update={
+                            "document_id": document.document_id + ":structured",
+                            "text": json.dumps(
+                                raw.raw_payload["detail_structured"], ensure_ascii=False
+                            ),
+                        }
+                    )
+                )
+            normalized = process_jobs(
+                [
+                    {
+                        **job.model_dump(mode="json"),
+                        "description": raw.description or job.description,
+                        "description_is_excerpt": False,
+                        "source_documents": [item.model_dump(mode="json") for item in documents],
+                        "location": raw.location or job.location,
+                        "employment_type": raw.employment_type or job.employment_type,
+                        "posted_at": raw.posted_at,
+                        "expiry_at": raw.expiry_at,
+                    }
+                ]
+            ).jobs
+            return (
+                normalized[0].model_copy(
+                    update={
+                        "description": raw.description or job.description,
+                        "description_is_excerpt": False,
+                    },
+                    deep=True,
+                )
+                if normalized
+                else None
+            )
+
+        async with asyncio.timeout(timeout):
+            return [
+                updated
+                for updated in await asyncio.gather(*(fetch(job) for job in jobs))
+                if updated is not None
+            ]
+
     async def search_many_async(
-        self, requests: Sequence[SearchRequest], *, timeout: float = 60.0
+        self,
+        requests: Sequence[SearchRequest],
+        *,
+        timeout: float = 60.0,
+        on_source: Callable[[SearchResult], Awaitable[None]] | None = None,
     ) -> SearchResult:
         """Use one deadline, cancel children, and keep results in request/source order.
 
@@ -188,6 +294,16 @@ class JobSearchService:
                     or job.raw_payload.get("description_is_excerpt") is True
                     for job in partial.jobs
                 )
+                if on_source is not None:
+                    await on_source(
+                        SearchResult(
+                            raw_jobs=partial.jobs,
+                            errors=partial.errors,
+                            warnings=partial.warnings,
+                            notices=partial.notices,
+                            outcomes=[outcome],
+                        )
+                    )
 
         tasks = [asyncio.create_task(run_source(*item)) for item in pending]
         try:

@@ -8,6 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from jobscout.schemas.job import FreshnessStatus, JobPosting, SourceDocument
 from jobscout.schemas.search import SearchRequest
 from jobscout.services.job_retrieval.async_transport import AsyncHttpWebClient
 from jobscout.services.job_retrieval.careerjet import careerjet_params
@@ -21,6 +22,86 @@ from jobscout.services.job_search_service import JobSearchService
 
 STAMP = datetime(2026, 10, 1, tzinfo=UTC)
 FIXTURE = Path(__file__).resolve().parents[1] / "data" / "group4" / "mock_local_sources.json"
+
+
+def test_detail_enrichment_retains_identity_and_rechecks_explicit_expiry() -> None:
+    class DetailClient:
+        async def request_async(
+            self,
+            url: str,
+            *,
+            body: dict[str, object] | None = None,
+            headers: dict[str, str] | None = None,
+        ) -> WebPage:
+            if url.endswith("blocked"):
+                raise RetrievalFailure("SEARCH_AUTH", "Blocked")
+            data = {
+                "@type": "JobPosting",
+                "description": "Open-ended Gleam requirement",
+                "datePosted": "2026-09-01",
+                "validThrough": "2026-09-30",
+                "employmentType": "FULL_TIME",
+                "jobLocation": {"address": {"addressLocality": "Shanghai", "addressCountry": "CN"}},
+            }
+            return WebPage(
+                '<script type="application/ld+json">' + json.dumps(data) + "</script>", STAMP
+            )
+
+    candidate = JobPosting(
+        job_id="stable",
+        source="liepin",
+        source_url="https://www.liepin.com/job/1",
+        title="Engineer",
+        company="Acme",
+        location="",
+        target_direction="Engineer",
+        fetched_at=STAMP,
+        freshness_status=FreshnessStatus.ACTIVE,
+        description="Earlier full job description",
+        source_documents=[
+            SourceDocument(
+                document_id="aaa-original",
+                source="liepin",
+                source_url="https://www.liepin.com/job/1",
+                text="Earlier full job description",
+                fetched_at=STAMP,
+            )
+        ],
+    )
+    original = candidate.model_dump_json()
+    blocked = candidate.model_copy(
+        update={"job_id": "blocked", "source_url": "https://www.liepin.com/job/blocked"}
+    )
+    result = asyncio.run(
+        JobSearchService(async_web_client=DetailClient()).fetch_details([candidate, blocked])
+    )
+    assert [job.job_id for job in result] == ["stable"]
+    assert result[0].freshness_status == FreshnessStatus.EXPIRED
+    assert result[0].expiry_at == datetime(2026, 9, 30, tzinfo=UTC)
+    assert result[0].location == "Shanghai, CN"
+    assert result[0].employment_type == "full-time"
+    assert result[0].description == "Open-ended Gleam requirement"
+    assert result[0].description_is_excerpt is False
+    assert any(
+        doc.document_id == "aaa-original" and doc.text == "Earlier full job description"
+        for doc in result[0].source_documents
+    )
+    assert any('"validThrough": "2026-09-30"' in doc.text for doc in result[0].source_documents)
+    assert candidate.model_dump_json() == original
+
+
+def test_source_redirect_cannot_fetch_an_untrusted_target() -> None:
+    seen: list[str] = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(302, headers={"location": "http://127.0.0.1/private"})
+
+    client = AsyncHttpWebClient(transport=httpx.MockTransport(respond), interval=0, retries=0)
+    with pytest.raises(RetrievalFailure) as error:
+        asyncio.run(client.request_async("https://www.liepin.com/job/1"))
+    assert error.value.code == "SEARCH_HTTP"
+    assert seen == ["https://www.liepin.com/job/1"]
 
 
 def request(**updates: object) -> SearchRequest:

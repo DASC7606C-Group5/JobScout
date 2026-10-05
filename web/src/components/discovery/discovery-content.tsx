@@ -7,7 +7,6 @@ import { ConversationHistory } from '../conversation-history'
 import { Icon } from '../icon'
 import { ProfileForm } from '../profile-form'
 import { Results } from '../results'
-import { ResultWarnings } from '../results/result-warnings'
 import { SourceOutcomes } from '../results/source-outcomes'
 import { SearchSummary } from '../search-summary'
 import { SearchFailure, SearchLoading } from './search-status'
@@ -50,17 +49,36 @@ export function DiscoveryContent() {
 }
 
 function SessionContent() {
-  const { session, retry, edit } = useScoutSession()
+  const { session, retry, edit, stop, stopping } = useScoutSession()
   const saved = useScout((state) => state.saved)
   const toggleSaved = useScout((state) => state.toggleSaved)
   if (!session) return <ProfileForm />
+  const hasResults = Boolean(
+    session.recommendation?.jobs.length || session.recommendation?.pending_jobs.length,
+  )
+  const results = (
+    <Results
+      key={session.session_id}
+      result={session.recommendation}
+      notices={session.notices}
+      saved={saved}
+      onToggle={toggleSaved}
+      onEdit={edit}
+      reviewActive={session.outcome === 'running' && Boolean(session.run_id)}
+    />
+  )
   switch (session.outcome) {
     case 'running':
-      return <SearchLoading stage={session.current_stage} />
+      return (
+        <>
+          <SearchLoading session={session} onStop={stop} stopping={stopping} />
+          {hasResults && results}
+        </>
+      )
     case 'paused':
       return (
         <>
-          <ConversationHistory session={session} />
+          <ConversationHistory session={session} collapsed />
           {session.current_stage === 'confirm' && session.search_summary ? (
             <SearchSummary
               key={`${session.session_id}-${session.revision}`}
@@ -82,15 +100,6 @@ function SessionContent() {
               )}
             </>
           )}
-          {session.notices.length > 0 && (
-            <div className="mt-5">
-              <ResultWarnings
-                notices={session.notices.filter((notice) => notice.scope !== 'job')}
-                onEdit={edit}
-                collapsed
-              />
-            </div>
-          )}
         </>
       )
     case 'failed':
@@ -101,13 +110,10 @@ function SessionContent() {
             onRetry={retry}
             onEdit={edit}
             retryable={session.retryable}
+            compact={hasResults}
           />
+          {hasResults && results}
           <div className="mt-5 space-y-5">
-            <ResultWarnings
-              notices={session.notices.filter((notice) => notice.scope !== 'job')}
-              onEdit={edit}
-              collapsed
-            />
             <SourceOutcomes outcomes={session.source_outcomes} />
             <ConversationHistory session={session} collapsed />
           </div>
@@ -116,14 +122,7 @@ function SessionContent() {
     case 'completed':
       return (
         <>
-          <Results
-            key={session.session_id}
-            result={session.recommendation}
-            notices={session.notices}
-            saved={saved}
-            onToggle={toggleSaved}
-            onEdit={edit}
-          />
+          {results}
           <div className="mt-6 space-y-5">
             <SourceOutcomes outcomes={session.source_outcomes} />
             <ConversationHistory session={session} collapsed />

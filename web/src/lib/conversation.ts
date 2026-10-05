@@ -1,5 +1,4 @@
 import type { ClarificationMessage, QuestionAnswer } from './contracts'
-import { parseDirections } from './profile-form'
 
 const fieldLabels: Record<string, string> = {
   education: 'Education',
@@ -17,21 +16,6 @@ const fieldLabels: Record<string, string> = {
 }
 export function profileFieldLabel(field: string) {
   return fieldLabels[field] ?? field
-}
-
-export function answerValidation(
-  questions: ClarificationMessage[],
-  values: Record<string, string | string[]>,
-  skipped: string[],
-) {
-  const skippedIds = new Set(skipped)
-  for (const question of questions) {
-    if (question.field !== 'target_directions' || skippedIds.has(question.question_id)) continue
-    const value = values[question.question_id]
-    const count = Array.isArray(value) ? value.length : parseDirections(value ?? '').length
-    if (count > 3) return 'Choose no more than three job directions. Remove some before continuing.'
-  }
-  return ''
 }
 
 export function pendingQuestions(questions: ClarificationMessage[]) {

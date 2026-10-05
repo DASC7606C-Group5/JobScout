@@ -2,8 +2,9 @@ import type { RefObject } from 'react'
 
 import { uniqueNotices } from '../lib/applicant-notices'
 import type { ApplicantNotice, JobPosting, RecommendationItem } from '../lib/contracts'
-import { dateLabel, safeSourceUrl } from '../lib/job-display'
+import { dateLabel, safeSourceUrl, sourceLabel } from '../lib/job-display'
 import { Icon } from './icon'
+import { JobReviewStatus } from './job-review-status'
 import { MatchingSourceQuotes } from './matching-source-quotes'
 import { ResultWarnings } from './results/result-warnings'
 
@@ -12,17 +13,17 @@ export function JobDetail({
   saved,
   onToggle,
   onBack,
-  onEdit,
   notices,
   headingRef,
+  reviewActive = false,
 }: {
   item: RecommendationItem
   saved: boolean
   onToggle: () => void
   onBack: () => void
-  onEdit: () => void
   notices: ApplicantNotice[]
   headingRef: RefObject<HTMLHeadingElement | null>
+  reviewActive?: boolean
 }) {
   const { job } = item
   const links = [...new Set([job.source_url, ...job.source_links])].flatMap((value) => {
@@ -35,13 +36,19 @@ export function JobDetail({
     ),
   )
   return (
-    <article aria-label="Job details" className="card min-w-0 border border-base-300 bg-base-100">
+    <article
+      aria-label="Job details"
+      className="card min-w-0 border border-base-300 bg-base-100 min-[1100px]:max-h-[calc(100dvh-var(--job-detail-top,1.5rem)-1.5rem)] min-[1100px]:scroll-pt-24 min-[1100px]:[scrollbar-gutter:stable] min-[1100px]:overflow-y-auto"
+    >
       <div className="p-5 pb-0 sm:p-6 sm:pb-0">
         <button className="btn mb-5 btn-ghost btn-sm min-[1100px]:hidden" onClick={onBack}>
           <Icon name="arrow" size={15} className="rotate-180" />
           Back to jobs
         </button>
-        <p className="text-sm text-base-content/65">{job.company}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-base-content/65">{job.company}</p>
+          <JobReviewStatus item={item} active={reviewActive} />
+        </div>
         <h2
           ref={headingRef}
           tabIndex={-1}
@@ -74,7 +81,7 @@ export function JobDetail({
         <JobMatch item={item} />
         <Responsibilities job={job} />
         <Preparation item={item} />
-        <ResultWarnings notices={jobNotices} listingUrl={links[0]} onEdit={onEdit} />
+        <ResultWarnings notices={jobNotices} listingUrl={links[0]} />
         <MatchingSourceQuotes reasons={item.matching_reasons} />
         <ListingMetadata job={job} links={links} />
       </div>
@@ -87,10 +94,13 @@ function JobMatch({ item }: { item: RecommendationItem }) {
   const reasons = item.matching_reasons
     .filter((reason) => reason.level !== 'not_documented')
     .slice(0, 3)
-  if (!reasons.length) return null
+  if (!reasons.length && !item.recommendation_reason) return null
   return (
     <section>
       <h3 className="mb-2 font-semibold">Why this role</h3>
+      {item.recommendation_reason && (
+        <p className="mb-3 text-base-content/75">{item.recommendation_reason}</p>
+      )}
       <ul className="space-y-2 text-base-content/75">
         {reasons.map((reason) => (
           <li key={JSON.stringify(reason)}>{reason.explanation}</li>
@@ -143,7 +153,7 @@ function ListingMetadata({ job, links }: { job: JobPosting; links: string[] }) {
   return (
     <div className="border-t border-base-300 pt-4 text-xs text-base-content/60">
       <p>
-        {job.source} · Retrieved {dateLabel(job.fetched_at)}
+        {sourceLabel(job.source)} · Retrieved {dateLabel(job.fetched_at)}
       </p>
       {job.posted_at && <p className="mt-1">Posted {dateLabel(job.posted_at)}</p>}
       {job.expiry_at && <p className="mt-1">Deadline {dateLabel(job.expiry_at)}</p>}

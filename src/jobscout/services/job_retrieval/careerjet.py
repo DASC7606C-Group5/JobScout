@@ -12,7 +12,7 @@ from jobscout.schemas.search import SearchRequest
 from jobscout.services.notice_service import make_notice
 
 from .models import RawJob, RetrievalFailure
-from .planning import location_region, normalized, plan_keywords, validate_request
+from .planning import normalized, plan_keywords, validate_request
 from .sources import SourceResult
 from .transport import HttpJsonClient, JsonClient
 
@@ -23,7 +23,7 @@ def careerjet_params(request: SearchRequest, region: str, page: int = 1) -> dict
     validate_request(request)
     if region not in {"hk", "cn"}:
         raise RetrievalFailure("SEARCH_REGION_UNSUPPORTED", "Unsupported Careerjet region.")
-    actual = location_region(request.location)
+    actual = request.location_ref.region if request.location_ref else None
     if not request.location_unrestricted and actual != region:
         raise RetrievalFailure(
             "SEARCH_REGION_UNSUPPORTED",
@@ -37,18 +37,13 @@ def careerjet_params(request: SearchRequest, region: str, page: int = 1) -> dict
         "sort": "relevance",
         "fragment_size": 1000,
     }
-    if request.location and request.location.strip().casefold() not in {
-        "hk",
-        "cn",
-        "china",
-        "中国",
-        "中國",
-        "香港",
-        "hong kong",
-    }:
-        params["location"] = request.location
-    else:
-        params["location"] = "Hong Kong" if region == "hk" else "China"
+    params["location"] = (
+        request.location_ref.name
+        if request.location_ref
+        else "Hong Kong"
+        if region == "hk"
+        else "China"
+    )
     employment = normalized(request.employment_type)
     if employment in {"full time", "part time"}:
         params["work_hours"] = "f" if employment == "full time" else "p"
@@ -71,7 +66,7 @@ class CareerjetAdapter:
         self, request: SearchRequest, *, result: SourceResult | None = None
     ) -> SourceResult:
         result = SourceResult() if result is None else result
-        params = careerjet_params(request, self.region)
+        params = careerjet_params(request, self.region, page=request.page)
         client = self.client
         if client is None:
             key = os.environ.get("CAREERJET_API_KEY", "").strip()

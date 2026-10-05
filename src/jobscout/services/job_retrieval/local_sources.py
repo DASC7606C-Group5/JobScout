@@ -15,37 +15,17 @@ from uuid import uuid4
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from jobscout.schemas.search import SearchRequest
+from jobscout.services.location_service import get_location_catalog, within
 from jobscout.services.notice_service import make_notice
 
+from .employment import source_employment_label
 from .html_fields import Tree
 from .models import RawJob, RetrievalFailure, workflow_error
-from .planning import location_region, normalized, plan_keywords, validate_request
+from .planning import normalized, plan_keywords, validate_request
 from .sources import SourceResult
 from .web_transport import AsyncWebClient, WebPage
 
 JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
-CITY_CODES = {
-    "北京": ("530", "010", "beijing"),
-    "上海": ("538", "020", "shanghai"),
-    "广州": ("763", "050020", "guangzhou"),
-    "深圳": ("765", "050090", "shenzhen"),
-    "杭州": ("653", "070020", "hangzhou"),
-    "成都": ("801", "280020", "chengdu"),
-}
-COUNTRY_CN = {
-    "cn",
-    "china",
-    "中国",
-    "中國",
-    "mainland china",
-    "中国大陆",
-    "中國大陸",
-    "中国内地",
-    "中國內地",
-    "全国",
-}
-COUNTRY_HK = {"hk", "hong kong", "hongkong", "香港", "中国香港", "香港特别行政区", "香港特別行政區"}
-REGION_ALIASES = {"kowloon": "九龙", "new territories": "新界", "九龍": "九龙"}
 HOSTS = {
     "zhaopin": "jobs.zhaopin.com",
     "liepin": "www.liepin.com",
@@ -54,29 +34,9 @@ HOSTS = {
 }
 
 
-def city_name(location: str | None) -> str | None:
-    value = normalized(location or "")
-    for city, (_, _, english) in CITY_CODES.items():
-        if city in value or re.search(r"\b" + english + r"\b", value):
-            return city
-    return None
-
-
 def source_keywords(request: SearchRequest, source: str) -> list[str]:
-    """Only translate known direction baselines; explicit user keywords stay intact."""
-    words = plan_keywords(request)
-    if not request.keywords:
-        mapping = {
-            "data analyst": "数据分析",
-            "business analyst": "商业分析",
-            "data scientist": "数据科学",
-        }
-        if source == "jobsdb":
-            reverse = {v: k for k, v in mapping.items()}
-            words = [reverse.get(normalized(words[0]), words[0])]
-        else:
-            words = [mapping.get(normalized(words[0]), words[0])]
-    return words
+    """Semantic query phrasing is supplied by the search agent."""
+    return plan_keywords(request)
 
 
 @dataclass(frozen=True)
@@ -95,38 +55,27 @@ def build_search_plan(
         raise RetrievalFailure("SEARCH_UNKNOWN_SOURCE", "Unknown source.")
     if not 1 <= page <= 5 or not 1 <= page_size <= 50:
         raise RetrievalFailure("SEARCH_INPUT", "Invalid page bounds.")
-    region = location_region(request.location)
+    ref = request.location_ref
+    if not request.location_unrestricted and ref is None:
+        raise RetrievalFailure(
+            "SEARCH_LOCATION_UNSUPPORTED", "A resolved directory location is required."
+        )
+    region = ref.region if ref else None
     if not request.location_unrestricted and region != ("hk" if source == "jobsdb" else "cn"):
         raise RetrievalFailure(
             "SEARCH_REGION_UNSUPPORTED", "Source does not cover the requested region."
         )
-    city = city_name(request.location)
-    if city and not request.location_unrestricted:
-        remainder = normalized(request.location or "")
-        for part in (
-            CITY_CODES[city][2],
-            city,
-            "mainland china",
-            "china",
-            "中国大陆",
-            "中国",
-            "市",
-        ):
-            remainder = remainder.replace(part, "")
-        if remainder.strip(" ,，"):
-            raise RetrievalFailure(
-                "SEARCH_LOCATION_UNSUPPORTED",
-                "City subdistrict/multiple-location filtering is not verified; use one city per request.",
-            )
+    catalog = get_location_catalog()
+    city_ref = catalog.city(ref) if ref else None
+    city = city_ref.name if city_ref and city_ref.level != "country" else None
     if (
-        source != "jobsdb"
-        and not request.location_unrestricted
-        and not city
-        and normalized(request.location or "") not in COUNTRY_CN
+        source in {"zhaopin", "liepin"}
+        and ref
+        and ref.level != "country"
+        and source not in ref.source_codes
     ):
         raise RetrievalFailure(
-            "SEARCH_LOCATION_UNSUPPORTED",
-            "City has no verified native parameter mapping; refusing nationwide fallback.",
+            "SEARCH_LOCATION_UNSUPPORTED", "The source has no verified native parameter mapping."
         )
     if (
         source == "shixiseng"
@@ -155,7 +104,7 @@ def build_search_plan(
         )
         body = {
             "S_SOU_FULL_INDEX": keyword,
-            "S_SOU_WORK_CITY": CITY_CODES[city][0] if city else "489",
+            "S_SOU_WORK_CITY": ref.source_codes["zhaopin"] if ref else "489",
             "order": 0,
             "sortType": "DEFAULT",
             "pageIndex": page,
@@ -177,7 +126,7 @@ def build_search_plan(
                 "X-Fscp-Trace-Id": str(uuid4()),
             }
         )
-        code = CITY_CODES[city][1] if city else ""
+        code = ref.source_codes.get("liepin", "") if ref else ""
         body = {
             "data": {
                 "mainSearchPcConditionForm": {
@@ -206,7 +155,7 @@ def build_search_plan(
     elif source == "jobsdb":
         where = (
             "Hong Kong"
-            if request.location_unrestricted or normalized(request.location or "") in COUNTRY_HK
+            if request.location_unrestricted or (ref and ref.level == "country")
             else request.location
         )
         params: dict[str, str | int | None] = {
@@ -442,19 +391,31 @@ def add_detail(job: RawJob, page: WebPage) -> None:
         job.raw_payload.setdefault("listing_description", job.description)
         job.raw_payload.setdefault("listing_fetched_at", job.fetched_at.isoformat())
     tree = Tree(page.text).root
+    structured_description: str | None = None
+    for node in tree.find(tag="script", attr="type", value="application/ld+json"):
+        try:
+            source_json = "".join(child for child in node.children if isinstance(child, str))
+            structured = JSON_OBJECT.validate_python(json.loads(source_json, strict=False))
+        except ValueError, ValidationError:
+            continue
+        if structured.get("@type") != "JobPosting":
+            continue
+        job.raw_payload["detail_structured"] = structured
+        structured_description = string(structured.get("description"))
+        job.posted_at = string(structured.get("datePosted")) or job.posted_at
+        job.expiry_at = string(structured.get("validThrough")) or job.expiry_at
+        address = obj(at(structured, "jobLocation", "address"))
+        location = ", ".join(
+            value
+            for key in ("addressLocality", "addressRegion", "addressCountry")
+            if (value := string(address.get(key)))
+        )
+        job.location = location or job.location
+        job.employment_type = observed_employment_type(job) or job.employment_type
     if job.source == "jobsdb":
         description = tree.field("data-automation", "jobAdDetails")
     elif job.source == "liepin":
         description = tree.field("data-selector", "job-intro-content")
-        for node in tree.find(tag="script", attr="type", value="application/ld+json"):
-            try:
-                raw = "".join(c for c in node.children if isinstance(c, str))
-                structured = JSON_OBJECT.validate_python(json.loads(raw, strict=False))
-                if structured.get("@type") == "JobPosting":
-                    description = description or string(structured.get("description"))
-                    job.raw_payload["detail_structured"] = structured
-            except ValueError, ValidationError:
-                continue
     else:
         description = tree.field("class", "job_detail")
         headings = tree.find(tag="h1")
@@ -467,8 +428,8 @@ def add_detail(job: RawJob, page: WebPage) -> None:
         job.salary = clean_field(tree.field("class", "job_money"))
         posted = re.search(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*刷新", text)
         expiry = re.search(r"截止日期[：:]\s*(\d{4}-\d{2}-\d{2})", text)
-        job.posted_at = posted.group(1) if posted else None
-        job.expiry_at = expiry.group(1) if expiry else None
+        job.posted_at = posted.group(1) if posted else job.posted_at
+        job.expiry_at = expiry.group(1) if expiry else job.expiry_at
         companies = [
             n for n in tree.find(tag="a") if "/com/" in n.attrs.get("href", "") and n.text()
         ]
@@ -478,6 +439,7 @@ def add_detail(job: RawJob, page: WebPage) -> None:
             or job.company
         )
     description = clean_field(description)
+    description = description or structured_description
     if not description:
         raise RetrievalFailure(
             "SEARCH_RESPONSE_FORMAT",
@@ -489,133 +451,46 @@ def add_detail(job: RawJob, page: WebPage) -> None:
 
 
 def passes_location(job: RawJob, request: SearchRequest) -> bool:
-    if not request.location_unrestricted:
-        wanted = normalized(request.location or "")
-        if job.source == "jobsdb":
-            places = job.raw_payload.get("locations")
-            if (
-                not isinstance(places, list)
-                or not places
-                or any(at(obj(p), "countryCode") != "HK" for p in places)
-            ):
-                return False
-        if wanted not in COUNTRY_CN | COUNTRY_HK:
-            actual = normalized(job.location or "")
-            city = city_name(request.location)
-            if city:
-                if city not in actual and CITY_CODES[city][2] not in actual:
-                    return False
-            else:
-                wanted = wanted.replace("hong kong", "").replace("香港", "").strip(" ,，")
-                wanted = REGION_ALIASES.get(wanted, wanted)
-                actual = actual.replace("九龍", "九龙")
-                for english, chinese in REGION_ALIASES.items():
-                    actual = actual.replace(english, chinese)
-                if wanted not in actual:
-                    return False
-        elif wanted in COUNTRY_CN and location_region(job.location) != "cn":
+    if job.source == "jobsdb":
+        places = job.raw_payload.get("locations")
+        if isinstance(places, list) and any(
+            at(obj(place), "countryCode") not in {None, "HK"} for place in places
+        ):
             return False
-    return True
+    if request.location_unrestricted or request.location_ref is None:
+        return True
+    actual = get_location_catalog().find(job.location or "")
+    # An unresolved source string is assessed later with its original evidence.
+    if len(actual) != 1:
+        return True
+    wanted = request.location_ref
+    return within(actual[0], wanted) or within(wanted, actual[0])
 
 
 def observed_employment_type(job: RawJob) -> str | None:
-    labels: JsonValue = (
+    if job.source == "shixiseng":
+        return "internship"
+    native = (
         job.raw_payload.get("workType")
         if job.source == "zhaopin"
         else job.raw_payload.get("workTypes")
         if job.source == "jobsdb"
-        else at(job.raw_payload, "job", "campusJobKind")
-        or at(job.raw_payload, "job", "workType")
-        or at(job.raw_payload, "detail_structured", "employmentType")
-        or job.raw_payload.get("employment_type")
+        else [at(job.raw_payload, "job", "campusJobKind"), at(job.raw_payload, "job", "workType")]
     )
-    values = [labels] if isinstance(labels, str) else labels if isinstance(labels, list) else []
-    types = {normalized(v) for v in values if isinstance(v, str)}
-    if job.source == "shixiseng" or re.search(
-        r"\bintern(?:ship)?\b|实习|實習", job.title or "", re.I
+    values: list[object] = []
+    for labels in (
+        native,
+        at(job.raw_payload, "detail_structured", "employmentType"),
+        job.raw_payload.get("employment_type"),
     ):
-        return "internship"
-    aliases = {
-        "internship": {"internship", "intern", "实习", "實習"},
-        "full-time": {"full time", "fulltime", "全职", "全職"},
-        "part-time": {"part time", "parttime", "兼职", "兼職"},
-        "contract": {"contract", "contract/temp", "合同工"},
-        "freelance": {"freelance", "自由职业"},
-    }
-    return next((kind for kind, values in aliases.items() if types & values), None)
+        values.extend(labels if isinstance(labels, list) else [labels])
+    return source_employment_label(values)
 
 
 def passes_filters(job: RawJob, request: SearchRequest) -> bool:
-    if not passes_location(job, request):
-        return False
-    if request.employment_type_unrestricted:
-        return True
-    kind = normalized(request.employment_type)
-    title = (job.title or "").casefold()
-    internship = (
-        job.source == "shixiseng"
-        or "实习" in title
-        or "實習" in title
-        or re.search(r"\bintern(?:ship)?\b", title) is not None
-    )
-    labels: JsonValue = (
-        job.raw_payload.get("workType")
-        if job.source == "zhaopin"
-        else job.raw_payload.get("workTypes")
-        if job.source == "jobsdb"
-        else at(job.raw_payload, "job", "campusJobKind")
-        or at(job.raw_payload, "job", "workType")
-        or at(job.raw_payload, "detail_structured", "employmentType")
-    )
-    values = [labels] if isinstance(labels, str) else labels if isinstance(labels, list) else []
-    types = {normalized(v) for v in values if isinstance(v, str)}
-    internship = internship or bool(types & {"internship", "intern", "实习", "實習"})
-    if kind == "internship":
-        return internship
-    if internship:
-        return False
-    aliases = {
-        "full time": {"full time", "fulltime", "全职", "全職"},
-        "part time": {"part time", "parttime", "兼职", "兼職"},
-        "contract": {"contract", "contract/temp", "合同工"},
-        "freelance": {"freelance", "自由职业"},
-    }
-    return bool(types & aliases.get(kind, set()))
-
-
-def keyword_match_status(job: RawJob, request: SearchRequest) -> str:
-    """Conservative lexical guard, not profile matching or semantic ranking.
-
-    Reject only when a source description is available and has no query keyword match.
-    Missing details/excerpts remain explicitly unverified to avoid false exclusions.
-    """
-    text = normalized((job.title or "") + " " + (job.description or ""))
-    if request.keywords:
-        matched = all(normalized(word) in text for word in request.keywords)
-    else:
-        alternatives = {
-            "data analyst": ("data analyst", "data analysis", "数据分析", "數據分析"),
-            "business analyst": (
-                "business analyst",
-                "business analysis",
-                "商业分析",
-                "業務分析",
-                "业务分析",
-                "商業分析",
-            ),
-            "data scientist": ("data scientist", "data science", "数据科学", "數據科學"),
-        }
-        words = alternatives.get(
-            normalized(request.target_direction), tuple(source_keywords(request, job.source))
-        )
-        matched = any(normalized(word) in text for word in words)
-    if matched:
-        return "matched"
-    if not job.description or (
-        job.source == "jobsdb" and "detail_description" not in job.raw_payload
-    ):
-        return "unverified"
-    return "no_match"
+    # Native work-hours labels and contract kinds can coexist (a full-time
+    # internship). The semantic assessment evaluates all supplied evidence.
+    return passes_location(job, request)
 
 
 class LocalAdapter:
@@ -650,6 +525,9 @@ class LocalAdapter:
     async def search_async(
         self, request: SearchRequest, *, result: SourceResult | None = None
     ) -> SourceResult:
+        if request.location_ref is not None:
+            mapped = await get_location_catalog().source_location(request.location_ref, self.name)
+            request = request.model_copy(update={"location_ref": mapped})
         steps = self._search_steps(request, result if result is not None else SourceResult())
         try:
             plan = next(steps)
@@ -689,9 +567,7 @@ class LocalAdapter:
         detail_count = 0
         filtered = 0
         unreadable = 0
-        unrelated = 0
-        unverified = 0
-        for number in range(1, self.max_pages + 1):
+        for number in range(request.page, min(5, request.page + self.max_pages - 1) + 1):
             plan = build_search_plan(request, self.name, number, self.page_size)
             try:
                 page = yield plan
@@ -771,12 +647,6 @@ class LocalAdapter:
                         # Do not pad the candidate list with font-obfuscated, nameless cards.
                         unreadable += 1
                         continue
-                    match_status = keyword_match_status(job, request)
-                    if match_status == "no_match":
-                        unrelated += 1
-                        continue
-                    unverified += match_status == "unverified"
-                    job.raw_payload["keyword_match_status"] = match_status
                     job.raw_payload["search_keywords"] = list(plan.keywords)
                     job.description_is_excerpt = bool(
                         not job.description
@@ -838,14 +708,5 @@ class LocalAdapter:
             result.notices.append(make_notice("coverage_limited", source=self.name))
             result.warnings.append(
                 f"{label}: omitted {unreadable} unreadable-title cards after bounded detail retrieval; coverage is incomplete, increase detail_limit to request more details."
-            )
-        if unrelated:
-            result.notices.append(make_notice("coverage_limited", source=self.name))
-            result.warnings.append(
-                f"{label}: excluded {unrelated} candidates without lexical keyword matches in available title/description; this conservative check may miss synonyms."
-            )
-        if unverified:
-            result.warnings.append(
-                f"{label}: {unverified} candidates have unverified keyword matches because description is missing/an excerpt; downstream review required."
             )
         return result

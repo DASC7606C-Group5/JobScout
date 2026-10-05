@@ -65,13 +65,11 @@ export function WorkspaceLayout() {
     }
   }
 
-  function openHistory() {
-    if (open) {
-      historyFocusRequested.current = !focusDrawerTarget(sidebar.current, sessionId)
-    } else {
+  function toggleSidebar() {
+    if (!open) {
       historyFocusRequested.current = true
       setDrawerOpen(true)
-    }
+    } else setDrawerOpen(false)
   }
 
   useEffect(() => {
@@ -165,7 +163,7 @@ export function WorkspaceLayout() {
         <main
           id="main-content"
           tabIndex={-1}
-          className="mx-auto max-w-7xl px-5 pt-20 pb-10 sm:px-8 lg:pt-10 xl:px-12"
+          className="workspace-page mx-auto max-w-7xl px-5 pt-20 pb-10 sm:px-8 lg:pt-10 xl:px-12"
         >
           {saveError && (
             <div className="mb-5 alert alert-error sm:alert-horizontal" role="alert">
@@ -187,8 +185,7 @@ export function WorkspaceLayout() {
         sessionId={sessionId}
         expanded={open}
         mobile={!desktop}
-        onHistory={openHistory}
-        onToggleDrawer={() => setDrawerOpen(!open)}
+        onToggleDrawer={toggleSidebar}
         onNavigate={() => {
           if (!desktop) setMobileOpen(false)
         }}

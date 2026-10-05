@@ -15,7 +15,6 @@ export function DescriptionField() {
         <label htmlFor="description" className="text-sm font-semibold">
           About you
         </label>
-        <span className="text-xs text-base-content/55">Provide an introduction or a resume</span>
       </div>
       <textarea
         {...field}

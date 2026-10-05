@@ -8,15 +8,71 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pydantic import JsonValue, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, JsonValue, TypeAdapter, ValidationError
 
+from jobscout.schemas.profile import LocationRef
 from jobscout.schemas.search import SearchRequest
+from jobscout.services import location_service
 from jobscout.services.job_retrieval.mock_web import FixtureWebClient
-from jobscout.services.job_retrieval.models import SearchResult, workflow_error
+from jobscout.services.job_retrieval.models import RetrievalFailure, SearchResult, workflow_error
 from jobscout.services.job_retrieval.transport import FixtureClient
 from jobscout.services.job_search_service import JobSearchService
+from jobscout.services.location_service import CatalogEntry, LocationCatalog, get_location_catalog
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class MockLocation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    location: LocationRef
+    names: set[str]
+
+
+def mock_catalog() -> LocationCatalog:
+    """The CLI's explicit mock mode uses its synthetic source directory snapshot."""
+    rows = TypeAdapter(list[MockLocation]).validate_json(
+        (ROOT / "data/group4/mock_locations.json").read_text(encoding="utf-8")
+    )
+    return LocationCatalog(
+        entries=[
+            CatalogEntry(row.location, row.names, "synthetic:group4/mock_locations.json")
+            for row in rows
+        ]
+    )
+
+
+async def run_demo(
+    service: JobSearchService, requests: list[SearchRequest], catalog: LocationCatalog
+) -> SearchResult:
+    bound: list[SearchRequest] = []
+    errors = []
+    for index, request in enumerate(requests):
+        if request.location_unrestricted:
+            bound.append(request.model_copy(update={"location_ref": None}))
+            continue
+        try:
+            candidates = await catalog.lookup(request.location or "")
+        except RetrievalFailure, TimeoutError:
+            candidates = []
+        if len(candidates) != 1:
+            errors.append(
+                workflow_error(
+                    "SEARCH_LOCATION_UNSUPPORTED",
+                    "Resolve one location from the trusted directory before source retrieval.",
+                    request_index=index,
+                )
+            )
+            continue
+        # Discard any IDs/codes supplied by the input file and bind catalog facts.
+        resolved = request.model_copy(update={"location_ref": candidates[0]})
+        requests[index] = resolved
+        bound.append(resolved)
+    if not bound:
+        return SearchResult(errors=errors)
+    result = await service.search_many_async(bound)
+    result.errors[:0] = errors
+    return result
 
 
 def main() -> int:
@@ -37,6 +93,8 @@ def main() -> int:
             args.input.read_text(encoding="utf-8-sig")
         )
         if args.mode == "mock":
+            catalog = mock_catalog()
+            location_service._catalog = catalog
             fixtures = TypeAdapter(dict[str, dict[str, JsonValue]]).validate_json(
                 (ROOT / "data/group4/mock_sources.json").read_text(encoding="utf-8")
             )
@@ -50,6 +108,7 @@ def main() -> int:
                 detail_limit=args.detail_limit,
             )
         else:
+            catalog = get_location_catalog()
             service = JobSearchService(
                 max_pages=args.max_pages,
                 page_size=args.page_size,
@@ -57,7 +116,7 @@ def main() -> int:
                 result_limit=args.result_limit,
                 detail_limit=args.detail_limit,
             )
-        result = asyncio.run(service.search_many_async(requests))
+        result = asyncio.run(run_demo(service, requests, catalog))
     except OSError, ValidationError, ValueError:
         # ValidationError can echo user input: do not print it or a traceback.
         result = SearchResult(

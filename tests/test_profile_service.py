@@ -53,9 +53,23 @@ def test_parse_profile_input_drops_blank_directions_and_duplicates() -> None:
 
 
 def test_explicit_list_normalization_preserves_unknown_multiword_values() -> None:
-    assert split_list_text("Bun; Looker Studio，stakeholder management / Bun") == [
+    assert split_list_text("Bun\nLooker Studio\nstakeholder management\nBun") == [
         "Bun",
         "Looker Studio",
         "stakeholder management",
     ]
     assert dedupe([" Bun ", "bun", "", "ClickHouse"]) == ["Bun", "ClickHouse"]
+
+
+def test_list_normalization_preserves_punctuation_inside_skills_and_roles() -> None:
+    assert split_list_text(
+        "CI/CD\nUI/UX Designer\nTCP/IP\nA | B\nC++\nBSc, Computer Science\n数据分析，业务研究"
+    ) == [
+        "CI/CD",
+        "UI/UX Designer",
+        "TCP/IP",
+        "A | B",
+        "C++",
+        "BSc, Computer Science",
+        "数据分析，业务研究",
+    ]

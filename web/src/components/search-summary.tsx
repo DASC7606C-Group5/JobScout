@@ -1,7 +1,7 @@
 import type { SearchSummary as Summary } from '../lib/contracts'
 import { profileFieldLabel } from '../lib/conversation'
+import { resultCountError } from '../lib/profile-form'
 import {
-  summaryDirectionError,
   summaryDraft,
   summaryFields,
   summaryUpdates,
@@ -11,14 +11,9 @@ import {
 import { useScoutSession } from '../state/session-context'
 import { useSessionDraft } from '../state/use-session-draft'
 import { DraftStatus } from './draft-status'
+import { InterpretedConditions } from './profile/interpreted-conditions'
+import { ResultCountField } from './profile/result-count-field'
 
-const employmentOptions = [
-  ['full-time', 'Full-time'],
-  ['internship', 'Internship'],
-  ['part-time', 'Part-time'],
-  ['contract', 'Contract'],
-  ['freelance', 'Freelance'],
-] as const
 const workModeOptions = [
   ['onsite', 'On-site'],
   ['hybrid', 'Hybrid'],
@@ -30,13 +25,11 @@ function SummaryFields({
   draft,
   editableFields,
   onChange,
-  directionError,
 }: {
   fields: (typeof summaryFields)[number][]
   draft: SummaryDraft
   editableFields: Set<string>
-  onChange: (key: SummaryKey, value: string | boolean) => void
-  directionError: string | null
+  onChange: (key: SummaryKey, value: string | boolean | number) => void
 }) {
   return (
     <div className="grid gap-5 sm:grid-cols-2">
@@ -50,12 +43,7 @@ function SummaryFields({
               ? 'preferences.employment_type_unrestricted'
               : null
         const unrestricted = unrestrictedKey ? draft[unrestrictedKey] === true : false
-        const options =
-          key === 'preferences.employment_type'
-            ? employmentOptions
-            : key === 'preferences.work_mode'
-              ? workModeOptions
-              : null
+        const options = key === 'preferences.work_mode' ? workModeOptions : null
         const value = String(draft[key])
         return (
           <div key={key}>
@@ -70,7 +58,6 @@ function SummaryFields({
                 value={value}
                 readOnly={!editable}
                 maxLength={10000}
-                aria-invalid={key === 'target_directions' && Boolean(directionError)}
                 aria-describedby={
                   key === 'target_directions' ? 'summary-directions-hint' : undefined
                 }
@@ -108,12 +95,8 @@ function SummaryFields({
               />
             )}
             {key === 'target_directions' && (
-              <p
-                id="summary-directions-hint"
-                className={`mt-2 text-xs ${directionError ? 'text-error' : 'text-base-content/55'}`}
-              >
-                {directionError ||
-                  'Enter one item per line or separate items with commas. Choose up to three specific directions.'}
+              <p id="summary-directions-hint" className="mt-2 text-xs text-base-content/55">
+                Enter one direction per line. Keep punctuation within a direction.
               </p>
             )}
             {unrestrictedKey && (
@@ -144,11 +127,16 @@ export function SearchSummary({ summary }: { summary: Summary }) {
   const { value: formDraft, setValue: setFormDraft } = persisted
   const { fields: draft, message } = formDraft
   const updates = summaryUpdates(original, draft, summary.editable_fields)
-  const changed = Object.keys(updates).length > 0 || Boolean(message.trim())
+  const count = Number(draft['search_options.result_count'])
+  const countChanged = count !== original['search_options.result_count']
+  const countError = resultCountError(count)
+  const changed = Object.keys(updates).length > 0 || countChanged || Boolean(message.trim())
   const editableFields = new Set(summary.editable_fields)
   const current = summary.revision === session?.revision
-  const directionError = summaryDirectionError(draft)
-  const onChange = (key: SummaryKey, value: string | boolean) =>
+  const invalid = Boolean(countError)
+  const canSave = changed && current && !invalid
+  const canConfirm = !changed && summary.ready && !summary.confirmed && current && !invalid
+  const onChange = (key: SummaryKey, value: string | boolean | number) =>
     setFormDraft({ ...formDraft, fields: { ...draft, [key]: value } })
   return (
     <form
@@ -158,23 +146,17 @@ export function SearchSummary({ summary }: { summary: Summary }) {
       onCompositionEnd={persisted.onCompositionEnd}
       onSubmit={(event) => {
         event.preventDefault()
-        if (changed && current && !busy && !directionError)
+        if (canSave && !busy)
           void answer({
             action: 'edit_conditions',
             profile_updates: updates,
             message: message.trim(),
+            ...(countChanged ? { search_options: { result_count: count } } : {}),
           })
       }}
     >
       <h2 className="text-lg font-semibold">Review your profile and search criteria</h2>
-      <p className="mt-3 text-sm leading-6 text-base-content/65">
-        {summary.coverage_notice} Salary, industry, and work arrangement are preferences. We’ll flag
-        details that haven’t been verified by the source.
-      </p>
-      <p className="mt-2 text-xs text-base-content/60">
-        Enter one item per line or separate items with commas. After saving changes, review and
-        confirm them. We won’t search for jobs until you confirm.
-      </p>
+      <p className="mt-3 text-sm leading-6 text-base-content/65">{summary.coverage_notice}</p>
       <fieldset
         disabled={busy || persisted.status === 'loading'}
         className="mt-6 min-w-0 space-y-6"
@@ -188,9 +170,14 @@ export function SearchSummary({ summary }: { summary: Summary }) {
             draft={draft}
             editableFields={editableFields}
             onChange={onChange}
-            directionError={directionError}
           />
         </fieldset>
+        <ResultCountField
+          id="summary-result-count"
+          value={count}
+          onChange={(value) => onChange('search_options.result_count', value)}
+          disabled={!editableFields.has('search_options.result_count')}
+        />
         <fieldset className="fieldset min-w-0 border-t border-base-300 p-0 pt-3">
           <legend className="fieldset-legend pb-3 text-sm">Search criteria</legend>
           <SummaryFields
@@ -202,9 +189,9 @@ export function SearchSummary({ summary }: { summary: Summary }) {
             draft={draft}
             editableFields={editableFields}
             onChange={onChange}
-            directionError={directionError}
           />
         </fieldset>
+        {!changed && <InterpretedConditions preferences={summary.profile.preferences} />}
         {summary.missing_fields.length > 0 && (
           <output className="block rounded-box bg-accent/25 p-3 text-sm">
             Still to confirm:
@@ -224,18 +211,12 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           />
         </div>
         <div className="flex flex-wrap gap-3 border-t border-base-300 pt-5">
-          <button
-            type="submit"
-            disabled={!changed || !current || Boolean(directionError)}
-            className="btn"
-          >
+          <button type="submit" disabled={!canSave} className="btn">
             Save changes
           </button>
           <button
             type="button"
-            disabled={
-              changed || !summary.ready || summary.confirmed || !current || Boolean(directionError)
-            }
+            disabled={!canConfirm}
             className="btn btn-primary"
             onClick={() => {
               void answer({ action: 'confirm_search' })

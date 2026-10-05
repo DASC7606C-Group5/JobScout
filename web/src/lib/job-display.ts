@@ -11,6 +11,22 @@ const generatedFormatter = new Intl.DateTimeFormat('en-HK', {
   minute: '2-digit',
   timeZone: 'Asia/Hong_Kong',
 })
+const sourceNames: Record<string, string> = {
+  jobsdb: 'JobsDB',
+  liepin: 'Liepin',
+  zhaopin: 'Zhaopin',
+  shixiseng: 'Shixiseng',
+  remotive: 'Remotive',
+  arbeitnow: 'Arbeitnow',
+  careerjet: 'Careerjet',
+  careerjet_hk: 'Careerjet',
+  careerjet_cn: 'Careerjet',
+}
+
+export function sourceLabel(source: string) {
+  return sourceNames[source] ?? 'Job source'
+}
+
 export function generatedLabel(value: string) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? 'Not provided' : generatedFormatter.format(date)

@@ -4,14 +4,13 @@ ConversationService owns semantic extraction through its structured AI provider.
 These helpers validate the input contract without guessing facts from CV text.
 """
 
-import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import TypedDict
 
 from pydantic import ValidationError
 
-from jobscout.schemas.profile import ProfilePreferences
+from jobscout.schemas.profile import RawProfilePreferences
 
 
 class InputFormatError(ValueError):
@@ -32,7 +31,7 @@ class ProfileInput:
     description: str
     resume: ResumeFile | None
     target_directions: list[str]
-    preferences: ProfilePreferences
+    preferences: RawProfilePreferences
 
 
 def parse_profile_input(input_data: Mapping[str, object]) -> ProfileInput:
@@ -92,20 +91,17 @@ def _parse_directions(value: object) -> list[str]:
     raise InputFormatError("target_directions must be a list of strings.")
 
 
-def _parse_preferences(value: object) -> ProfilePreferences:
+def _parse_preferences(value: object) -> RawProfilePreferences:
     if value is None:
-        return ProfilePreferences()
+        return RawProfilePreferences()
     if isinstance(value, dict):
         try:
-            return ProfilePreferences.model_validate(value)
+            return RawProfilePreferences.model_validate(value)
         except ValidationError as error:
             raise InputFormatError(
                 "preferences does not match the agreed preference fields."
             ) from error
     raise InputFormatError("preferences must be an object or null.")
-
-
-_LIST_SEPARATOR = re.compile(r"[,，、;；/|]")
 
 
 def dedupe(items: Iterable[str]) -> list[str]:
@@ -132,9 +128,9 @@ def split_list_text(text: str) -> list[str]:
     """Split a free-text answer into list items.
 
     Args:
-        text: Answer text separated by commas, semicolons, slashes, or pipes.
+        text: Explicit list items separated by newlines. Punctuation remains part of each item.
 
     Returns:
         Non-blank, de-duplicated items in first-seen order.
     """
-    return dedupe(part for part in _LIST_SEPARATOR.split(text) if part.strip())
+    return dedupe(part for part in text.splitlines() if part.strip())

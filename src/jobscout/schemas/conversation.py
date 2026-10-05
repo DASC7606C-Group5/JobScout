@@ -50,7 +50,7 @@ class SearchSummary(BaseModel):
     confirmed: bool = False
     editable_fields: list[str] = Field(default_factory=list)
     missing_fields: list[str] = Field(default_factory=list)
-    coverage_notice: str = "Search supported job sources in Hong Kong and mainland China."
+    coverage_notice: str = ""
 
 
 class SourceQuoteReference(BaseModel):

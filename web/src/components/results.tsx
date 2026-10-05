@@ -8,7 +8,6 @@ import { JobCard } from './job-card'
 import { JobDetail } from './job-detail'
 import { ResultEmpty } from './results/result-empty'
 import { ResultFilters } from './results/result-filters'
-import { ResultWarnings } from './results/result-warnings'
 
 type Selection = ReturnType<typeof useResultSelection>
 
@@ -19,6 +18,7 @@ export function Results({
   onEdit,
   savedOnly = false,
   notices = [],
+  reviewActive = false,
 }: {
   result: RecommendationResult | null
   saved: RecommendationItem[]
@@ -26,11 +26,20 @@ export function Results({
   onEdit: () => void
   savedOnly?: boolean
   notices?: ApplicantNotice[]
+  reviewActive?: boolean
 }) {
-  const jobs = savedOnly ? saved : (result?.jobs ?? [])
+  const matched = result?.jobs ?? []
+  const pending = savedOnly ? [] : (result?.pending_jobs ?? [])
+  const jobs = savedOnly
+    ? saved
+    : [...matched, ...pending].sort(
+        (left, right) =>
+          Number(left.review_status !== 'reviewed') - Number(right.review_status !== 'reviewed'),
+      )
   const selection = useResultSelection(jobs, savedOnly, onToggle)
-  const allNotices = uniqueNotices([...(result ? result.notices : []), ...notices])
-  const searchNotices = allNotices.filter((notice) => notice.scope !== 'job')
+  const jobNotices = uniqueNotices(
+    [...(result ? result.notices : []), ...notices].filter((notice) => notice.scope === 'job'),
+  )
   return (
     <section aria-label={savedOnly ? 'Saved jobs' : 'Recommended jobs'}>
       <FilterControls jobs={jobs} selection={selection} />
@@ -40,13 +49,9 @@ export function Results({
         saved={saved}
         selection={selection}
         onEdit={onEdit}
-        notices={allNotices}
+        notices={jobNotices}
+        reviewActive={reviewActive}
       />
-      {searchNotices.length > 0 && (
-        <div className="mt-6">
-          <ResultWarnings notices={searchNotices} onEdit={onEdit} collapsed />
-        </div>
-      )}
       {!savedOnly && result && (
         <p className="mt-6 flex items-center gap-1.5 text-xs text-base-content/45">
           <Icon name="clock" size={13} />
@@ -95,6 +100,7 @@ function ResultItems({
   selection,
   onEdit,
   notices,
+  reviewActive,
 }: {
   hasJobs: boolean
   savedOnly: boolean
@@ -102,6 +108,7 @@ function ResultItems({
   selection: Selection
   onEdit: () => void
   notices: ApplicantNotice[]
+  reviewActive: boolean
 }) {
   const {
     selected,
@@ -131,6 +138,7 @@ function ResultItems({
           <JobCard
             key={item.job.job_id}
             item={item}
+            reviewActive={reviewActive}
             selected={selected.job.job_id === item.job.job_id}
             saved={saved.some((entry) => entry.job.job_id === item.job.job_id)}
             onSelect={() => selectJob(item.job.job_id)}
@@ -141,10 +149,13 @@ function ResultItems({
           />
         ))}
       </div>
-      <div className={detailOpen ? 'min-w-0' : 'hidden min-w-0 min-[1100px]:block'}>
+      <div
+        className={`min-w-0 min-[1100px]:sticky min-[1100px]:top-[var(--job-detail-top,1.5rem)] ${detailOpen ? '' : 'hidden min-[1100px]:block'}`}
+      >
         <JobDetail
           key={selected.job.job_id}
           item={selected}
+          reviewActive={reviewActive}
           notices={notices}
           headingRef={detailHeading}
           saved={saved.some((entry) => entry.job.job_id === selected.job.job_id)}
@@ -152,7 +163,6 @@ function ResultItems({
             void toggle(selected)
           }}
           onBack={back}
-          onEdit={onEdit}
         />
       </div>
     </div>

@@ -1,5 +1,45 @@
 // Mirrors src/jobscout/schemas. Keep wire-format field names intact.
-export interface ProfilePreferences {
+export type EmploymentType = 'full-time' | 'part-time' | 'internship' | 'contract' | 'freelance'
+export type WorkMode = 'remote' | 'hybrid' | 'onsite'
+
+export interface WorkArrangement {
+  raw_text: string | null
+  included: WorkMode[]
+  excluded: WorkMode[]
+  unrestricted: boolean
+  uncertain: boolean
+}
+
+export interface LocationRef {
+  id: string
+  name: string
+  region: 'hk' | 'cn'
+  level: 'country' | 'region' | 'city' | 'district'
+  parent_id: string | null
+  ancestor_ids: string[]
+  source_codes: Record<string, string>
+  resolution: 'resolved' | 'ambiguous' | 'unsupported'
+}
+
+export interface LocationCondition {
+  raw_text: string | null
+  included: LocationRef[]
+  excluded: LocationRef[]
+  unrestricted: boolean
+}
+
+export interface EmploymentCondition {
+  raw_text: string | null
+  included: EmploymentType[]
+  excluded: EmploymentType[]
+  unrestricted: boolean
+}
+
+export interface SearchOptions {
+  result_count: number
+}
+
+export interface RawPreferences {
   location: string | null
   location_unrestricted: boolean
   employment_type: string | null
@@ -7,6 +47,12 @@ export interface ProfilePreferences {
   salary_range: string | null
   work_mode: string | null
   industry: string | null
+}
+
+export interface ProfilePreferences extends RawPreferences {
+  locations: LocationCondition
+  employment: EmploymentCondition
+  work_arrangement: WorkArrangement
 }
 
 export interface UserProfile {
@@ -18,6 +64,7 @@ export interface UserProfile {
   projects: string[]
   target_directions: string[]
   preferences: ProfilePreferences
+  search_options: SearchOptions
   confirmed_fields: string[]
   missing_required_fields: string[]
   conflicts: string[]
@@ -122,12 +169,18 @@ export interface RecommendationItem {
   matching_reasons: MatchingReason[]
   notices: ApplicantNotice[]
   analysis_status: 'complete' | 'partial' | 'unavailable'
+  review_status: 'queued' | 'reviewing' | 'reviewed' | 'not_reviewed'
+  verification_status: 'confirmed' | 'pending' | 'unknown'
+  unknown_conditions: string[]
+  recommendation_fit: 'recommended' | 'possible' | 'unlikely' | 'unknown'
+  recommendation_reason: string
 }
 
 export interface RecommendationResult {
   session_id: string
   generated_at: string
   jobs: RecommendationItem[]
+  pending_jobs: RecommendationItem[]
   introduction: string
   notices: ApplicantNotice[]
 }
@@ -155,7 +208,8 @@ export interface ScoutInput {
   description: string
   resume: { name: string; text: string } | null
   target_directions: string[]
-  preferences: ProfilePreferences
+  preferences: RawPreferences
+  search_options: SearchOptions
 }
 
 export type CreateSessionRequest = ScoutInput & { request_id: string }
@@ -171,8 +225,40 @@ export interface ResumeSessionRequest {
   skipped_question_ids: string[]
   action: 'answer' | 'confirm_search' | 'edit_conditions' | 'retry'
   profile_updates: Record<string, string | string[] | boolean | null>
+  search_options?: SearchOptions | null
 }
 export type ResumeSubmission = Omit<ResumeSessionRequest, 'request_id' | 'expected_revision'>
+
+export interface StopSessionRequest {
+  request_id: string
+  expected_revision: number
+  run_id: string
+}
+
+export type StopReason =
+  | 'results_ready'
+  | 'target_reached'
+  | 'source_exhausted'
+  | 'budget_exhausted'
+  | 'user_stopped'
+  | 'error'
+
+export interface SearchEvent {
+  sequence: number
+  action: string
+  message: string
+  source: string | null
+}
+
+export interface SearchProgress {
+  sequence: number
+  analyzed_count: number
+  matched_count: number
+  pending_count: number
+  elapsed_seconds: number
+  retrieval_stopped: boolean
+  events: SearchEvent[]
+}
 
 export interface ScoutSession {
   session_id: string
@@ -180,6 +266,9 @@ export interface ScoutSession {
   outcome: 'running' | 'paused' | 'completed' | 'failed'
   current_stage: string
   revision: number
+  run_id: string | null
+  progress: SearchProgress
+  stop_reason: StopReason | null
   clarification_questions: ClarificationMessage[]
   conversation: ConversationMessage[]
   search_summary: SearchSummary | null
@@ -200,6 +289,11 @@ export interface SessionClient {
     signal?: AbortSignal,
   ) => Promise<ScoutSession>
   delete: (sessionId: string, signal?: AbortSignal) => Promise<void>
+  stop: (
+    sessionId: string,
+    request: StopSessionRequest,
+    signal?: AbortSignal,
+  ) => Promise<ScoutSession>
 }
 
 export interface SessionSummary {

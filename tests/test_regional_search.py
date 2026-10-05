@@ -14,6 +14,12 @@ from jobscout.services.job_retrieval.models import RetrievalFailure
 from jobscout.services.job_retrieval.planning import select_sources
 from jobscout.services.job_retrieval.transport import HttpJsonClient, Page
 from jobscout.services.job_search_service import JobSearchService
+from tests.location_fixtures import bound_location, catalog_snapshot
+
+
+@pytest.fixture(autouse=True)
+def offline_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("jobscout.services.location_service._catalog", catalog_snapshot())
 
 
 def req(location: str = "Hong Kong", **updates: object) -> SearchRequest:
@@ -22,6 +28,7 @@ def req(location: str = "Hong Kong", **updates: object) -> SearchRequest:
             "target_direction": "Data Analyst",
             "location": location,
             "employment_type": "internship",
+            "location_ref": bound_location(location),
             **updates,
         }
     )
@@ -74,7 +81,14 @@ def test_native_mainland_fulltime_filters_preserve_keywords() -> None:
 )
 def test_do_not_silently_broaden_filters(updates: dict[str, object], code: str) -> None:
     with pytest.raises(RetrievalFailure) as exc:
-        careerjet_params(SearchRequest.model_validate({**req().model_dump(), **updates}), "hk")
+        request = SearchRequest.model_validate(
+            {
+                **req().model_dump(),
+                **updates,
+                "location_ref": bound_location(updates.get("location", "Hong Kong")),
+            }
+        )
+        careerjet_params(request, "hk")
     assert exc.value.code == code
 
 

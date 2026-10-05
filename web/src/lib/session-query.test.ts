@@ -6,11 +6,34 @@ import { QueryClient, QueryObserver } from '@tanstack/react-query'
 import { createSessionFixture } from '../../tests/fixtures'
 import type { ScoutSession } from './contracts'
 import { createSessionClient } from './session-client'
-import { sessionKey, sessionQueryOptions } from './session-query'
+import { latestSessionSnapshot, sessionKey, sessionQueryOptions } from './session-query'
 
 const session = createSessionFixture()
 
 describe('session query lifecycle', () => {
+  test('late progress cannot restart retrieval after an accepted stop while review updates continue', () => {
+    const stopped = createSessionFixture({ outcome: 'running', run_id: 'run-1' })
+    stopped.progress = { ...stopped.progress, sequence: 3, retrieval_stopped: true }
+    const stale = structuredClone(stopped)
+    stale.progress.retrieval_stopped = false
+    expect(latestSessionSnapshot(stopped, stale)).toBe(stopped)
+    const reviewed = structuredClone(stopped)
+    reviewed.progress = { ...reviewed.progress, sequence: 4, analyzed_count: 2 }
+    expect(latestSessionSnapshot(stopped, reviewed)).toBe(reviewed)
+    const finished = { ...reviewed, outcome: 'completed' as const }
+    expect(latestSessionSnapshot(reviewed, finished)).toBe(finished)
+  })
+
+  test('late progress cannot replace more recent results from the same search run', () => {
+    const newer = createSessionFixture({ outcome: 'running', run_id: 'run-1' })
+    newer.progress = { ...newer.progress, sequence: 5, matched_count: 3 }
+    const older = structuredClone(newer)
+    older.progress = { ...older.progress, sequence: 2, matched_count: 0 }
+    expect(latestSessionSnapshot(newer, older)).toBe(newer)
+    expect(latestSessionSnapshot(older, newer)).toBe(newer)
+    const nextRun = { ...older, run_id: 'run-2', revision: newer.revision + 1 }
+    expect(latestSessionSnapshot(newer, nextRun)).toBe(nextRun)
+  })
   test('fresh mutation responses are shared with queries without a duplicate GET', async () => {
     const cache = new QueryClient()
     let requests = 0

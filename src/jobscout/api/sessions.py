@@ -4,7 +4,12 @@ from typing import cast
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
-from jobscout.schemas.session import SessionCreateRequest, SessionResponse, SessionResumeRequest
+from jobscout.schemas.session import (
+    SessionCreateRequest,
+    SessionResponse,
+    SessionResumeRequest,
+    SessionStopRequest,
+)
 from jobscout.schemas.workspace import SessionHistoryResponse
 from jobscout.services.notice_service import public_error
 from jobscout.services.session_service import SessionOperationError, SessionService
@@ -59,6 +64,16 @@ async def resume_session(
 ) -> SessionResponse:
     try:
         return await _service(request).resume(session_id, payload)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
+
+
+@router.post("/sessions/{session_id}/stop", response_model=SessionResponse)
+async def stop_session(
+    request: Request, session_id: str, payload: SessionStopRequest
+) -> SessionResponse:
+    try:
+        return await _service(request).stop(session_id, payload)
     except SessionOperationError as error:
         raise HTTPException(error.status, public_error(error.code).model_dump()) from error
 
