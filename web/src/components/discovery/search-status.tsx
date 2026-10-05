@@ -1,5 +1,5 @@
 import { applicantErrorMessage } from '../../lib/applicant-errors'
-import type { ApplicantError } from '../../lib/contracts'
+import type { ApplicantError, ScoutSession, StopReason } from '../../lib/contracts'
 import { Icon } from '../icon'
 const stages: Record<string, string> = {
   ingest: 'Reading your information',
@@ -8,15 +8,68 @@ const stages: Record<string, string> = {
   clarify: 'Preparing details for you to confirm',
   confirm: 'Updating your search summary',
   plan: 'Preparing your search',
-  search: 'Searching supported job sources',
-  retrieve: 'Searching supported job sources',
+  search: 'Looking for roles that fit your search',
+  retrieve: 'Looking for roles that fit your search',
   normalize: 'Organizing job listings',
   understand: 'Reviewing job requirements',
   check_result_count: 'Checking the number of matching jobs',
   recommend: 'Assessing job matches',
   present: 'Preparing your recommendations',
 }
-export function SearchLoading({ stage }: { stage: string }) {
+const stopMessages: Record<StopReason, string> = {
+  target_reached: '',
+  source_exhausted: 'No more matching jobs were found for these criteria.',
+  budget_exhausted: 'Search finished with the matches found so far.',
+  user_stopped: 'Search ended. Your results are saved below.',
+  error: 'The search ended early. You can review the results below.',
+}
+const activities: Record<string, string> = {
+  search_started: 'Looking for roles that fit your search',
+  search_jobs: 'Looking for roles that fit your search',
+  source_completed: 'Comparing the roles found so far',
+  fetch_job_details: 'Reading the full job listings',
+  assess_candidates: 'Comparing job requirements with your experience',
+  analysis_completed: 'Reviewing your matches',
+  search_finished: 'Preparing your results',
+}
+
+export function SearchActivity({ session }: { session: ScoutSession }) {
+  const { progress } = session
+  if (!session.run_id) return null
+  const running = session.outcome === 'running'
+  const message = session.stop_reason && stopMessages[session.stop_reason]
+  if (!running) return message ? <p className="text-sm text-base-content/65">{message}</p> : null
+  const target = session.profile?.search_options.result_count ?? 10
+  const matched = Math.min(progress.matched_count, target)
+  return (
+    <div className="w-full max-w-sm text-left">
+      <output className="block text-sm">
+        {matched} of {target} matches found
+      </output>
+      <progress
+        className="progress mt-3 w-full"
+        aria-label="Matching jobs found"
+        value={matched}
+        max={target}
+      />
+      <p className="mt-2 text-xs text-base-content/60">
+        {progress.analyzed_count} {progress.analyzed_count === 1 ? 'job' : 'jobs'} reviewed
+      </p>
+    </div>
+  )
+}
+
+export function SearchLoading({
+  session,
+  onStop,
+  stopping,
+}: {
+  session: ScoutSession
+  onStop: () => void
+  stopping: boolean
+}) {
+  const searching = Boolean(session.run_id)
+  const activity = session.progress.events.at(-1)?.action
   return (
     <section
       className="card min-h-96 items-center justify-center border border-base-300 bg-base-100 p-8 text-center"
@@ -25,15 +78,33 @@ export function SearchLoading({ stage }: { stage: string }) {
       <span className="mb-6 flex size-20 items-center justify-center rounded-full bg-primary/20 text-primary-content">
         <span className="loading loading-lg loading-spinner" />
       </span>
-      <h2 className="text-xl font-semibold">{stages[stage] ?? 'Working on this step'}</h2>
+      <h2 className="text-xl font-semibold">
+        {(searching && activity && activities[activity]) ||
+          stages[session.current_stage] ||
+          'Finding and checking job matches'}
+      </h2>
       <p className="mt-3 max-w-sm text-sm leading-7 text-base-content/60">
-        We’re organizing your search criteria and preparing job matches and application tips.
-        <br />
-        We’ll be ready to continue in a moment.
+        {searching
+          ? 'You can end the search whenever you’re ready to explore the results.'
+          : 'We’re organizing your experience and search criteria for you to review.'}
       </p>
-      <p className="mt-6 text-xs text-base-content/40">
-        This search may take a little while. Please wait.
-      </p>
+      {searching && (
+        <div className="mt-6 flex w-full justify-center">
+          <SearchActivity session={session} />
+        </div>
+      )}
+      {searching && (
+        <button
+          type="button"
+          className="btn relative mt-6"
+          disabled={stopping}
+          aria-busy={stopping}
+          onClick={onStop}
+        >
+          <span className={stopping ? 'invisible' : ''}>End search and view results</span>
+          {stopping && <span className="absolute">Ending search…</span>}
+        </button>
+      )}
     </section>
   )
 }

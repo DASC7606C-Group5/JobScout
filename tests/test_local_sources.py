@@ -17,7 +17,6 @@ from jobscout.services.job_retrieval.local_sources import (
     build_search_plan,
     clean_field,
     detail_url,
-    keyword_match_status,
     map_listing,
     parse_listing,
     passes_filters,
@@ -26,6 +25,8 @@ from jobscout.services.job_retrieval.mock_web import FixtureWebClient
 from jobscout.services.job_retrieval.models import RawJob, RetrievalFailure
 from jobscout.services.job_retrieval.web_transport import WebPage
 from jobscout.services.job_search_service import JobSearchService
+from jobscout.services.location_service import get_location_catalog
+from tests.location_fixtures import bound_location, catalog_snapshot
 
 FIXTURE = Path(__file__).resolve().parents[1] / "data/group4/mock_local_sources.json"
 STAMP = datetime(2026, 10, 1, tzinfo=UTC)
@@ -37,6 +38,7 @@ def no_real_network(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError("Offline tests must not use network")
 
     monkeypatch.setattr("httpx.AsyncHTTPTransport.handle_async_request", blocked)
+    monkeypatch.setattr("jobscout.services.location_service._catalog", catalog_snapshot())
 
 
 def req(**updates: object) -> SearchRequest:
@@ -45,6 +47,7 @@ def req(**updates: object) -> SearchRequest:
             "target_direction": "Data Analyst",
             "location": "上海",
             "employment_type": "internship",
+            "location_ref": bound_location(updates.get("location", "上海")),
             **updates,
         }
     )
@@ -69,7 +72,10 @@ def test_selected_source_fields_and_description(source: str) -> None:
             [req(location="Hong Kong" if source == "jobsdb" else "上海", sources=[source])]
         )
     )
-    assert not result.errors and len(result.raw_jobs) == 1
+    assert not result.errors
+    assert [job.source_job_id for job in result.raw_jobs] == (
+        ["inn_1"] if source == "shixiseng" else ["11", "10"]
+    )
     job = result.raw_jobs[0]
     assert job.source == source and job.source_url and job.description
     assert job.source_job_id and job.fetched_at == STAMP
@@ -83,7 +89,16 @@ def test_multi_direction_search_serialization_and_routing() -> None:
             [req(), req(target_direction="Business Analyst"), req(location="Hong Kong")]
         )
     )
-    assert not result.errors and len(result.raw_jobs) == 7
+    assert not result.errors
+    assert {(job.source, job.target_direction, job.source_job_id) for job in result.raw_jobs} == {
+        (source, direction, job_id)
+        for source in ("zhaopin", "liepin", "shixiseng", "jobsdb")
+        for direction, base_id in (("Data Analyst", 10), ("Business Analyst", 20))
+        if source != "jobsdb" or direction == "Data Analyst"
+        for job_id in (
+            [f"inn_{base_id // 10}"] if source == "shixiseng" else [str(base_id + 1), str(base_id)]
+        )
+    }
     assert {r.source for r in result.raw_jobs} == {"zhaopin", "liepin", "shixiseng", "jobsdb"}
     assert {r.target_direction for r in result.raw_jobs} == {
         "Data Analyst",
@@ -101,7 +116,7 @@ def test_native_params_preserve_explicit_intent() -> None:
     liepin = build_search_plan(req(), "liepin", page=2)
     assert liepin.headers["X-Fscp-Trace-Id"] and '"currentPage": 1' in json.dumps(liepin.body)
     s = parse_qs(urlsplit(build_search_plan(req(), "shixiseng").url).query)
-    assert s["keyword"] == ["数据分析"] and s["city"] == ["上海"]
+    assert s["keyword"] == ["Data Analyst"] and s["city"] == ["上海"]
     j = parse_qs(
         urlsplit(
             build_search_plan(req(location="Hong Kong", employment_type="full-time"), "jobsdb").url
@@ -111,11 +126,27 @@ def test_native_params_preserve_explicit_intent() -> None:
     assert request.keywords == ["SQL", "Business Intelligence"]
 
 
+def test_catalog_city_outside_old_six_and_district_query_keep_identity() -> None:
+    wuhan = build_search_plan(req(location="武汉"), "zhaopin")
+    assert wuhan.body is not None and wuhan.body["S_SOU_WORK_CITY"] == "736"
+    request = req(location="Pudong")
+    original = request.model_copy(deep=True)
+    assert request.location_ref is not None
+    mapped = asyncio.run(get_location_catalog().source_location(request.location_ref, "liepin"))
+    plan = build_search_plan(request.model_copy(update={"location_ref": mapped}), "liepin")
+    assert mapped.id == "cn:2031" and mapped.level == "district"
+    assert plan.body is not None
+    condition = plan.body["data"]
+    assert isinstance(condition, dict)
+    assert condition["mainSearchPcConditionForm"]["city"] == "020"
+    assert request == original
+
+
 @pytest.mark.parametrize(
     "source, updates, code",
     [
         ("zhaopin", {"location": "Hong Kong"}, "SEARCH_REGION_UNSUPPORTED"),
-        ("zhaopin", {"location": "武汉"}, "SEARCH_LOCATION_UNSUPPORTED"),
+        ("zhaopin", {"location": "Atlantis"}, "SEARCH_LOCATION_UNSUPPORTED"),
         ("liepin", {"location": "上海浦东"}, "SEARCH_LOCATION_UNSUPPORTED"),
         ("shixiseng", {"employment_type": "full-time"}, "SEARCH_FILTER_UNSUPPORTED"),
         ("unknown", {}, "SEARCH_UNKNOWN_SOURCE"),
@@ -178,17 +209,17 @@ def test_shixiseng_glyphs_and_detail_mapping() -> None:
     assert job.title == "数据分析实习生" and job.salary == "200-300/天" and job.location == "上海"
 
 
-def test_unknown_type_and_internship_are_not_fulltime() -> None:
+def test_textual_employment_uncertainty_is_preserved_for_assessment() -> None:
     request = req(location="Hong Kong", employment_type="full-time")
     job = raw(
         title="Data Analyst Intern",
         raw_payload={"workTypes": ["Full time"], "locations": [{"countryCode": "HK"}]},
     )
-    assert not passes_filters(job, request)
+    assert passes_filters(job, request)
     job.title = "Data Analyst"
     assert passes_filters(job, request)
     job.raw_payload["workTypes"] = []
-    assert not passes_filters(job, request)
+    assert passes_filters(job, request)
 
 
 class FailingClient(FixtureWebClient):
@@ -343,42 +374,15 @@ def test_shixiseng_does_not_pad_results_with_unreadable_titles() -> None:
     assert any("unreadable-title" in w for w in result.warnings)
 
 
-@pytest.mark.parametrize(
-    "title, description, expected",
-    [
-        ("律师助理实习生", "诉讼文书、法律研究", "no_match"),
-        ("业务助理实习", "帮助团队进行商业分析", "matched"),
-        ("业务助理实习", None, "unverified"),
-    ],
-)
-def test_lexical_guard_does_not_claim_profile_matching(
-    title: str, description: str | None, expected: str
-) -> None:
-    assert (
-        keyword_match_status(
-            raw("zhaopin", title=title, description=description),
-            req(target_direction="Business Analyst"),
-        )
-        == expected
-    )
-
-
-def test_explicit_keyword_match_status_requires_all_keywords() -> None:
-    job = raw("zhaopin", title="SQL analyst", description="Business Intelligence SQL")
-    assert keyword_match_status(job, req(keywords=["SQL", "Business Intelligence"])) == "matched"
-    assert keyword_match_status(job, req(keywords=["SQL", "Python"])) == "no_match"
-    job.source = "jobsdb"
-    assert keyword_match_status(job, req(keywords=["SQL", "Python"])) == "unverified"
-
-
-def test_low_relevance_complete_description_is_excluded() -> None:
+def test_original_description_survives_retrieval_for_semantic_relevance_review() -> None:
     text = '{"code":200,"data":{"list":[{"name":"律师助理实习生","workCity":"上海","workType":"实习","jobDetailData":{"position":{"desc":{"description":"诉讼文书、法律研究"}}}}]}}'
     result = asyncio.run(
         LocalAdapter("zhaopin", Pages([WebPage(text, STAMP)]), max_pages=1).search_async(
             req(target_direction="Business Analyst")
         )
     )
-    assert not result.jobs and any("lexical keyword" in w for w in result.warnings)
+    assert [job.title for job in result.jobs] == ["律师助理实习生"]
+    assert result.jobs[0].description == "诉讼文书、法律研究"
 
 
 def test_batch_error_request_index_and_completeness_counts() -> None:
@@ -388,7 +392,13 @@ def test_batch_error_request_index_and_completeness_counts() -> None:
     )
     assert [e.details["request_index"] for e in result.errors if e.details] == [0, 1]
     outcome = next(o for o in result.outcomes if o.source == "liepin")
-    assert outcome.incomplete_count == outcome.returned_count == 1
+    assert [job.source_job_id for job in result.raw_jobs if job.source == "liepin"] == [
+        "11",
+        "10",
+        "21",
+        "20",
+    ]
+    assert outcome.incomplete_count == outcome.returned_count == 2
 
 
 def test_unknown_http_charset_returns_safe_structured_failure() -> None:
@@ -425,9 +435,9 @@ def test_shixiseng_company_listing_and_current_detail_selector() -> None:
 
 
 @pytest.mark.parametrize(
-    "place, expected", [("上海", True), ("Hong Kong", False), ("Berlin", False), (None, False)]
+    "place, expected", [("上海", True), ("Hong Kong", False), ("Berlin", True), (None, True)]
 )
-def test_country_query_does_not_accept_unknown_or_foreign_locations(
+def test_country_query_rejects_verified_other_region_and_retains_unknown_for_assessment(
     place: str | None, expected: bool
 ) -> None:
     assert passes_filters(raw("shixiseng", location=place), req(location="China")) is expected

@@ -8,7 +8,6 @@ import { JobCard } from './job-card'
 import { JobDetail } from './job-detail'
 import { ResultEmpty } from './results/result-empty'
 import { ResultFilters } from './results/result-filters'
-import { ResultWarnings } from './results/result-warnings'
 
 type Selection = ReturnType<typeof useResultSelection>
 
@@ -27,10 +26,14 @@ export function Results({
   savedOnly?: boolean
   notices?: ApplicantNotice[]
 }) {
-  const jobs = savedOnly ? saved : (result?.jobs ?? [])
+  const matched = result?.jobs ?? []
+  const pending = savedOnly ? [] : (result?.pending_jobs ?? [])
+  const jobs = savedOnly ? saved : [...matched, ...pending]
+  const pendingIds = new Set(pending.map(({ job }) => job.job_id))
   const selection = useResultSelection(jobs, savedOnly, onToggle)
-  const allNotices = uniqueNotices([...(result ? result.notices : []), ...notices])
-  const searchNotices = allNotices.filter((notice) => notice.scope !== 'job')
+  const jobNotices = uniqueNotices(
+    [...(result ? result.notices : []), ...notices].filter((notice) => notice.scope === 'job'),
+  )
   return (
     <section aria-label={savedOnly ? 'Saved jobs' : 'Recommended jobs'}>
       <FilterControls jobs={jobs} selection={selection} />
@@ -40,13 +43,9 @@ export function Results({
         saved={saved}
         selection={selection}
         onEdit={onEdit}
-        notices={allNotices}
+        notices={jobNotices}
+        pendingIds={pendingIds}
       />
-      {searchNotices.length > 0 && (
-        <div className="mt-6">
-          <ResultWarnings notices={searchNotices} onEdit={onEdit} collapsed />
-        </div>
-      )}
       {!savedOnly && result && (
         <p className="mt-6 flex items-center gap-1.5 text-xs text-base-content/45">
           <Icon name="clock" size={13} />
@@ -95,6 +94,7 @@ function ResultItems({
   selection,
   onEdit,
   notices,
+  pendingIds,
 }: {
   hasJobs: boolean
   savedOnly: boolean
@@ -102,6 +102,7 @@ function ResultItems({
   selection: Selection
   onEdit: () => void
   notices: ApplicantNotice[]
+  pendingIds: Set<string>
 }) {
   const {
     selected,
@@ -127,18 +128,34 @@ function ResultItems({
   return (
     <div className="grid items-start gap-6 min-[1100px]:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
       <div className={`space-y-4 ${detailOpen ? 'hidden min-[1100px]:block' : ''}`}>
-        {filtered.map((item) => (
-          <JobCard
-            key={item.job.job_id}
-            item={item}
-            selected={selected.job.job_id === item.job.job_id}
-            saved={saved.some((entry) => entry.job.job_id === item.job.job_id)}
-            onSelect={() => selectJob(item.job.job_id)}
-            buttonRef={(node) => {
-              if (node) buttons.current.set(item.job.job_id, node)
-              else buttons.current.delete(item.job.job_id)
-            }}
-          />
+        {filtered.map((item, index) => (
+          <div key={item.job.job_id}>
+            {pendingIds.size > 0 &&
+              (index === 0 ||
+                pendingIds.has(filtered[index - 1]!.job.job_id) !==
+                  pendingIds.has(item.job.job_id)) && (
+                <div className="mb-3">
+                  <h2 className="text-sm font-semibold">
+                    {pendingIds.has(item.job.job_id) ? 'More jobs to review' : 'Matching jobs'}
+                  </h2>
+                  {pendingIds.has(item.job.job_id) && (
+                    <p className="mt-1 text-xs text-base-content/60">
+                      These roles have details to check before they count as matches.
+                    </p>
+                  )}
+                </div>
+              )}
+            <JobCard
+              item={item}
+              selected={selected.job.job_id === item.job.job_id}
+              saved={saved.some((entry) => entry.job.job_id === item.job.job_id)}
+              onSelect={() => selectJob(item.job.job_id)}
+              buttonRef={(node) => {
+                if (node) buttons.current.set(item.job.job_id, node)
+                else buttons.current.delete(item.job.job_id)
+              }}
+            />
+          </div>
         ))}
       </div>
       <div className={detailOpen ? 'min-w-0' : 'hidden min-w-0 min-[1100px]:block'}>
@@ -152,7 +169,6 @@ function ResultItems({
             void toggle(selected)
           }}
           onBack={back}
-          onEdit={onEdit}
         />
       </div>
     </div>

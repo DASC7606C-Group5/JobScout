@@ -2,11 +2,18 @@ import type { ScoutInput } from './contracts'
 
 export type ProfileFormValues = Omit<ScoutInput, 'target_directions'> & { directions: string }
 
+export function resultCountError(value: number) {
+  return Number.isInteger(value) && value >= 5 && value <= 20
+    ? null
+    : 'Choose a whole number from 5 to 20.'
+}
+
 export function createProfileDraft(): ProfileFormValues {
   return {
     description: '',
     resume: null,
     directions: '',
+    search_options: { result_count: 10 },
     preferences: {
       location: '',
       location_unrestricted: false,
@@ -23,7 +30,7 @@ export function parseDirections(value: string): string[] {
   return [
     ...new Set(
       value
-        .split(/[\n,，、]/)
+        .split(/\r?\n/)
         .map((part) => part.trim())
         .filter(Boolean),
     ),

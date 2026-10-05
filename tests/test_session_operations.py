@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 from tortoise import Tortoise
 
 from jobscout.database import tortoise_config
@@ -228,6 +229,14 @@ def test_question_controls_and_confirmation_are_validated_before_acceptance() ->
             {"profile_updates": {"preferences.location_unrestricted": "yes"}},
         ]
         for index, changes in enumerate(invalid):
+            if "profile_updates" in changes:
+                with pytest.raises(ValidationError) as invalid_patch:
+                    SessionResumeRequest.model_validate(
+                        {"request_id": f"invalid-{index}", "expected_revision": 1, **changes}
+                    )
+                assert invalid_patch.value.errors()[0]["loc"][0] == "profile_updates"
+                assert record.revision == 1
+                continue
             payload = SessionResumeRequest.model_validate(
                 {
                     "request_id": f"invalid-{index}",
@@ -298,6 +307,13 @@ def test_unknown_question_and_privileged_field_rejected() -> None:
             {"skipped_question_ids": ["unknown"]},
             {"profile_updates": {"profile_id": "bad"}},
         ):
+            if "profile_updates" in changes:
+                with pytest.raises(ValidationError) as invalid_patch:
+                    SessionResumeRequest.model_validate(
+                        {"request_id": "invalid", "expected_revision": 1, **changes}
+                    )
+                assert invalid_patch.value.errors()[0]["type"] == "extra_forbidden"
+                continue
             payload = SessionResumeRequest.model_validate(
                 {
                     "request_id": "invalid",

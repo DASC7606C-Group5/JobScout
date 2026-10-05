@@ -18,6 +18,8 @@ class RecommendationItem(BaseModel):
     matching_reasons: list[MatchingReason] = Field(default_factory=list)
     notices: list[ApplicantNotice] = Field(default_factory=list)
     analysis_status: Literal["complete", "partial", "unavailable"] = "complete"
+    verification_status: Literal["confirmed", "pending", "unknown"] = "unknown"
+    unknown_conditions: list[str] = Field(default_factory=list)
 
 
 class RecommendationResult(BaseModel):
@@ -25,6 +27,7 @@ class RecommendationResult(BaseModel):
 
     session_id: str
     generated_at: datetime
-    jobs: list[RecommendationItem] = Field(default_factory=list, max_length=5)
+    jobs: list[RecommendationItem] = Field(default_factory=list, max_length=20)
+    pending_jobs: list[RecommendationItem] = Field(default_factory=list, max_length=20)
     notices: list[ApplicantNotice] = Field(default_factory=list)
     introduction: str = ""

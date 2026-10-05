@@ -10,6 +10,8 @@ import type {
   SessionSummary,
   ResumeSessionRequest,
   ScoutSession,
+  StopSessionRequest,
+  SearchOptions,
 } from '../../src/lib/contracts'
 import { createRecommendationFixture, createSessionFixture } from '../fixtures'
 
@@ -46,6 +48,7 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
   let createCount = 0
   const getTimes: number[] = []
   const requests: ResumeSessionRequest[] = []
+  const stopRequests: StopSessionRequest[] = []
   const createBodies: Record<string, unknown>[] = []
   let dropCreate = false
   let dropAnswer = false
@@ -134,7 +137,10 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
         expected_revision: number
       }
       const source = sessions.get(body.session_id)
-      const item = source?.recommendation?.jobs.find((entry) => entry.job.job_id === id)
+      const item = [
+        ...(source?.recommendation?.jobs ?? []),
+        ...(source?.recommendation?.pending_jobs ?? []),
+      ].find((entry) => entry.job.job_id === id)
       if (!item || source?.revision !== body.expected_revision) {
         await route.fulfill({
           status: 409,
@@ -187,6 +193,10 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
         sessionId = creations.size === 0 ? initial.session_id : `session-${creations.size + 1}`
         creations.set(requestId, sessionId)
         snapshot = { ...structuredClone(snapshot), session_id: sessionId }
+        if (snapshot.profile && body.search_options) {
+          snapshot.profile.search_options = body.search_options as SearchOptions
+          if (snapshot.search_summary) snapshot.search_summary.profile = snapshot.profile
+        }
         store(snapshot)
       }
       if (dropCreate) {
@@ -198,6 +208,19 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
       return
     }
     snapshot = structuredClone(sessions.get(id!) || snapshot)
+    if (path.endsWith('/stop')) {
+      stopRequests.push(route.request().postDataJSON() as StopSessionRequest)
+      snapshot = {
+        ...snapshot,
+        outcome: 'completed',
+        current_stage: 'completed',
+        stop_reason: 'user_stopped',
+      }
+      runningPolls = 0
+      store(snapshot)
+      await route.fulfill({ json: snapshot })
+      return
+    }
     const body = route.request().postDataJSON() as ResumeSessionRequest
     requests.push(body)
     if (dropAnswer) {
@@ -234,14 +257,23 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
           introduction: 'Review these jobs based on your confirmed criteria.',
           notices: [],
           jobs: [createRecommendationFixture()],
+          pending_jobs: [],
         },
       }
-      snapshot = { ...snapshot, revision, outcome: 'running', current_stage: 'search' }
+      snapshot = {
+        ...snapshot,
+        revision,
+        outcome: 'running',
+        current_stage: 'search',
+        run_id: `run-${revision}`,
+      }
       runningPolls = 2
     } else {
       const profile = structuredClone(snapshot.profile ?? createSessionFixture().profile)!
+      if (body.search_options) profile.search_options = body.search_options
       for (const [key, value] of Object.entries(body.profile_updates)) {
         if (key === 'skills' && Array.isArray(value)) profile.skills = value
+        if (key === 'target_directions' && Array.isArray(value)) profile.target_directions = value
         if (key === 'preferences.location' && (typeof value === 'string' || value === null))
           profile.preferences.location = value
         if (key === 'preferences.location_unrestricted' && typeof value === 'boolean')
@@ -280,6 +312,7 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
   })
   return {
     requests,
+    stopRequests,
     createBodies,
     getTimes,
     draftRequests,
@@ -352,6 +385,275 @@ async function introduce(page: Page) {
   await page.getByRole('button', { name: 'Analyze and continue' }).click()
 }
 
+for (const width of [1280, 390]) {
+  test(`compound list values survive keyboard entry, reload and submission at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 900 })
+    const state = await mockSessions(page)
+    await page.goto('/new')
+    await page.getByLabel('About you', { exact: true }).fill('Synthetic engineering profile')
+    const directions = page.locator('#directions')
+    await directions.fill('Engineer, AI/ML')
+    await directions.press('End')
+    await directions.press('Enter')
+    await directions.pressSequentially('UI/UX Designer')
+    await directions.press('Enter')
+    await directions.pressSequentially('Data analyst')
+    await directions.press('Enter')
+    await directions.pressSequentially('Product designer')
+    await expect
+      .poll(() => state.readDraft('/workspace/draft')?.data.directions)
+      .toBe('Engineer, AI/ML\nUI/UX Designer\nData analyst\nProduct designer')
+    await page.reload()
+    await expect(directions).toHaveValue(
+      'Engineer, AI/ML\nUI/UX Designer\nData analyst\nProduct designer',
+    )
+    await page.getByRole('button', { name: 'Analyze and continue' }).click()
+    await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+    expect(state.createBodies[0]?.target_directions).toEqual([
+      'Engineer, AI/ML',
+      'UI/UX Designer',
+      'Data analyst',
+      'Product designer',
+    ])
+    await page
+      .getByLabel('Education', { exact: true })
+      .fill('BSc, Computer Science\nHigher Diploma; with distinction')
+    await page
+      .getByLabel('Skills', { exact: true })
+      .fill('CI/CD | deployment\nStatistics, research methods')
+    await page.getByRole('button', { name: 'Save changes' }).click()
+    await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+    expect(state.requests.at(-1)?.profile_updates).toEqual({
+      education: ['BSc, Computer Science', 'Higher Diploma; with distinction'],
+      skills: ['CI/CD | deployment', 'Statistics, research methods'],
+    })
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true)
+    await page.screenshot({ path: testInfo.outputPath('compound-inputs.png'), fullPage: true })
+  })
+}
+
+test('count keyboard controls preserve the chosen target through drafts, creation and confirmation edits', async ({
+  page,
+}) => {
+  const state = await mockSessions(page)
+  await page.goto('/new')
+  await page.getByLabel('About you', { exact: true }).fill('Synthetic React developer')
+  const slider = page.getByRole('slider', { name: 'Matching jobs to find slider' })
+  const number = page.getByRole('spinbutton', { name: 'Matching jobs to find', exact: true })
+  await slider.focus()
+  await page.keyboard.press('Home')
+  await expect(number).toHaveValue('5')
+  await page.keyboard.press('End')
+  await expect(number).toHaveValue('20')
+  await number.fill('21')
+  await page.getByRole('button', { name: 'Analyze and continue' }).click()
+  expect(state.createBodies).toHaveLength(0)
+  await expect(number).toBeFocused()
+  await number.fill('20')
+  await page.getByLabel('Work location', { exact: true }).fill('上海或深圳，排除浦东')
+  await page
+    .getByLabel('Employment type', { exact: true })
+    .fill('Full-time or internship, excluding contract')
+  await page.getByRole('button', { name: 'Analyze and continue' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+  expect(state.createBodies[0]).toMatchObject({
+    search_options: { result_count: 20 },
+    preferences: {
+      location: '上海或深圳，排除浦东',
+      employment_type: 'Full-time or internship, excluding contract',
+    },
+  })
+  await expect(number).toHaveValue('20')
+  await number.fill('10')
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeDisabled()
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+  expect(state.requests.at(-1)).toMatchObject({
+    action: 'edit_conditions',
+    search_options: { result_count: 10 },
+    profile_updates: {},
+  })
+  await expect(number).toHaveValue('10')
+})
+
+test('composite conditions retain the entered text and keep excluded districts visible for confirmation', async ({
+  page,
+}) => {
+  const session = createSessionFixture()
+  const preferences = session.profile!.preferences
+  preferences.location = '香港或深圳，排除南山区'
+  const hongKong = preferences.locations.included[0]!
+  preferences.locations.included.push({
+    ...hongKong,
+    id: 'cn:shenzhen',
+    name: '深圳',
+    region: 'cn',
+    level: 'city',
+  })
+  preferences.locations.excluded = [
+    {
+      ...hongKong,
+      id: 'cn:nanshan',
+      name: '南山区',
+      region: 'cn',
+      level: 'district',
+      parent_id: 'cn:shenzhen',
+    },
+  ]
+  preferences.employment.included = ['full-time', 'internship']
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  await page.goto('/searches/session-1')
+  await expect(page.getByLabel('Work location', { exact: true })).toHaveValue(preferences.location)
+  const interpreted = page
+    .locator('details')
+    .filter({ has: page.getByText('How your preferences will be searched', { exact: true }) })
+  await expect(interpreted).toHaveAttribute('open', '')
+  await expect(interpreted).toContainText('Hong Kong, 深圳')
+  await expect(interpreted).toContainText('Excluded: 南山区')
+  await interpreted.locator('summary').press('Enter')
+  await expect(interpreted).not.toHaveAttribute('open')
+  await expect(page.getByLabel('Work location', { exact: true })).toHaveValue(preferences.location)
+  await page.getByLabel('Work location', { exact: true }).fill('仅深圳')
+  await expect(interpreted).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Confirm and search', exact: true })).toBeDisabled()
+})
+
+test('a running search can end immediately with confirmed and pending results kept separate on a narrow screen', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const matched = createRecommendationFixture()
+  const pending = createRecommendationFixture()
+  pending.verification_status = 'pending'
+  pending.unknown_conditions = ['location']
+  pending.job = { ...pending.job, job_id: 'pending-job', title: 'Pending Engineer' }
+  pending.notices = [
+    {
+      code: 'preference_unverified',
+      scope: 'job',
+      job_id: 'pending-job',
+      source: null,
+      preference: 'location',
+      action: 'open_listing',
+      message: 'Check the work location in the listing before applying.',
+    },
+  ]
+  const running = createSessionFixture({
+    outcome: 'running',
+    current_stage: 'search',
+    run_id: 'active-run',
+    revision: 4,
+    progress: {
+      sequence: 3,
+      analyzed_count: 2,
+      matched_count: 1,
+      pending_count: 1,
+      elapsed_seconds: 28,
+      events: [
+        {
+          sequence: 3,
+          action: 'fetch_job_details',
+          message: 'private-agent-detail: fetch_job_details candidate budget=60',
+          source: 'private-source-id',
+        },
+      ],
+    },
+    recommendation: {
+      session_id: 'session-1',
+      generated_at: '2026-10-06T00:00:00Z',
+      jobs: [matched],
+      pending_jobs: [pending],
+      introduction: '',
+      notices: [],
+    },
+  })
+  const state = await mockSessions(page, running)
+  state.seedSession(running)
+  await page.goto('/searches/session-1')
+  const stop = page.getByRole('button', { name: 'End search and view results' })
+  await expect(stop).toBeEnabled()
+  await expect(page.getByRole('list', { name: 'Job search steps' })).toHaveCount(0)
+  await expect(page.getByRole('progressbar', { name: 'Matching jobs found' })).toHaveAttribute(
+    'value',
+    '1',
+  )
+  await expect(page.getByRole('progressbar', { name: 'Matching jobs found' })).toHaveAttribute(
+    'max',
+    '10',
+  )
+  await expect(page.locator('body')).not.toContainText('private-agent-detail')
+  await expect(page.locator('body')).not.toContainText('private-source-id')
+  await mkdir('.tools/browser', { recursive: true })
+  await page.screenshot({ path: '.tools/browser/agent-running-mobile.png', fullPage: true })
+  await stop.focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
+  expect(state.stopRequests).toHaveLength(1)
+  expect(state.stopRequests[0]).toMatchObject({ expected_revision: 4, run_id: 'active-run' })
+  expect(state.stopRequests[0]?.request_id).toBeTruthy()
+  await expect(page.getByRole('heading', { name: 'Matching jobs', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'More jobs to review', exact: true }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'View job: Pending Engineer' }).click()
+  await expect(page).toHaveURL(/job=pending-job/)
+  await expect(page.getByRole('heading', { name: 'Pending Engineer', exact: true })).toBeVisible()
+  await expect(page.getByText(pending.notices[0]!.message, { exact: true })).toHaveCount(1)
+  await page.screenshot({ path: '.tools/browser/agent-pending-mobile.png', fullPage: true })
+  await page.getByRole('button', { name: 'Save job: Pending Engineer', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: 'Remove saved job: Pending Engineer', exact: true }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Open sidebar', exact: true }).click()
+  await page.getByRole('link', { name: 'Saved jobs', exact: true }).click()
+  await page.getByRole('button', { name: 'View job: Pending Engineer', exact: true }).click()
+  await expect(page.getByText(pending.notices[0]!.message, { exact: true })).toHaveCount(1)
+  await page.reload()
+  await expect(page.getByText(pending.notices[0]!.message, { exact: true })).toBeVisible()
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toContainText(
+    'Check details',
+  )
+  await page.screenshot({ path: '.tools/browser/agent-pending-saved-desktop.png', fullPage: true })
+})
+
+test('partially analyzed jobs stay useful without inventing an unknown search condition', async ({
+  page,
+}) => {
+  const partial = createRecommendationFixture()
+  partial.verification_status = 'pending'
+  partial.analysis_status = 'partial'
+  partial.unknown_conditions = []
+  partial.notices = [
+    {
+      code: 'analysis_partial',
+      scope: 'job',
+      job_id: partial.job.job_id,
+      source: null,
+      preference: null,
+      action: 'open_listing',
+      message: 'Some requirements still need a closer look. Read the full listing before applying.',
+    },
+  ]
+  const session = resultSession()
+  session.recommendation!.jobs = []
+  session.recommendation!.pending_jobs = [partial]
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  await page.goto('/searches/session-1')
+  await page.getByRole('button', { name: 'View job: React Engineer' }).click()
+  const details = page.getByRole('article', { name: 'Job details' })
+  await expect(details).toContainText(partial.matching_reasons[0]!.explanation)
+  await expect(details.getByText(partial.notices[0]!.message, { exact: true })).toHaveCount(1)
+  await expect(page.locator('body')).not.toContainText('some search conditions')
+  await expect(page.locator('body')).not.toContainText('0 jobs to explore')
+})
+
 test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jobs and same-session edits', async ({
   page,
 }) => {
@@ -370,8 +672,10 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
   )
   await introduce(page)
   await expect(page.getByLabel('hidden question', { exact: true })).toHaveCount(0)
-  await page.getByRole('radio', { name: 'Option one' }).focus()
-  await page.keyboard.press('Space')
+  const firstChoice = page.getByRole('radio', { name: 'Option one' })
+  await expect(firstChoice).toBeEnabled()
+  await firstChoice.press('Space')
+  await expect(firstChoice).toBeChecked()
   await page.getByRole('checkbox', { name: 'Option one', exact: true }).check()
   await page.getByRole('checkbox', { name: 'Option two', exact: true }).check()
   await page.getByRole('checkbox', { name: 'Skip this question' }).check()
@@ -710,7 +1014,7 @@ test('clarification drafts preserve choices, skips and text across workspace nav
   })
 })
 
-test('direction choices enforce three selections without dropping user choices', async ({
+test('direction choices allow more than three selections without dropping user choices', async ({
   page,
 }) => {
   const question = {
@@ -740,7 +1044,12 @@ test('direction choices enforce three selections without dropping user choices',
     await page.getByRole('checkbox', { name: label, exact: true }).check()
   await expect(
     page.getByRole('checkbox', { name: 'Software engineering', exact: true }),
-  ).toBeDisabled()
+  ).toBeEnabled()
+  await page.getByRole('checkbox', { name: 'Software engineering', exact: true }).focus()
+  await page.keyboard.press('Space')
+  await expect(
+    page.getByRole('checkbox', { name: 'Software engineering', exact: true }),
+  ).toBeChecked()
   if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
     await mkdir('.tools/review', { recursive: true })
     await page.setViewportSize({ width: 1440, height: 1100 })
@@ -761,22 +1070,30 @@ test('direction choices enforce three selections without dropping user choices',
   await page.getByRole('checkbox', { name: 'Product design', exact: true }).uncheck()
   await expect(
     page.getByRole('checkbox', { name: 'Software engineering', exact: true }),
-  ).toBeEnabled()
+  ).toBeChecked()
+  await page.getByRole('checkbox', { name: 'Product design', exact: true }).check()
   expect(state.requests).toEqual([])
+  await page.getByRole('button', { name: 'Send and continue' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+  expect(state.requests[0]?.answers).toEqual([
+    {
+      question_id: 'directions',
+      value: ['direction-0', 'direction-1', 'direction-3', 'direction-2'],
+    },
+  ])
 })
 
-test('summary edits survive navigation, local overflow preserves entries and new revision clears message', async ({
+test('summary edits preserve all directions across navigation and submission, and new revision clears message', async ({
   page,
 }) => {
   const state = await mockSessions(page)
   await introduce(page)
-  const directions = page.getByLabel('Job directions (up to 3)', { exact: true })
+  const directions = page.getByLabel('Job directions', { exact: true })
   await directions.fill('Frontend development\nData analysis\nProduct design\nSoftware engineering')
-  await expect(page.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Save changes' })).toBeEnabled()
   await expect(directions).toHaveValue(
     'Frontend development\nData analysis\nProduct design\nSoftware engineering',
   )
-  await directions.fill('Frontend development')
   await page.getByLabel('Skills', { exact: true }).fill('React\nSQL')
   await page
     .getByLabel('Add or correct search criteria', { exact: true })
@@ -785,6 +1102,9 @@ test('summary edits survive navigation, local overflow preserves entries and new
   await expect(page).toHaveURL(/\/saved$/)
   await returnToSearch(page)
   await page.reload()
+  await expect(directions).toHaveValue(
+    'Frontend development\nData analysis\nProduct design\nSoftware engineering',
+  )
   await expect(page.getByLabel('Skills', { exact: true })).toHaveValue('React\nSQL')
   await expect(page.getByLabel('Add or correct search criteria', { exact: true })).toHaveValue(
     'I’d like mentorship.',
@@ -792,7 +1112,18 @@ test('summary edits survive navigation, local overflow preserves entries and new
   await page.getByRole('button', { name: 'Save changes' }).click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   await expect(page.getByLabel('Add or correct search criteria', { exact: true })).toHaveValue('')
-  expect(state.requests[0]?.profile_updates).toEqual({ skills: ['React', 'SQL'] })
+  expect(state.requests[0]?.profile_updates).toEqual({
+    skills: ['React', 'SQL'],
+    target_directions: [
+      'Frontend development',
+      'Data analysis',
+      'Product design',
+      'Software engineering',
+    ],
+  })
+  await expect(directions).toHaveValue(
+    'Frontend development\nData analysis\nProduct design\nSoftware engineering',
+  )
   expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([])
 })
 
@@ -824,6 +1155,7 @@ function resultSession() {
       introduction: '',
       notices: [],
       jobs: [first, second, third],
+      pending_jobs: [],
     },
   })
 }
@@ -911,7 +1243,7 @@ test('mobile detail Back and browser Back restore the selected list control with
   )
 })
 
-test('expanded notices expose only applicant content and incomplete analysis retains the listing', async ({
+test('job notices and source coverage retain actionable details when analysis is incomplete', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
@@ -938,7 +1270,7 @@ test('expanded notices expose only applicant content and incomplete analysis ret
     {
       code: 'source_unavailable',
       scope: 'source',
-      source: 'Liepin',
+      source: 'liepin',
       job_id: null,
       preference: null,
       message: 'Liepin was unavailable. These results are from the other sources searched.',
@@ -961,7 +1293,7 @@ test('expanded notices expose only applicant content and incomplete analysis ret
     {
       request_index: 0,
       target_direction: 'Frontend development',
-      source: 'Liepin',
+      source: 'liepin',
       candidate_count: 0,
       returned_count: 0,
       incomplete_count: 0,
@@ -985,7 +1317,8 @@ test('expanded notices expose only applicant content and incomplete analysis ret
       exact: true,
     }),
   ).toBeVisible()
-  await expect(page.getByText(session.notices[1]!.message, { exact: true })).toBeVisible()
+  const source = page.getByRole('listitem').filter({ hasText: 'Liepin · Frontend development' })
+  await expect(source).toContainText('Temporarily unavailable')
   await expect(detail).not.toContainText('unsupported-preparation-sentinel')
   await expect(detail.getByText(item.notices[0]!.message, { exact: false })).toHaveCount(1)
   const visible = await page.locator('body').innerText()
@@ -997,21 +1330,26 @@ test('expanded notices expose only applicant content and incomplete analysis ret
 test('empty completed search offers recovery without inventing jobs', async ({ page }) => {
   const empty = resultSession()
   empty.recommendation!.jobs = []
-  empty.notices = [
+  empty.source_outcomes = [
     {
-      code: 'source_unavailable',
-      scope: 'source',
-      source: 'Liepin',
-      job_id: null,
-      preference: null,
-      message: 'Liepin is unavailable. You can try another search later.',
-      action: null,
+      request_index: 0,
+      target_direction: 'Frontend development',
+      source: 'liepin',
+      candidate_count: 0,
+      returned_count: 0,
+      incomplete_count: 0,
+      excerpt_count: 0,
+      elapsed_seconds: 1,
+      status: 'blocked',
     },
   ]
   const state = await mockSessions(page, empty)
   await introduce(page)
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toHaveCount(0)
-  await page.getByText('About this search', { exact: true }).click()
+  await page.getByText('Sources and search coverage', { exact: true }).click()
+  await expect(
+    page.getByRole('listitem').filter({ hasText: 'Liepin · Frontend development' }),
+  ).toContainText('Temporarily unavailable')
   await captureResults(page, 'results-empty')
   await page.getByRole('button', { name: 'Edit search criteria', exact: true }).last().click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()

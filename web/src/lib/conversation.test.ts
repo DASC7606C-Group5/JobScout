@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 
 import type { ClarificationMessage } from './contracts'
-import { answerValidation, collectAnswers, pendingQuestions } from './conversation'
+import { collectAnswers, pendingQuestions } from './conversation'
 
 const question = (
   id: string,
@@ -45,13 +45,13 @@ test('answers carry question and option IDs; empty or skipped answers are omitte
   ])
 })
 
-test('direction validation preserves all choices', () => {
+test('direction answers preserve more than three choices and free-text directions', () => {
   const directions = { ...question('directions'), field: 'target_directions' }
   const four = ['a', 'b', 'c', 'd']
-  expect(answerValidation([directions], { directions: four }, [])).not.toBe('')
-  expect(answerValidation([directions], { directions: four.slice(0, 3) }, [])).toBe('')
+  expect(collectAnswers([directions], { directions: four }, [])).toEqual([
+    { question_id: 'directions', value: four },
+  ])
   expect(
-    answerValidation([directions], { directions: '前端开发\n数据分析\n产品设计\n软件工程' }, []),
-  ).not.toBe('')
-  expect(four).toEqual(['a', 'b', 'c', 'd'])
+    collectAnswers([directions], { directions: '前端开发\n数据分析\n产品设计\n软件工程' }, []),
+  ).toEqual([{ question_id: 'directions', value: '前端开发\n数据分析\n产品设计\n软件工程' }])
 })

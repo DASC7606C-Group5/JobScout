@@ -7,7 +7,8 @@ export function createProfileFixture(): ProfileFormValues {
   return {
     description: 'React development experience',
     resume: null,
-    directions: 'Frontend development, Data analysis',
+    directions: 'Frontend development\nData analysis',
+    search_options: { result_count: 10 },
     preferences: {
       location: 'Hong Kong',
       location_unrestricted: false,
@@ -71,6 +72,8 @@ export function createRecommendationFixture(): RecommendationItem {
     ],
     notices: [],
     analysis_status: 'complete',
+    verification_status: 'confirmed',
+    unknown_conditions: [],
   }
 }
 
@@ -83,7 +86,40 @@ export function createUserProfileFixture(): UserProfile {
     internships: [],
     projects: ['React project'],
     target_directions: ['Frontend development'],
-    preferences: createProfileFixture().preferences,
+    preferences: {
+      ...createProfileFixture().preferences,
+      locations: {
+        raw_text: 'Hong Kong',
+        included: [
+          {
+            id: 'hk',
+            name: 'Hong Kong',
+            region: 'hk',
+            level: 'region',
+            parent_id: null,
+            ancestor_ids: [],
+            source_codes: {},
+            resolution: 'resolved',
+          },
+        ],
+        excluded: [],
+        unrestricted: false,
+      },
+      employment: {
+        raw_text: 'full-time',
+        included: ['full-time'],
+        excluded: [],
+        unrestricted: false,
+      },
+      work_arrangement: {
+        raw_text: null,
+        included: [],
+        excluded: [],
+        unrestricted: false,
+        uncertain: false,
+      },
+    },
+    search_options: { result_count: 10 },
     confirmed_fields: [],
     missing_required_fields: [],
     conflicts: [],
@@ -97,6 +133,16 @@ export function createSessionFixture(overrides: Partial<ScoutSession> = {}): Sco
     outcome: 'paused',
     current_stage: 'confirm',
     revision: 1,
+    run_id: null,
+    progress: {
+      sequence: 0,
+      analyzed_count: 0,
+      matched_count: 0,
+      pending_count: 0,
+      elapsed_seconds: 0,
+      events: [],
+    },
+    stop_reason: null,
     profile,
     clarification_questions: [],
     conversation: [

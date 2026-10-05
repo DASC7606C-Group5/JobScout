@@ -6,11 +6,21 @@ import { QueryClient, QueryObserver } from '@tanstack/react-query'
 import { createSessionFixture } from '../../tests/fixtures'
 import type { ScoutSession } from './contracts'
 import { createSessionClient } from './session-client'
-import { sessionKey, sessionQueryOptions } from './session-query'
+import { latestSessionSnapshot, sessionKey, sessionQueryOptions } from './session-query'
 
 const session = createSessionFixture()
 
 describe('session query lifecycle', () => {
+  test('late progress cannot replace more recent results from the same search run', () => {
+    const newer = createSessionFixture({ outcome: 'running', run_id: 'run-1' })
+    newer.progress = { ...newer.progress, sequence: 5, matched_count: 3 }
+    const older = structuredClone(newer)
+    older.progress = { ...older.progress, sequence: 2, matched_count: 0 }
+    expect(latestSessionSnapshot(newer, older)).toBe(newer)
+    expect(latestSessionSnapshot(older, newer)).toBe(newer)
+    const nextRun = { ...older, run_id: 'run-2', revision: newer.revision + 1 }
+    expect(latestSessionSnapshot(newer, nextRun)).toBe(nextRun)
+  })
   test('fresh mutation responses are shared with queries without a duplicate GET', async () => {
     const cache = new QueryClient()
     let requests = 0

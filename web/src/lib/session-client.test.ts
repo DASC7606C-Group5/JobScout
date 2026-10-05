@@ -20,6 +20,7 @@ const completed = createSessionFixture({
     session_id: 'session-1',
     generated_at: '2026-10-03T00:00:00Z',
     jobs: [],
+    pending_jobs: [],
     notices: [],
     introduction: '',
   },
@@ -34,7 +35,7 @@ function createTransport(
 }
 
 describe('Session HTTP API', () => {
-  test('create/get/resume/delete use the backend paths and JSON contract', async () => {
+  test('session operations preserve their request identities, run IDs and JSON contract', async () => {
     const requests: { url: string; init: RequestInit }[] = []
     const client = createSessionClient(
       '/api/v1/',
@@ -62,19 +63,28 @@ describe('Session HTTP API', () => {
     }
     expect(await client.answer('session/1', request, signal)).toEqual(completed)
     await client.delete('session/1', signal)
+    const stopRequest = { request_id: 'stop-1', expected_revision: 3, run_id: 'run-3' }
+    expect(await client.stop('session/1', stopRequest, signal)).toEqual(completed)
 
     expect(requests.map(({ url, init }) => [url, init.method])).toEqual([
       ['/api/v1/sessions', 'POST'],
       ['/api/v1/sessions/session%2F1', 'GET'],
       ['/api/v1/sessions/session%2F1/resume', 'POST'],
       ['/api/v1/sessions/session%2F1', 'DELETE'],
+      ['/api/v1/sessions/session%2F1/stop', 'POST'],
     ])
     const startBody = requests[0]?.init.body
     const answerBody = requests[2]?.init.body
-    if (typeof startBody !== 'string' || typeof answerBody !== 'string')
+    const stopBody = requests[4]?.init.body
+    if (
+      typeof startBody !== 'string' ||
+      typeof answerBody !== 'string' ||
+      typeof stopBody !== 'string'
+    )
       throw new Error('Expected JSON request bodies')
     expect(JSON.parse(startBody)).toEqual(input)
     expect(JSON.parse(answerBody)).toEqual(request)
+    expect(JSON.parse(stopBody)).toEqual(stopRequest)
     expect(requests.every(({ init }) => init.signal === signal)).toBe(true)
     expect(requests[0]?.init.headers).toHaveProperty('Content-Type', 'application/json')
     expect(requests[1]?.init.body).toBeUndefined()
@@ -178,6 +188,11 @@ describe('Session HTTP API', () => {
       { ...current, notices: undefined },
       { ...current, conversation: [{ ...message, responses: undefined }] },
       { ...current, recommendation: { ...recommendation, notices: undefined } },
+      { ...current, recommendation: { ...recommendation, pending_jobs: undefined } },
+      { ...current, progress: { ...current.progress, matched_count: -1 } },
+      { ...current, stop_reason: 'unknown_stop_reason' },
+      { ...current, run_id: 42 },
+      { ...current, profile: { ...current.profile, search_options: { result_count: 21 } } },
       {
         ...current,
         recommendation: { ...recommendation, jobs: [{ ...item, notices: undefined }] },

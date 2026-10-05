@@ -640,3 +640,129 @@ def test_invalid_messages_fail_before_io(settings: Settings, invalid: list[dict[
         assert provider.usage.requests == 0
 
     asyncio.run(scenario())
+
+
+def test_native_tool_call_protocol_preserves_call_identity_and_arguments(
+    settings: Settings,
+) -> None:
+    from jobscout.services.tool_registry import ToolRegistry
+
+    async def scenario() -> None:
+        requests: list[dict[str, object]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(json.loads(request.content))
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "finish_reason": "tool_calls",
+                            "message": {
+                                "tool_calls": [
+                                    {
+                                        "id": "native-call",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "search_jobs",
+                                            "arguments": json.dumps(
+                                                {
+                                                    "direction": "数据分析",
+                                                    "source": "jobsdb",
+                                                    "keywords": ["Data Analyst"],
+                                                }
+                                            ),
+                                        },
+                                    }
+                                ]
+                            },
+                        }
+                    ],
+                    "usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
+                },
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = DeepSeekProvider(settings, client=client)
+            with provider.usage_scope() as usage:
+                result = await provider.tool_turn(
+                    [{"role": "user", "content": "Synthetic search"}], ToolRegistry().schemas()
+                )
+            assert result.calls[0].id == "native-call"
+            assert result.calls[0].arguments["direction"] == "数据分析"
+            assert result.assistant_message()["tool_calls"][0]["id"] == "native-call"
+            assert usage.requests == 1 and usage.total_tokens == 18
+        assert requests[0]["tool_choice"] == "required"
+        assert "response_format" not in requests[0]
+        assert "tools" in requests[0]
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "arguments,finish",
+    [("not json", "tool_calls"), ("[]", "tool_calls"), ("{}", "length"), ("{}", "stop")],
+)
+def test_invalid_native_tool_results_fail_without_exposing_provider_body(
+    settings: Settings, arguments: str, finish: str
+) -> None:
+    async def scenario() -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "finish_reason": finish,
+                            "message": {
+                                "content": "PRIVATE_SENTINEL",
+                                "tool_calls": [
+                                    {
+                                        "id": "one",
+                                        "type": "function",
+                                        "function": {"name": "search_jobs", "arguments": arguments},
+                                    }
+                                ],
+                            },
+                        }
+                    ]
+                },
+            )
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = DeepSeekProvider(settings, client=client)
+            with pytest.raises(ModelServiceError) as rejected:
+                await provider.tool_turn(
+                    [{"role": "user", "content": "Synthetic"}], [{"type": "function"}]
+                )
+            assert rejected.value.code == "model_output"
+            assert "PRIVATE_SENTINEL" not in str(rejected.value)
+            assert provider.usage.requests == 1
+
+    asyncio.run(scenario())
+
+
+def test_usage_scopes_isolate_concurrent_runs_and_inherit_into_child_tasks(
+    settings: Settings,
+) -> None:
+    async def scenario() -> None:
+        async def handler(request: httpx.Request) -> httpx.Response:
+            await asyncio.sleep(0)
+            return reply(usage={"prompt_tokens": 3, "completion_tokens": 2, "total_tokens": 5})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = DeepSeekProvider(settings, client=client)
+
+            async def execute(count: int) -> tuple[int, int]:
+                with provider.usage_scope() as usage:
+                    await asyncio.gather(
+                        *(provider.structured(Answer, messages()) for _ in range(count))
+                    )
+                return usage.requests, usage.total_tokens
+
+            first, second = await asyncio.gather(execute(1), execute(3))
+            assert first == (1, 5)
+            assert second == (3, 15)
+            assert provider.usage.requests == 4
+
+    asyncio.run(scenario())

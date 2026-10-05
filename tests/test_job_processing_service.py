@@ -157,41 +157,14 @@ def test_normalizes_group4_records_with_different_native_payloads(
     assert (job.title, job.company, job.location) == ("Data Analyst", "Acme Ltd", "Hong Kong")
     assert job.salary == "HKD 20,000/month"
     assert job.target_direction == "Data Analyst"
-    assert job.responsibilities == ["Build dashboards"]
-    assert job.required_skills == ["SQL"]
+    assert job.responsibilities == []
+    assert job.required_skills == []
     assert job.source_url == record["source_url"]
     assert job.source_links == [record["source_url"]]
     assert job.fetched_at == datetime(2026, 9, 28, 8, tzinfo=UTC)
     assert job.posted_at == datetime(2026, 9, 20, tzinfo=UTC)
     assert job.expiry_at == datetime(2026, 10, 20, tzinfo=UTC)
     assert job.freshness_status is FreshnessStatus.ACTIVE
-
-
-def test_parses_responsibilities_and_skills_from_description() -> None:
-    description = (
-        "We are hiring.\n"
-        "Responsibilities:\n"
-        "- Build data pipelines\n"
-        "- Maintain BI dashboards\n"
-        "Requirements:\n"
-        "- SQL\n"
-        "- Python\n"
-    )
-    record = make_raw(responsibilities=[], required_skills=[], description=description)
-
-    job = process_jobs([record], now=NOW).jobs[0]
-
-    assert job.responsibilities == ["Build data pipelines", "Maintain BI dashboards"]
-    assert job.required_skills == ["SQL", "Python"]
-
-
-def test_lexicon_fallback_when_description_has_no_skills_section() -> None:
-    description = "The ideal candidate has strong Python, SQL and Tableau experience."
-    record = make_raw(responsibilities=[], required_skills=[], description=description)
-
-    job = process_jobs([record], now=NOW).jobs[0]
-
-    assert job.required_skills == ["Python", "SQL", "Tableau"]
 
 
 def test_does_not_invent_responsibilities_or_skills_from_unrelated_description() -> None:
@@ -206,31 +179,6 @@ def test_does_not_invent_responsibilities_or_skills_from_unrelated_description()
     assert len(result.jobs) == 1
     assert result.jobs[0].responsibilities == []
     assert result.jobs[0].required_skills == []
-    assert any("no responsibilities or required skills" in warning for warning in result.warnings)
-
-
-def test_jd_extraction_keeps_benefits_out_of_responsibilities_and_skills() -> None:
-    description = (
-        "Responsibilities:\n- Maintain reports\n"
-        "Requirements:\n- SQL\n"
-        "Benefits:\n- Free lunch\n- Optional Python training\n"
-    )
-    record = make_raw(responsibilities=[], required_skills=[], description=description)
-
-    job = process_jobs([record], now=NOW).jobs[0]
-
-    assert job.responsibilities == ["Maintain reports"]
-    assert job.required_skills == ["SQL"]
-
-
-def test_parses_chinese_responsibilities_and_skills_from_description() -> None:
-    description = "岗位职责：\n- 维护业务报表\n任职要求：\n- 熟悉 SQL\n- 熟悉 Python\n"
-    record = make_raw(responsibilities=[], required_skills=[], description=description)
-
-    job = process_jobs([record], now=NOW).jobs[0]
-
-    assert job.responsibilities == ["维护业务报表"]
-    assert job.required_skills == ["熟悉 SQL", "熟悉 Python"]
 
 
 def test_parses_html_description_and_preserves_section_boundaries() -> None:
@@ -244,13 +192,14 @@ def test_parses_html_description_and_preserves_section_boundaries() -> None:
 
     job = process_jobs([record], now=NOW).jobs[0]
 
-    assert job.responsibilities == ["Build dashboards & reports", "Maintain data pipelines"]
-    assert job.required_skills == ["SQL", "Python"]
+    assert "Build dashboards & reports\nMaintain data pipelines" in job.description
+    assert job.responsibilities == []
+    assert job.required_skills == []
 
 
 @pytest.mark.parametrize(
     "field",
-    ["title", "company", "source_url", "location", "target_direction", "fetched_at"],
+    ["title", "company", "source_url", "target_direction", "fetched_at"],
 )
 def test_drops_records_missing_required_fields(field: str) -> None:
     result = process_jobs([make_raw(job_id="bad", **{field: None}), make_raw(job_id="ok")], now=NOW)
@@ -264,6 +213,30 @@ def test_drops_record_with_unparseable_fetched_at() -> None:
 
     assert result.jobs == []
     assert any("bad" in warning and "fetched_at" in warning for warning in result.warnings)
+
+
+def test_missing_location_keeps_candidate_for_semantic_verification_without_merging_ids() -> None:
+    first = make_raw(job_id="first", location=None, source_url="https://example.com/first")
+    second = make_raw(job_id="second", location=None, source_url="https://example.com/second")
+    result = process_jobs([first, second], now=NOW)
+    assert {job.job_id for job in result.jobs} == {"first", "second"}
+    assert all(job.location == "" for job in result.jobs)
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "任職條件：需要Zig和Nix，不要求Python",
+        "Our toolkit: Gleam and effect systems. Benefits include SQL training.",
+    ],
+)
+def test_description_is_preserved_without_closed_vocabulary_semantic_extraction(
+    description: str,
+) -> None:
+    source = make_raw(description=description, responsibilities=[], required_skills=[])
+    result = process_jobs([source], now=NOW).jobs[0]
+    assert result.description == description
+    assert result.required_skills == result.responsibilities == []
 
 
 def test_missing_optional_fields_keep_job_with_warnings() -> None:
@@ -328,7 +301,6 @@ def test_warns_when_no_responsibilities_or_skills_extracted() -> None:
     job = result.jobs[0]
     assert job.responsibilities == []
     assert job.required_skills == []
-    assert any("no responsibilities or required skills" in warning for warning in result.warnings)
 
 
 def test_merges_cross_source_duplicates_and_keeps_all_links() -> None:
@@ -365,9 +337,9 @@ def test_merges_cross_source_duplicates_and_keeps_all_links() -> None:
     assert job.fetched_at == datetime(2026, 9, 28, 9, 0, tzinfo=UTC)
 
 
-def test_dedup_key_ignores_case_and_punctuation() -> None:
+def test_dedup_key_ignores_case_and_whitespace() -> None:
     first = make_raw(job_id="a", company="Acme, Ltd.", title="Data Analyst!")
-    second = make_raw(job_id="b", company="acme ltd", title="data analyst")
+    second = make_raw(job_id="b", company="acme,  ltd.", title="data  analyst!")
 
     result = process_jobs([first, second], now=NOW)
 

@@ -10,6 +10,12 @@ export function latestSessionSnapshot(confirmed: ScoutSession | undefined, incom
   if (confirmed.revision > incoming.revision) return confirmed
   if (
     confirmed.revision === incoming.revision &&
+    confirmed.run_id === incoming.run_id &&
+    confirmed.progress.sequence > incoming.progress.sequence
+  )
+    return confirmed
+  if (
+    confirmed.revision === incoming.revision &&
     confirmed.outcome !== 'running' &&
     incoming.outcome === 'running'
   )

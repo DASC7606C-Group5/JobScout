@@ -19,12 +19,18 @@ from tortoise.transactions import in_transaction
 from jobscout.models import AcceptedRequest, SearchSession, WorkspaceDraft
 from jobscout.schemas.conversation import ConversationMessage, SearchSummary
 from jobscout.schemas.errors import WorkflowError
+from jobscout.schemas.execution import SearchEvent, SearchProgress
 from jobscout.schemas.job import JobPosting, SourceDocument
 from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
 from jobscout.schemas.search import ClarificationMessage, SearchRequest
-from jobscout.schemas.session import SessionCreateRequest, SessionResponse, SessionResumeRequest
+from jobscout.schemas.session import (
+    SessionCreateRequest,
+    SessionResponse,
+    SessionResumeRequest,
+    SessionStopRequest,
+)
 from jobscout.schemas.workspace import SessionHistoryItem, SessionHistoryResponse
 from jobscout.services.job_retrieval.models import SourceOutcome
 from jobscout.services.notice_service import (
@@ -60,6 +66,8 @@ class _Session:
     mode: str = "live"
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    active_run_id: str | None = None
+    stop_event: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 def _fingerprint(value: dict[str, Any]) -> str:
@@ -76,6 +84,7 @@ def _restore_state(state: dict[str, Any]) -> dict[str, Any]:
         "recommendation": RecommendationResult,
         "assessment": RecommendationResult,
         "search_summary": SearchSummary,
+        "progress": SearchProgress,
     }
     sequences: dict[str, type[BaseModel]] = {
         "clarification_questions": ClarificationMessage,
@@ -135,7 +144,7 @@ class SessionService:
                 continue
             snapshot = await self.graph.aget_state(self._config(record.thread_id))
             if snapshot.values and snapshot.values.get("revision", 0) >= record.revision:
-                record.state.update(snapshot.values)
+                self._merge_snapshot(record, snapshot.values)
                 if snapshot.values.get("current_stage") == "failed":
                     record.outcome = "failed"
                 elif not snapshot.next:
@@ -397,38 +406,6 @@ class SessionService:
             options = {option.id for option in question.options}
             if control != "text" and any(value not in options for value in selected):
                 raise SessionOperationError(422, "The answer contains an invalid option.")
-        allowed = {
-            "education",
-            "skills",
-            "internships",
-            "projects",
-            "target_directions",
-            "preferences.location",
-            "preferences.location_unrestricted",
-            "preferences.employment_type",
-            "preferences.employment_type_unrestricted",
-            "preferences.salary_range",
-            "preferences.work_mode",
-            "preferences.industry",
-        }
-        if set(payload.profile_updates) - allowed:
-            raise SessionOperationError(422, "The request includes fields that cannot be edited.")
-        list_fields = {"education", "skills", "internships", "projects", "target_directions"}
-        flag_fields = {
-            "preferences.location_unrestricted",
-            "preferences.employment_type_unrestricted",
-        }
-        for name, value in payload.profile_updates.items():
-            if name in list_fields:
-                valid = isinstance(value, list) and all(isinstance(item, str) for item in value)
-            elif name in flag_fields:
-                valid = isinstance(value, bool)
-            else:
-                valid = value is None or isinstance(value, str)
-            if not valid:
-                raise SessionOperationError(
-                    422, "One or more edited fields have an invalid value type."
-                )
         if payload.action == "confirm_search" and record.outcome == "paused":
             summary = record.state.get("search_summary")
             if summary is None or not summary.ready or summary.revision != record.revision:
@@ -448,9 +425,178 @@ class SessionService:
                     and snapshot.values.get("revision", 0) >= record.revision
                     and not record.deleted
                 ):
-                    record.state.update(snapshot.values)
+                    self._merge_snapshot(record, snapshot.values)
                     await self._persist(record)
             return self._response(record)
+
+    async def stop(self, session_id: str, payload: SessionStopRequest) -> SessionResponse:
+        """Freeze the last completed analyses before cancelling any outstanding work."""
+        fingerprint = _fingerprint(payload.model_dump(mode="json"))
+        task: asyncio.Task[None] | None = None
+        async with self.lock:
+            record = self._get(session_id)
+            if record.state.get("run_id") != payload.run_id:
+                raise SessionOperationError(
+                    409, "The search run has changed.", code="search_changed"
+                )
+            previous = await AcceptedRequest.get_or_none(
+                scope=f"stop:{session_id}", request_id=payload.request_id
+            )
+            if previous:
+                if previous.fingerprint != fingerprint:
+                    raise SessionOperationError(
+                        409,
+                        "The request ID was used for different content.",
+                        code="request_conflict",
+                    )
+                return self._response(record)
+            if record.outcome in {"completed", "failed"}:
+                return self._response(record)
+            if record.revision != payload.expected_revision:
+                raise SessionOperationError(409, "The search has changed.", code="search_changed")
+            if record.outcome != "running" or record.active_run_id != payload.run_id:
+                raise SessionOperationError(
+                    409, "This search is not running.", code="search_changed"
+                )
+
+            previous_state = dict(record.state)
+            previous_updated_at = record.updated_at
+            recommendation = record.state.get("recommendation")
+            result = (
+                RecommendationResult.model_validate(recommendation).model_copy(deep=True)
+                if recommendation is not None
+                else RecommendationResult(session_id=session_id, generated_at=datetime.now(UTC))
+            )
+            profile = record.state.get("confirmed_profile") or record.state.get("profile")
+            count = (
+                UserProfile.model_validate(profile).search_options.result_count if profile else 10
+            )
+            jobs = [item for item in result.jobs if item.analysis_status == "complete"][:count]
+            pending = [item for item in result.pending_jobs if item.analysis_status == "complete"][
+                :count
+            ]
+            result = result.model_copy(
+                update={
+                    "jobs": jobs,
+                    "pending_jobs": pending,
+                    "generated_at": datetime.now(UTC),
+                    "introduction": (
+                        f"Search ended at your request with {len(jobs)} confirmed matches. "
+                        "You can edit your criteria to search again."
+                    ),
+                }
+            )
+            progress = SearchProgress.model_validate(record.state.get("progress", {}))
+            sequence = max(progress.sequence, record.state.get("progress_seq", 0)) + 1
+            progress = progress.model_copy(
+                update={
+                    "sequence": sequence,
+                    "matched_count": len(jobs),
+                    "pending_count": len(pending),
+                    "events": [
+                        *progress.events,
+                        SearchEvent(
+                            sequence=sequence,
+                            action="finish_search",
+                            message="Search ended at your request.",
+                        ),
+                    ],
+                }
+            )
+            record.state.update(
+                recommendation=result,
+                progress=progress,
+                progress_seq=sequence,
+                stop_reason="user_stopped",
+                current_stage="completed",
+                outcome="completed",
+                retryable=False,
+            )
+            record.state.pop("accepted_resume", None)
+            record.outcome = "completed"
+            record.updated_at = datetime.now(UTC)
+            try:
+                async with in_transaction() as connection:
+                    await self._persist(record, connection=connection)
+                    await AcceptedRequest.create(
+                        scope=f"stop:{session_id}",
+                        request_id=payload.request_id,
+                        fingerprint=fingerprint,
+                        session_id=session_id,
+                        using_db=connection,
+                    )
+            except Exception:
+                record.state = previous_state
+                record.outcome = "running"
+                record.updated_at = previous_updated_at
+                raise
+            record.stop_event.set()
+            task = record.task
+            if task is not None and not task.done():
+                task.cancel()
+            response = self._response(record)
+        if task is not None:
+            await asyncio.gather(task, return_exceptions=True)
+        return response
+
+    @staticmethod
+    def _merge_snapshot(record: _Session, values: dict[str, Any]) -> None:
+        """A graph checkpoint may lag finer-grained, durably saved tool progress."""
+        incoming = dict(values)
+        if record.state.get("progress_seq", 0) > incoming.get("progress_seq", 0) or (
+            record.state.get("run_id") is not None
+            and record.state.get("run_id") != incoming.get("run_id")
+        ):
+            for key in (
+                "recommendation",
+                "progress",
+                "progress_seq",
+                "run_id",
+                "stop_reason",
+                "source_outcomes",
+            ):
+                incoming.pop(key, None)
+        record.state.update(incoming)
+
+    async def _progress(
+        self, record: _Session, run_id: str, revision: int, update: dict[str, Any]
+    ) -> None:
+        async with self.lock:
+            if (
+                record.deleted
+                or self.closing
+                or record.outcome != "running"
+                or self.sessions.get(record.session_id) is not record
+                or record.active_run_id != run_id
+                or record.revision != revision
+                or update.get("run_id") != run_id
+            ):
+                return
+            progress = SearchProgress.model_validate(update.get("progress", {})).model_copy(
+                deep=True
+            )
+            sequence = update.get("progress_seq", progress.sequence)
+            if sequence <= record.state.get("progress_seq", 0):
+                return
+            previous = dict(record.state)
+            record.state.update(run_id=run_id, progress=progress, progress_seq=sequence)
+            if update.get("recommendation") is not None:
+                record.state["recommendation"] = RecommendationResult.model_validate(
+                    update["recommendation"]
+                ).model_copy(deep=True)
+            if "source_outcomes" in update:
+                record.state["source_outcomes"] = [
+                    SourceOutcome.model_validate(value).model_copy(deep=True)
+                    for value in update["source_outcomes"]
+                ]
+            for key in ("stop_reason", "current_stage"):
+                if key in update:
+                    record.state[key] = update[key]
+            try:
+                await self._persist(record)
+            except Exception:
+                record.state = previous
+                raise
 
     async def history(
         self, *, cursor: str | None = None, limit: int = 20
@@ -553,7 +699,7 @@ class SessionService:
             if record.outcome == "running":
                 snapshot = await self.graph.aget_state(self._config(record.thread_id))
                 if snapshot.values and snapshot.values.get("revision", 0) >= record.revision:
-                    record.state.update(snapshot.values)
+                    self._merge_snapshot(record, snapshot.values)
                 await self._persist(record)
             await self._cleanup_session(record.session_id)
         self.sessions.clear()
@@ -572,20 +718,37 @@ class SessionService:
         return {"configurable": {"thread_id": session_id}, "recursion_limit": 100}
 
     def _start(self, record: _Session, graph_input: Any) -> None:
-        record.task = asyncio.create_task(self._operate(record, graph_input))
+        run_id = uuid4().hex
+        record.active_run_id = run_id
+        record.stop_event = asyncio.Event()
+        record.state.update(
+            run_id=None, progress=SearchProgress(), progress_seq=0, stop_reason=None
+        )
+        record.task = asyncio.create_task(self._operate(record, graph_input, run_id))
 
-    async def _operate(self, record: _Session, graph_input: Any) -> None:
+    async def _operate(self, record: _Session, graph_input: Any, run_id: str) -> None:
+        revision = record.revision
+
+        async def on_progress(update: dict[str, Any]) -> None:
+            await self._progress(record, run_id, revision, update)
+
+        config = self._config(record.thread_id)
+        config["configurable"].update(
+            run_id=run_id, stop_event=record.stop_event, on_progress=on_progress
+        )
         try:
-            state = await self.graph.ainvoke(graph_input, self._config(record.thread_id))
+            state = await self.graph.ainvoke(graph_input, config)
             snapshot = await self.graph.aget_state(self._config(record.thread_id))
             async with self.lock:
                 if (
                     record.deleted
                     or self.closing
                     or self.sessions.get(record.session_id) is not record
+                    or record.outcome != "running"
+                    or record.active_run_id != run_id
                 ):
                     return
-                record.state.update(state)
+                self._merge_snapshot(record, state)
                 stage = state.get("current_stage")
                 record.outcome = (
                     "failed" if stage == "failed" else "paused" if snapshot.next else "completed"
@@ -596,13 +759,23 @@ class SessionService:
         except asyncio.CancelledError:
             raise
         except Exception:
-            if not record.deleted and not self.closing:
-                try:
-                    snapshot = await self.graph.aget_state(self._config(record.thread_id))
-                    if snapshot.values:
-                        record.state.update(snapshot.values)
-                except Exception:
-                    pass
+            recovered: dict[str, Any] = {}
+            try:
+                snapshot = await self.graph.aget_state(self._config(record.thread_id))
+                recovered = snapshot.values
+            except Exception:
+                pass
+            async with self.lock:
+                if (
+                    record.deleted
+                    or self.closing
+                    or record.outcome != "running"
+                    or record.active_run_id != run_id
+                    or self.sessions.get(record.session_id) is not record
+                ):
+                    return
+                if recovered:
+                    self._merge_snapshot(record, recovered)
                 logger.warning("session_operation_failed", extra={"stage": "workflow"})
                 record.state["errors"] = [
                     WorkflowError(
@@ -615,9 +788,7 @@ class SessionService:
                 record.state["retryable"] = True
                 record.outcome = "failed"
                 self._retain_accepted_command(record)
-                async with self.lock:
-                    if not record.deleted and not self.closing:
-                        await self._persist(record)
+                await self._persist(record)
 
     def _response(self, record: _Session) -> SessionResponse:
         state = record.state
@@ -629,10 +800,8 @@ class SessionService:
         )
         recommendation = state.get("recommendation")
         if recommendation is not None:
-            profile = state.get("confirmed_profile") or state.get("profile")
             recommendation = finalize_recommendation(
                 RecommendationResult.model_validate(recommendation),
-                profile=UserProfile.model_validate(profile) if profile is not None else None,
                 notices=notices,
             )
             notices = recommendation.notices
@@ -661,5 +830,8 @@ class SessionService:
                 "notices": notices,
                 "retryable": retryable,
                 "mode": record.mode,
+                "run_id": state.get("run_id"),
+                "progress": state.get("progress", {}),
+                "stop_reason": state.get("stop_reason"),
             }
         )

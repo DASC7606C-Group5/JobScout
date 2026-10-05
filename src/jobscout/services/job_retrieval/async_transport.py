@@ -50,7 +50,7 @@ class AsyncHttpWebClient:
         host = urlsplit(url).netloc
         lock = self._locks.setdefault(host, asyncio.Lock())
         async with httpx.AsyncClient(
-            timeout=self.timeout, transport=self.transport, follow_redirects=True
+            timeout=self.timeout, transport=self.transport, follow_redirects=False
         ) as client:
             for attempt in range(self.retries + 1):
                 async with lock:

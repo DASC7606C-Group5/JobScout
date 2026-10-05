@@ -15,6 +15,73 @@ function list(value: unknown, valid: (item: unknown) => boolean) {
 function member(value: unknown, choices: string[]) {
   return string(value) && choices.includes(value)
 }
+function nonnegativeInteger(value: unknown) {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+function locationRef(value: unknown) {
+  return (
+    record(value) &&
+    string(value.id) &&
+    string(value.name) &&
+    member(value.region, ['hk', 'cn']) &&
+    member(value.level, ['country', 'region', 'city', 'district']) &&
+    nullableString(value.parent_id) &&
+    list(value.ancestor_ids, string) &&
+    record(value.source_codes) &&
+    Object.values(value.source_codes).every(string) &&
+    member(value.resolution, ['resolved', 'ambiguous', 'unsupported'])
+  )
+}
+function conditions(value: unknown, item: (entry: unknown) => boolean) {
+  return (
+    record(value) &&
+    nullableString(value.raw_text) &&
+    typeof value.unrestricted === 'boolean' &&
+    list(value.included, item) &&
+    list(value.excluded, item)
+  )
+}
+function profile(value: unknown) {
+  if (!record(value) || !record(value.preferences) || !record(value.search_options)) return false
+  const preferences = value.preferences
+  const count = value.search_options.result_count
+  return (
+    typeof count === 'number' &&
+    Number.isInteger(count) &&
+    count >= 5 &&
+    count <= 20 &&
+    conditions(preferences.locations, locationRef) &&
+    conditions(preferences.employment, (value) =>
+      member(value, ['full-time', 'part-time', 'internship', 'contract', 'freelance']),
+    ) &&
+    conditions(preferences.work_arrangement, (value) =>
+      member(value, ['remote', 'hybrid', 'onsite']),
+    ) &&
+    record(preferences.work_arrangement) &&
+    typeof preferences.work_arrangement.uncertain === 'boolean'
+  )
+}
+function progress(value: unknown) {
+  return (
+    record(value) &&
+    nonnegativeInteger(value.sequence) &&
+    nonnegativeInteger(value.analyzed_count) &&
+    nonnegativeInteger(value.matched_count) &&
+    nonnegativeInteger(value.pending_count) &&
+    typeof value.elapsed_seconds === 'number' &&
+    Number.isFinite(value.elapsed_seconds) &&
+    value.elapsed_seconds >= 0 &&
+    list(
+      value.events,
+      (event) =>
+        record(event) &&
+        nonnegativeInteger(event.sequence) &&
+        string(event.action) &&
+        string(event.message) &&
+        nullableString(event.source),
+    )
+  )
+}
 function recovery(value: unknown) {
   return value === null || member(value, ['retry', 'edit_conditions', 'reload', 'start_new_search'])
 }
@@ -77,6 +144,8 @@ export function isRecommendationItem(value: unknown): value is RecommendationIte
     record(value.job) &&
     string(value.job.job_id) &&
     member(value.analysis_status, ['complete', 'partial', 'unavailable']) &&
+    member(value.verification_status, ['confirmed', 'pending', 'unknown']) &&
+    list(value.unknown_conditions, string) &&
     list(value.notices, notice) &&
     list(value.matching_reasons, matchingReason) &&
     list(value.preparation_suggestions, string)
@@ -90,7 +159,8 @@ function recommendation(value: unknown) {
       string(value.generated_at) &&
       string(value.introduction) &&
       list(value.notices, notice) &&
-      list(value.jobs, isRecommendationItem))
+      list(value.jobs, isRecommendationItem) &&
+      list(value.pending_jobs, isRecommendationItem))
   )
 }
 function sessionIdentity(value: Record<string, unknown>) {
@@ -110,8 +180,19 @@ export function isSessionResponse(value: unknown): value is ScoutSession {
   return (
     record(value) &&
     sessionIdentity(value) &&
-    (value.profile === null || record(value.profile)) &&
-    (value.search_summary === null || record(value.search_summary)) &&
+    nullableString(value.run_id) &&
+    progress(value.progress) &&
+    (value.stop_reason === null ||
+      member(value.stop_reason, [
+        'target_reached',
+        'source_exhausted',
+        'budget_exhausted',
+        'user_stopped',
+        'error',
+      ])) &&
+    (value.profile === null || profile(value.profile)) &&
+    (value.search_summary === null ||
+      (record(value.search_summary) && profile(value.search_summary.profile))) &&
     Array.isArray(value.clarification_questions) &&
     Array.isArray(value.source_outcomes) &&
     list(value.conversation, conversation) &&

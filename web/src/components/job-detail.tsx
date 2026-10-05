@@ -2,7 +2,7 @@ import type { RefObject } from 'react'
 
 import { uniqueNotices } from '../lib/applicant-notices'
 import type { ApplicantNotice, JobPosting, RecommendationItem } from '../lib/contracts'
-import { dateLabel, safeSourceUrl } from '../lib/job-display'
+import { dateLabel, safeSourceUrl, sourceLabel } from '../lib/job-display'
 import { Icon } from './icon'
 import { MatchingSourceQuotes } from './matching-source-quotes'
 import { ResultWarnings } from './results/result-warnings'
@@ -12,7 +12,6 @@ export function JobDetail({
   saved,
   onToggle,
   onBack,
-  onEdit,
   notices,
   headingRef,
 }: {
@@ -20,7 +19,6 @@ export function JobDetail({
   saved: boolean
   onToggle: () => void
   onBack: () => void
-  onEdit: () => void
   notices: ApplicantNotice[]
   headingRef: RefObject<HTMLHeadingElement | null>
 }) {
@@ -74,7 +72,7 @@ export function JobDetail({
         <JobMatch item={item} />
         <Responsibilities job={job} />
         <Preparation item={item} />
-        <ResultWarnings notices={jobNotices} listingUrl={links[0]} onEdit={onEdit} />
+        <ResultWarnings notices={jobNotices} listingUrl={links[0]} />
         <MatchingSourceQuotes reasons={item.matching_reasons} />
         <ListingMetadata job={job} links={links} />
       </div>
@@ -143,7 +141,7 @@ function ListingMetadata({ job, links }: { job: JobPosting; links: string[] }) {
   return (
     <div className="border-t border-base-300 pt-4 text-xs text-base-content/60">
       <p>
-        {job.source} · Retrieved {dateLabel(job.fetched_at)}
+        {sourceLabel(job.source)} · Retrieved {dateLabel(job.fetched_at)}
       </p>
       {job.posted_at && <p className="mt-1">Posted {dateLabel(job.posted_at)}</p>}
       {job.expiry_at && <p className="mt-1">Deadline {dateLabel(job.expiry_at)}</p>}

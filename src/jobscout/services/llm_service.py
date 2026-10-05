@@ -3,10 +3,13 @@
 import asyncio
 import json
 import math
-from typing import Protocol
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Any, Protocol
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from jobscout.config import Settings, get_settings
 from jobscout.schemas.model import ModelUsage
@@ -42,6 +45,34 @@ class LLMProvider(Protocol):
     ) -> SchemaT: ...
 
 
+class ToolCall(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=200)
+    name: str = Field(min_length=1, max_length=80)
+    arguments: dict[str, Any]
+
+
+class ToolTurn(BaseModel):
+    """Native function calls only; model reasoning is never persisted or displayed."""
+
+    calls: list[ToolCall] = Field(min_length=1, max_length=4)
+
+    def assistant_message(self) -> dict[str, Any]:
+        return {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {"name": call.name, "arguments": json.dumps(call.arguments)},
+                }
+                for call in self.calls
+            ],
+        }
+
+
 class DeepSeekProvider:
     """One repair and one transient retry per call, sharing an absolute deadline.
 
@@ -57,6 +88,7 @@ class DeepSeekProvider:
         self._retry_delay = settings.llm_retry_delay
         self._client = client
         self._usage = ModelUsage()
+        self._run_usage: ContextVar[ModelUsage | None] = ContextVar("run_model_usage", default=None)
         self.model = settings.llm_model
 
     async def aclose(self) -> None:
@@ -85,6 +117,131 @@ class DeepSeekProvider:
         """Return a detached counter snapshot; no messages or reasoning are retained."""
         return self._usage.model_copy()
 
+    @contextmanager
+    def usage_scope(self) -> Iterator[ModelUsage]:
+        """Counters inherited by this run's child tasks, isolated from concurrent runs."""
+        usage = ModelUsage()
+        token = self._run_usage.set(usage)
+        try:
+            yield usage
+        finally:
+            self._run_usage.reset(token)
+
+    def _count(self, field: str, amount: int = 1) -> None:
+        setattr(self._usage, field, getattr(self._usage, field) + amount)
+        scoped = self._run_usage.get()
+        if scoped is not None:
+            setattr(scoped, field, getattr(scoped, field) + amount)
+
+    async def tool_turn(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        deadline: float | None = None,
+    ) -> ToolTurn:
+        """Request standard DeepSeek function calls with one transient retry."""
+        try:
+            url = self._request_url()
+            end = asyncio.get_running_loop().time() + self._timeout
+            if deadline is not None:
+                if not math.isfinite(deadline):
+                    raise ModelServiceError("model_input")
+                end = min(end, deadline)
+            if not messages or not tools:
+                raise ModelServiceError("model_input")
+            async with asyncio.timeout_at(end):
+                if self._client is not None:
+                    result = await self._tool_turn(self._client, url, messages, tools, end)
+                else:
+                    async with httpx.AsyncClient() as client:
+                        result = await self._tool_turn(client, url, messages, tools, end)
+        except asyncio.CancelledError:
+            self._count("cancellations")
+            raise
+        except TimeoutError:
+            self._count("failed_calls")
+            raise ModelServiceError("model_timeout") from None
+        except ModelServiceError:
+            self._count("failed_calls")
+            raise
+        self._count("successful_calls")
+        return result
+
+    async def _tool_turn(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        deadline: float,
+    ) -> ToolTurn:
+        retried = False
+        while True:
+            self._count("requests")
+            try:
+                response = await client.post(
+                    url,
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    json={
+                        "model": self.model,
+                        "messages": messages,
+                        "tools": tools,
+                        "tool_choice": "required",
+                        "thinking": {"type": "disabled"},
+                        "max_tokens": self._max_tokens,
+                        "stream": False,
+                    },
+                    timeout=httpx.Timeout(self._remaining(deadline)),
+                    follow_redirects=False,
+                )
+            except httpx.TransportError as error:
+                if retried:
+                    raise ModelServiceError(
+                        "model_timeout"
+                        if isinstance(error, httpx.TimeoutException)
+                        else "model_transport"
+                    ) from None
+                retried = True
+                await self._retry(deadline)
+                continue
+            except httpx.InvalidURL, httpx.RequestError:
+                raise ModelServiceError("model_transport") from None
+            if response.status_code in {401, 403}:
+                raise ModelServiceError("model_auth")
+            if response.status_code in _TRANSIENT_STATUS or 500 <= response.status_code < 600:
+                if retried:
+                    raise ModelServiceError("model_http")
+                retried = True
+                await self._retry(deadline)
+                continue
+            if not response.is_success:
+                raise ModelServiceError("model_http")
+            try:
+                payload = response.json()
+                self._record_usage(payload)
+                choice = payload["choices"][0]
+                if choice["finish_reason"] != "tool_calls":
+                    raise ValueError
+                if any(call["type"] != "function" for call in choice["message"]["tool_calls"]):
+                    raise ValueError
+                calls = [
+                    ToolCall(
+                        id=call["id"],
+                        name=call["function"]["name"],
+                        arguments=json.loads(call["function"]["arguments"]),
+                    )
+                    for call in choice["message"]["tool_calls"]
+                    if call["type"] == "function"
+                ]
+                if len({call.id for call in calls}) != len(calls):
+                    raise ValueError
+                result = ToolTurn(calls=calls)
+            except ValueError, KeyError, TypeError, IndexError:
+                raise ModelServiceError("model_output") from None
+            self._remaining(deadline)
+            return result
+
     async def structured[SchemaT: BaseModel](
         self,
         schema: type[SchemaT],
@@ -92,7 +249,7 @@ class DeepSeekProvider:
         *,
         deadline: float | None = None,
     ) -> SchemaT:
-        self._usage.structured_calls += 1
+        self._count("structured_calls", 1)
         try:
             url = self._request_url()
             end = asyncio.get_running_loop().time() + self._timeout
@@ -109,15 +266,15 @@ class DeepSeekProvider:
                     async with httpx.AsyncClient() as client:
                         result = await self._structured(client, url, schema, prompt, end)
         except asyncio.CancelledError:
-            self._usage.cancellations += 1
+            self._count("cancellations", 1)
             raise
         except TimeoutError:
-            self._usage.failed_calls += 1
+            self._count("failed_calls", 1)
             raise ModelServiceError("model_timeout") from None
         except ModelServiceError:
-            self._usage.failed_calls += 1
+            self._count("failed_calls", 1)
             raise
-        self._usage.successful_calls += 1
+        self._count("successful_calls", 1)
         return result
 
     @staticmethod
@@ -151,7 +308,7 @@ class DeepSeekProvider:
         repaired = False
         while True:
             remaining = self._remaining(deadline)
-            self._usage.requests += 1
+            self._count("requests", 1)
             try:
                 response = await client.post(
                     url,
@@ -208,7 +365,7 @@ class DeepSeekProvider:
                 raise ModelServiceError("model_output")
             self._remaining(deadline)
             repaired = True
-            self._usage.repairs += 1
+            self._count("repairs", 1)
             if content is not None:
                 messages.append({"role": "assistant", "content": content})
             messages.append(
@@ -224,7 +381,7 @@ class DeepSeekProvider:
 
     async def _retry(self, deadline: float) -> None:
         remaining = self._remaining(deadline)
-        self._usage.retries += 1
+        self._count("retries", 1)
         await asyncio.sleep(min(self._retry_delay, remaining))
 
     @staticmethod
@@ -241,14 +398,7 @@ class DeepSeekProvider:
             return None
         if not isinstance(data, dict):
             return None
-        usage = data.get("usage")
-        if isinstance(usage, dict):
-            prompt = self._token_count(usage.get("prompt_tokens"))
-            completion = self._token_count(usage.get("completion_tokens"))
-            total = self._token_count(usage.get("total_tokens"), prompt + completion)
-            self._usage.prompt_tokens += prompt
-            self._usage.completion_tokens += completion
-            self._usage.total_tokens += total
+        self._record_usage(data)
         choices = data.get("choices")
         if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
             return None
@@ -260,6 +410,18 @@ class DeepSeekProvider:
             return None
         content = message.get("content")
         return content if isinstance(content, str) else None
+
+    def _record_usage(self, data: object) -> None:
+        if not isinstance(data, dict):
+            return
+        usage = data.get("usage")
+        if isinstance(usage, dict):
+            prompt = self._token_count(usage.get("prompt_tokens"))
+            completion = self._token_count(usage.get("completion_tokens"))
+            total = self._token_count(usage.get("total_tokens"), prompt + completion)
+            self._count("prompt_tokens", prompt)
+            self._count("completion_tokens", completion)
+            self._count("total_tokens", total)
 
     @staticmethod
     def _token_count(value: object, default: int = 0) -> int:

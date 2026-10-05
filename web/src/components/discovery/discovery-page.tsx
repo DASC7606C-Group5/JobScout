@@ -19,15 +19,22 @@ function DiscoveryHeading() {
   const stage = session?.outcome ?? 'initial'
   const completed = stage === 'completed'
   const count = session?.recommendation?.jobs.length ?? 0
-  const profile = session?.profile
-  const criteria = criteriaLabel(profile)
+  const pending = session?.recommendation?.pending_jobs.length ?? 0
   return (
     <PageHeading
       eyebrow={completed ? 'YOUR OPPORTUNITIES' : 'YOUR NEXT CHAPTER'}
-      title={completed ? `${count} ${count === 1 ? 'job' : 'jobs'} to explore` : headings[stage]}
-      description={
+      title={
         completed
-          ? criteria
+          ? count > 0
+            ? `${count} ${count === 1 ? 'match' : 'matches'} to explore`
+            : pending > 0
+              ? 'More jobs to review'
+              : 'Your search results'
+          : headings[stage]
+      }
+      description={
+        completed || session?.run_id
+          ? ''
           : 'Tell us about your experience and goals to find a role that fits you better.'
       }
     />
@@ -38,6 +45,7 @@ export function DiscoveryPage() {
   const { session, busy, edit } = useScoutSession()
   const stage = session?.outcome ?? 'initial'
   const completed = stage === 'completed'
+  const focused = completed || Boolean(session?.run_id)
   return (
     <>
       <DiscoveryHeading />
@@ -56,17 +64,17 @@ export function DiscoveryPage() {
           </button>
         </section>
       )}
-      {!completed && (
+      {!focused && (
         <WorkflowSteps step={session?.search_summary?.confirmed ? 2 : stageSteps[stage]} />
       )}
       <div
         aria-busy={busy}
-        className={`grid items-start gap-6 ${completed ? '' : 'min-[1100px]:grid-cols-[minmax(0,1fr)_280px]'}`}
+        className={`grid items-start gap-6 ${focused ? '' : 'min-[1100px]:grid-cols-[minmax(0,1fr)_280px]'}`}
       >
         <div className="min-w-0">
           <DiscoveryContent />
         </div>
-        {!completed && <JourneyAside />}
+        {!focused && <JourneyAside />}
       </div>
     </>
   )
@@ -80,6 +88,7 @@ function criteriaLabel(profile: UserProfile | null | undefined) {
     profile.preferences.employment_type_unrestricted
       ? 'Any employment type'
       : profile.preferences.employment_type,
+    `Up to ${profile.search_options.result_count} matching jobs`,
   ]
     .filter(Boolean)
     .join(' · ')

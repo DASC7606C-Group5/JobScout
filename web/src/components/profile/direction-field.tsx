@@ -4,12 +4,8 @@ import { parseDirections, type ProfileFormValues } from '../../lib/profile-form'
 import { Icon } from '../icon'
 
 export function DirectionField() {
-  const { field, fieldState } = useController<ProfileFormValues, 'directions'>({
+  const { field } = useController<ProfileFormValues, 'directions'>({
     name: 'directions',
-    rules: {
-      validate: (value) =>
-        parseDirections(value).length <= 3 || 'Choose no more than three job directions.',
-    },
   })
   const selected = parseDirections(field.value)
   return (
@@ -19,19 +15,19 @@ export function DirectionField() {
         <h3 className="text-sm font-semibold">What kind of role are you looking for?</h3>
       </div>
       <label htmlFor="directions" className="mb-2 block text-sm">
-        Job directions <span className="ml-1 text-xs text-base-content/50">Optional, up to 3</span>
+        Job directions <span className="ml-1 text-xs text-base-content/50">Optional</span>
       </label>
-      <input
+      <textarea
         id="directions"
         {...field}
-        className="input w-full border border-base-300 bg-base-200/25 text-sm"
-        placeholder="For example: Frontend development, data analysis"
+        className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 text-sm leading-6"
+        rows={3}
+        placeholder={'Frontend development\nData analysis'}
         maxLength={300}
-        aria-invalid={fieldState.invalid}
-        aria-describedby="directions-error"
+        aria-describedby="directions-hint"
       />
-      <p id="directions-error" role="alert" className="text-xs text-error-content">
-        {fieldState.error?.message}
+      <p id="directions-hint" className="mt-1 text-xs text-base-content/60">
+        Enter one direction per line. Keep punctuation within a direction.
       </p>
       <div className="mt-2.5 flex flex-wrap gap-2">
         {['Frontend development', 'Data analysis', 'Product design', 'Software engineering'].map(
@@ -48,7 +44,7 @@ export function DirectionField() {
                     (active
                       ? selected.filter((value) => value !== direction)
                       : [...selected, direction]
-                    ).join(', '),
+                    ).join('\n'),
                   )
                 }
               >

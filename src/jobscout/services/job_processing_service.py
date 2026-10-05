@@ -9,7 +9,7 @@ guessed: without explicit source data a posting stays ``unknown``.
 Missing-field handling follows the contract decision confirmed on 2026-09-30:
 
 - records missing any contract-required field (``title``, ``company``,
-  ``source_url``, ``location``, ``target_direction``, ``fetched_at``) are
+  ``source_url``, ``target_direction``, ``fetched_at``) are
   dropped with a warning — a posting without them cannot be constructed,
   displayed, or deduplicated reliably;
 - optional fields (``salary``, ``posted_at``, ``expiry_at``) stay ``None``
@@ -33,102 +33,12 @@ from typing import Any, NamedTuple
 from pydantic import ValidationError
 
 from jobscout.schemas.job import FreshnessStatus, JobPosting, SourceDocument
-
-# Section headers recognized when parsing a free-text job description (JD).
-_RESPONSIBILITY_HEADERS = (
-    "responsibilities",
-    "responsibility",
-    "what you'll do",
-    "what you will do",
-    "your role",
-    "duties",
-    "key responsibilities",
-    "岗位职责",
-    "工作职责",
-    "職位職責",
-)
-_SKILL_HEADERS = (
-    "requirements",
-    "requirement",
-    "qualifications",
-    "qualification",
-    "skills",
-    "required skills",
-    "what we're looking for",
-    "what we are looking for",
-    "preferred qualifications",
-    "任职要求",
-    "岗位要求",
-    "任職要求",
-)
-
-# Fallback lexicon used only when the JD has no recognizable skills section.
-_SKILL_LEXICON = (
-    "Python",
-    "SQL",
-    "Java",
-    "JavaScript",
-    "TypeScript",
-    "React",
-    "Vue",
-    "Node.js",
-    "FastAPI",
-    "Django",
-    "Flask",
-    "Pandas",
-    "NumPy",
-    "R",
-    "Excel",
-    "Tableau",
-    "Power BI",
-    "Machine Learning",
-    "Deep Learning",
-    "NLP",
-    "Statistics",
-    "Spark",
-    "Hadoop",
-    "Docker",
-    "Kubernetes",
-    "Git",
-    "Linux",
-    "AWS",
-    "GCP",
-    "Azure",
-    "C++",
-    "C#",
-    "Go",
-    "Rust",
-    "Scala",
-    "Matlab",
-    "SAS",
-    "SPSS",
-    "Figma",
-    "Sketch",
-    "Photoshop",
-    "AutoCAD",
-    "SolidWorks",
-    "PLC",
-    "CAD",
-    "SEO",
-    "SEM",
-    "CRM",
-    "ERP",
-    "SAP",
-    "Salesforce",
-    "Cantonese",
-    "Mandarin",
-    "English",
-)
+from jobscout.services.job_retrieval.employment import source_employment_label
 
 # Text fields the frozen JobPosting contract requires; a raw record missing
 # any of them is dropped with a warning. ``fetched_at`` is also required but
 # validated separately because it must parse as a datetime.
-_REQUIRED_TEXT_FIELDS = ("title", "company", "source_url", "location", "target_direction")
-
-_BULLET_PREFIX = re.compile(r"^\s*(?:[-*•·▪◦‣·]|\d+[.)])\s+")
-# Unicode-aware: keeps CJK and other non-ASCII letters/digits so Chinese
-# (company, title, location) triples do not collapse into empty dedup keys.
-_NON_ALNUM = re.compile(r"[\W_]+")
+_REQUIRED_TEXT_FIELDS = ("title", "company", "source_url", "target_direction")
 
 
 class ProcessingResult(NamedTuple):
@@ -255,72 +165,16 @@ def _dedup_key_part(value: str | None) -> str:
     # NFKC folds full-width/half-width variants (e.g. "Ａｃｍｅ" → "Acme")
     # before case folding, so equivalent forms share one dedup key.
     normalized = unicodedata.normalize("NFKC", value)
-    return _NON_ALNUM.sub(" ", normalized.casefold()).strip()
-
-
-def _is_header_line(line: str, headers: tuple[str, ...]) -> bool:
-    line = line.rstrip().removesuffix("：")
-    text = line.strip().rstrip(":").strip().casefold()
-    return text in headers
-
-
-def _looks_like_header(line: str) -> bool:
-    line = line.replace("：", ":")
-    text = line.strip()
-    return text.endswith(":") and len(text.split()) <= 5
-
-
-def _extract_section_items(description: str, headers: tuple[str, ...]) -> list[str]:
-    """Collect bullet/short lines under the first matching section header."""
-    lines = description.splitlines()
-    items: list[str] = []
-    in_section = False
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            if in_section and items:
-                break
-            continue
-        if _is_header_line(stripped, headers):
-            in_section = True
-            continue
-        if in_section:
-            if _looks_like_header(stripped) and not _BULLET_PREFIX.match(stripped):
-                break
-            item = _clean_text(_BULLET_PREFIX.sub("", stripped))
-            if item is not None:
-                items.append(item)
-    return items
-
-
-def _lexicon_skills(text: str) -> list[str]:
-    found: list[str] = []
-    lowered = text.casefold()
-    for skill in _SKILL_LEXICON:
-        if re.search(r"(?<![a-z0-9+#])" + re.escape(skill.casefold()) + r"(?![a-z0-9])", lowered):
-            found.append(skill)
-    return found
+    return " ".join(normalized.casefold().split())
 
 
 def _parse_responsibilities(raw: dict[str, Any], description: str | None) -> list[str]:
-    explicit = _clean_str_list(raw.get("responsibilities"))
-    if explicit:
-        return _dedupe_keep_order(explicit)
-    if description:
-        return _dedupe_keep_order(_extract_section_items(description, _RESPONSIBILITY_HEADERS))
-    return []
+    """Preserve structured source facts; semantic JD extraction occurs in assessment."""
+    return _dedupe_keep_order(_clean_str_list(raw.get("responsibilities")))
 
 
 def _parse_required_skills(raw: dict[str, Any], description: str | None) -> list[str]:
-    explicit = _clean_str_list(raw.get("required_skills"))
-    if explicit:
-        return _dedupe_keep_order(explicit)
-    if description:
-        section = _extract_section_items(description, _SKILL_HEADERS)
-        if section:
-            return _dedupe_keep_order(section)
-        return _lexicon_skills(description)
-    return []
+    return _dedupe_keep_order(_clean_str_list(raw.get("required_skills")))
 
 
 def _normalize_status(value: object) -> FreshnessStatus | None:
@@ -407,7 +261,7 @@ def process_jobs(
         data-quality warnings; unpacks as ``jobs, warnings``.
 
     Records missing a contract-required field (``title``, ``company``,
-    ``source_url``, ``location``, ``target_direction`` or a parseable
+    ``source_url``, ``target_direction`` or a parseable
     ``fetched_at``) are dropped with one warning per record. Missing optional
     fields (``salary``, ``posted_at``, ``expiry_at``) stay ``None`` with a
     warning. A single broken record never fails the batch.
@@ -455,7 +309,11 @@ def process_jobs(
         warnings.extend(_record_quality_warnings(raw, label, reference_now))
 
         location = _clean_text(raw.get("location"))
-        key = (_dedup_key_part(company), _dedup_key_part(title), _dedup_key_part(location))
+        key = (
+            _dedup_key_part(company),
+            _dedup_key_part(title),
+            _dedup_key_part(location) if location else str(raw.get("source_url", "")),
+        )
         group = groups.get(key)
         if group is None:
             group = _Group()
@@ -544,12 +402,6 @@ def process_jobs(
 
         title = _clean_text(first.get("title")) or ""
         company = _clean_text(first.get("company")) or ""
-        if not responsibilities and not required_skills:
-            warnings.append(
-                f"Merged job {job_id} ({title} @ {company}): "
-                "no responsibilities or required skills extracted."
-            )
-
         jobs.append(
             JobPosting(
                 job_id=job_id,
@@ -592,34 +444,15 @@ def process_jobs(
 def _raw_employment_type(raw: dict[str, Any]) -> str | None:
     value = _clean_text(raw.get("employment_type"))
     if value:
-        return value
+        return source_employment_label(value)
     payload = raw.get("raw_payload")
     if not isinstance(payload, dict):
         return None
-    labels = (
-        payload.get("employment_type")
-        or payload.get("job_type")
-        or payload.get("workType")
-        or payload.get("workTypes")
-        or payload.get("job_types")
-    )
-    values = [labels] if isinstance(labels, str) else labels if isinstance(labels, list) else []
-    aliases = {
-        "full-time": {"full time", "fulltime", "全职", "全職"},
-        "part-time": {"part time", "parttime", "兼职", "兼職"},
-        "internship": {"intern", "internship", "实习", "實習"},
-        "contract": {"contract", "contract/temp", "合同工"},
-        "freelance": {"freelance", "自由职业"},
-    }
-    for label in values:
-        if isinstance(label, str):
-            normalized_label = " ".join(
-                label.casefold().replace("_", " ").replace("-", " ").split()
-            )
-            for kind, names in aliases.items():
-                if normalized_label in names:
-                    return kind
-    return None
+    values: list[object] = []
+    for field_name in ("employment_type", "job_type", "workType", "workTypes", "job_types"):
+        label = payload.get(field_name)
+        values.extend(label if isinstance(label, list) else [label])
+    return source_employment_label(values)
 
 
 def _source_documents(raw: dict[str, Any]) -> list[SourceDocument]:

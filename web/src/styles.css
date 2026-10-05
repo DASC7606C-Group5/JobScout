@@ -6,6 +6,10 @@
   themes: cupcake --default;
 }
 
+@utility textarea {
+  @apply px-6 py-4;
+}
+
 @utility select {
   /* Popup surfaces must not inherit a translucent trigger background. */
   &::picker(select),

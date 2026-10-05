@@ -31,7 +31,6 @@ test('detail retains supplied facts and quotes and excludes notices for discarde
       saved={false}
       onToggle={noop}
       onBack={noop}
-      onEdit={noop}
       headingRef={createRef()}
       notices={[notice, { ...notice, job_id: 'discarded', message: 'discarded-notice-sentinel' }]}
     />,
@@ -54,7 +53,6 @@ test('unavailable analysis retains job facts but does not display unsupported ma
       saved={false}
       onToggle={noop}
       onBack={noop}
-      onEdit={noop}
       headingRef={createRef()}
       notices={[]}
     />,

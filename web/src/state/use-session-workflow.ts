@@ -8,6 +8,7 @@ import type {
   ScoutInput,
   ScoutSession,
   SessionClient,
+  StopSessionRequest,
 } from '../lib/contracts'
 import { SessionHttpError } from '../lib/session-client'
 import { latestSessionSnapshot, sessionKey, sessionQueryOptions } from '../lib/session-query'
@@ -17,6 +18,7 @@ import { historyKey } from './workspace-queries'
 type Command = (
   | { kind: 'start'; input: CreateSessionRequest }
   | { kind: 'answer'; sessionId: string; request: ResumeSessionRequest }
+  | { kind: 'stop'; sessionId: string; request: StopSessionRequest }
   | { kind: 'delete'; sessionId: string }
 ) & { origin: object }
 
@@ -61,6 +63,8 @@ async function submitCommand(client: SessionClient, command: Command) {
       return client.start(command.input)
     case 'answer':
       return client.answer(command.sessionId, command.request)
+    case 'stop':
+      return client.stop(command.sessionId, command.request)
     case 'delete':
       await client.delete(command.sessionId)
       return null
@@ -196,6 +200,20 @@ export function useSessionWorkflow(
     void query.refetch()
   }
 
+  function stop() {
+    if (!session?.run_id || session.outcome !== 'running' || command.pending) return
+    execute({
+      kind: 'stop',
+      origin,
+      sessionId: session.session_id,
+      request: {
+        request_id: crypto.randomUUID(),
+        expected_revision: session.revision,
+        run_id: session.run_id,
+      },
+    })
+  }
+
   function retry() {
     if (pending) return
     if (recovery === 'refresh' || query.isError) refresh()
@@ -218,6 +236,8 @@ export function useSessionWorkflow(
     recovery,
     start,
     answer,
+    stop,
+    stopping: command.pending && mutation.variables?.kind === 'stop',
     retry,
     refresh,
     deleteSession,

@@ -1,6 +1,7 @@
 import { useController } from 'react-hook-form'
 
-import type { ProfileFormValues } from '../../lib/profile-form'
+import { resultCountError, type ProfileFormValues } from '../../lib/profile-form'
+import { ResultCountField } from './result-count-field'
 export function PreferenceFields() {
   const { field: location } = useController<ProfileFormValues, 'preferences.location'>({
     name: 'preferences.location',
@@ -24,6 +25,10 @@ export function PreferenceFields() {
   const { field: workMode } = useController<ProfileFormValues, 'preferences.work_mode'>({
     name: 'preferences.work_mode',
   })
+  const { field: resultCount } = useController<ProfileFormValues, 'search_options.result_count'>({
+    name: 'search_options.result_count',
+    rules: { validate: (value) => resultCountError(value) ?? true },
+  })
   return (
     <div className="grid gap-5 sm:grid-cols-2">
       <div>
@@ -36,9 +41,13 @@ export function PreferenceFields() {
           value={location.value ?? ''}
           className="input w-full border border-base-300 bg-base-200/25 text-sm"
           placeholder="For example: Hong Kong, Shenzhen"
-          maxLength={100}
+          maxLength={1000}
+          aria-describedby="location-hint"
           disabled={unrestricted.value}
         />
+        <p id="location-hint" className="mt-2 text-xs text-base-content/55">
+          Include several places or exclusions, such as “Shanghai except Pudong”.
+        </p>
         <label className="mt-2.5 flex w-fit cursor-pointer items-center gap-2 text-xs text-base-content/65">
           <input
             type="checkbox"
@@ -54,22 +63,19 @@ export function PreferenceFields() {
         <label htmlFor="employment" className="mb-2 block text-sm">
           Employment type
         </label>
-        <select
+        <input
           id="employment"
           {...employment}
           value={employment.value ?? ''}
           disabled={employmentUnrestricted.value}
-          className="select w-full border border-base-300 bg-base-100 text-sm"
-        >
-          <option value="">Not sure yet — I’ll decide later</option>
-          <option value="full-time">Full-time</option>
-          <option value="internship">Internship</option>
-          <option value="part-time">Part-time</option>
-          {employment.value &&
-            !['full-time', 'internship', 'part-time'].includes(employment.value) && (
-              <option value={employment.value}>{employment.value}</option>
-            )}
-        </select>
+          className="input w-full border border-base-300 bg-base-200/25 text-sm"
+          maxLength={1000}
+          placeholder="Full-time or internship, excluding contract"
+          aria-describedby="employment-hint"
+        />
+        <p id="employment-hint" className="mt-2 text-xs text-base-content/55">
+          Include or exclude full-time, internship, part-time, contract, or freelance work.
+        </p>
         <label className="mt-2.5 flex w-fit cursor-pointer items-center gap-2 text-xs text-base-content/65">
           <input
             type="checkbox"
@@ -112,6 +118,14 @@ export function PreferenceFields() {
             <option value={workMode.value}>{workMode.value}</option>
           )}
         </select>
+      </div>
+      <div className="sm:col-span-2">
+        <ResultCountField
+          id="result-count"
+          value={resultCount.value}
+          onChange={resultCount.onChange}
+          inputRef={resultCount.ref}
+        />
       </div>
     </div>
   )

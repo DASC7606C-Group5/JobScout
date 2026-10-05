@@ -1,5 +1,5 @@
 import operator
-from typing import Annotated, Literal, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from jobscout.schemas.conversation import ConversationMessage, SearchSummary
 from jobscout.schemas.errors import WorkflowError
@@ -67,3 +67,9 @@ class AgentState(TypedDict):
     analysis_jobs: NotRequired[list[JobPosting]]
     assessment: NotRequired[RecommendationResult | None]
     jd_cache: NotRequired[dict[str, object]]
+    run_id: NotRequired[str | None]
+    progress_seq: NotRequired[int]
+    progress: NotRequired[dict[str, Any]]
+    stop_reason: NotRequired[str | None]
+    model_usage: NotRequired[dict[str, int]]
+    agent_error_code: NotRequired[str | None]

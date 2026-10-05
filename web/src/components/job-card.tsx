@@ -37,6 +37,7 @@ export function JobCard({
           <span>{job.location}</span>
           {job.employment_type && <span>{job.employment_type}</span>}
           {job.freshness_status === 'expired' && <span>Expired</span>}
+          {item.verification_status !== 'confirmed' && <span>Check details</span>}
         </span>
         <span className="mt-4 block text-sm font-semibold">
           {job.salary || 'Salary not provided'}

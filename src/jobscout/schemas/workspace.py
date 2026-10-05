@@ -60,6 +60,13 @@ class ProfileDraft(BaseModel):
     resume: ResumeInput | None
     directions: str
     preferences: RawPreferences
+    search_options: DraftSearchOptions = Field(default_factory=lambda: DraftSearchOptions())
+
+
+class DraftSearchOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    result_count: int = 10
 
 
 class ClarificationDraft(BaseModel):
@@ -85,6 +92,7 @@ class SummaryFields(BaseModel):
     salary_range: str = Field(alias="preferences.salary_range")
     work_mode: str = Field(alias="preferences.work_mode")
     industry: str = Field(alias="preferences.industry")
+    result_count: int = Field(default=10, alias="search_options.result_count")
 
 
 class SummaryDraft(BaseModel):
