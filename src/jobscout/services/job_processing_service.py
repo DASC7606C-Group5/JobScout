@@ -4,7 +4,7 @@ It converts raw retrieval records into the shared ``JobPosting`` contract,
 retains source-specific documents and all matched directions,
 merges cross-source duplicates while preserving every source link, and marks
 each posting as ``active`` / ``expired`` / ``unknown``. Freshness is never
-guessed: without explicit evidence a posting stays ``unknown``.
+guessed: without explicit source data a posting stays ``unknown``.
 
 Missing-field handling follows the contract decision confirmed on 2026-09-30:
 
@@ -338,7 +338,7 @@ def _classify_freshness(
     raw_statuses: list[FreshnessStatus],
     now: datetime,
 ) -> FreshnessStatus:
-    """Decide freshness from evidence only; never guess ``active``.
+    """Decide freshness from source data only; never guess ``active``.
 
     Precedence: an expiry timestamp decides first; otherwise an explicit
     source status is honored (a conflicting ``expired`` beats ``active`` when

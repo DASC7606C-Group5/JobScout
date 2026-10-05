@@ -105,7 +105,7 @@ class FakeSearch:
         return self.rounds[min(len(self.calls) - 1, len(self.rounds) - 1)]
 
 
-class FakeEvidence:
+class FakeAssessment:
     def __init__(self) -> None:
         self.calls: list[tuple[str, list[JobPosting], dict[str, str], float | None]] = []
         self.search_ids: list[str] = []
@@ -181,18 +181,18 @@ def raw(index: int = 1) -> RawJob:
 
 def setup(
     provider: FakeProvider | None = None, search: FakeSearch | None = None
-) -> tuple[Any, FakeProvider, FakeSearch, list[FakeEvidence]]:
+) -> tuple[Any, FakeProvider, FakeSearch, list[FakeAssessment]]:
     provider = provider or FakeProvider()
     search = search or FakeSearch()
-    instances: list[FakeEvidence] = []
+    instances: list[FakeAssessment] = []
 
-    def factory(_: LLMProvider) -> FakeEvidence:
-        service = FakeEvidence()
+    def factory(_: LLMProvider) -> FakeAssessment:
+        service = FakeAssessment()
         instances.append(service)
         return service
 
     return (
-        build_live_graph(InMemorySaver(), provider, search, evidence_factory=factory),
+        build_live_graph(InMemorySaver(), provider, search, assessment_factory=factory),
         provider,
         search,
         instances,
@@ -451,7 +451,7 @@ def test_source_failure_is_nonfatal_with_successful_results() -> None:
                 SourceOutcome(target_direction="data analyst", source="liepin", status="blocked"),
             ],
         )
-        graph, _, search, evidence = setup(search=FakeSearch([found]))
+        graph, _, search, assessment_services = setup(search=FakeSearch([found]))
         await graph.ainvoke(initial(), configuration())
         state = await graph.ainvoke(resume(action="confirm_search"), configuration())
         assert state["current_stage"] == "completed"
@@ -459,7 +459,7 @@ def test_source_failure_is_nonfatal_with_successful_results() -> None:
         assert len(state["recommendation"].jobs) == 5
         assert len(state["source_outcomes"]) == 2
         assert len(search.calls) == 1
-        assert all(job.source_documents for job in evidence[0].calls[0][1])
+        assert all(job.source_documents for job in assessment_services[0].calls[0][1])
 
     asyncio.run(scenario())
 
@@ -502,7 +502,7 @@ def test_twenty_unique_candidates_and_no_implicit_skill_keywords() -> None:
     asyncio.run(scenario())
 
 
-def test_evidence_instances_are_session_scoped() -> None:
+def test_assessment_instances_are_session_scoped() -> None:
     async def scenario() -> None:
         graph, _, _, instances = setup()
         await graph.ainvoke(initial(), configuration())
@@ -528,16 +528,16 @@ def test_cleanup_session_releases_only_requested_cache_and_is_idempotent() -> No
     import weakref
 
     async def scenario() -> None:
-        instances: list[weakref.ReferenceType[FakeEvidence]] = []
+        instances: list[weakref.ReferenceType[FakeAssessment]] = []
 
-        def factory(_: LLMProvider) -> FakeEvidence:
-            instance = FakeEvidence()
+        def factory(_: LLMProvider) -> FakeAssessment:
+            instance = FakeAssessment()
             instances.append(weakref.ref(instance))
             return instance
 
         checkpointer = InMemorySaver()
         graph = build_live_graph(
-            checkpointer, FakeProvider(), FakeSearch(), evidence_factory=factory
+            checkpointer, FakeProvider(), FakeSearch(), assessment_factory=factory
         )
         for session in ("s1", "s2"):
             state = initial()
@@ -577,9 +577,13 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
 ) -> None:
     import json
 
-    from jobscout.services.evidence_service import EvidenceService, JDAnalysisBatch, MatchingBatch
+    from jobscout.services.job_assessment_service import (
+        JDAnalysisBatch,
+        JobAssessmentService,
+        MatchingBatch,
+    )
 
-    class EvidenceProvider(FakeProvider):
+    class AssessmentProvider(FakeProvider):
         def __init__(self) -> None:
             super().__init__()
             self.jd_calls = 0
@@ -606,7 +610,7 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
                                         "requirement_id": "python",
                                         "text": "Python",
                                         "category": "skill",
-                                        "evidence": [
+                                        "source_quotes": [
                                             {
                                                 "document_id": job["documents"][0]["document_id"],
                                                 "excerpt": "Python",
@@ -630,7 +634,7 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
                                 "matches": [
                                     {
                                         "requirement_id": requirement["requirement_id"],
-                                        "level": "not_evidenced",
+                                        "level": "not_documented",
                                     }
                                     for requirement in job["requirements"]
                                 ],
@@ -642,22 +646,22 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
             return await super().structured(schema, messages, deadline=deadline)
 
     async def scenario() -> None:
-        provider = EvidenceProvider()
+        provider = AssessmentProvider()
         search = FakeSearch(
             [
                 SearchResult(raw_jobs=[raw(i) for i in range(20)]),
                 SearchResult(raw_jobs=[raw(i) for i in range(100, 120)]),
             ]
         )
-        services: list[EvidenceService] = []
+        services: list[JobAssessmentService] = []
 
-        def factory(model: LLMProvider) -> EvidenceService:
-            service = EvidenceService(model)
+        def factory(model: LLMProvider) -> JobAssessmentService:
+            service = JobAssessmentService(model)
             services.append(service)
             return service
 
         saver = InMemorySaver()
-        graph = build_live_graph(saver, provider, search, evidence_factory=factory)
+        graph = build_live_graph(saver, provider, search, assessment_factory=factory)
         await graph.ainvoke(initial(), configuration())
         state = await graph.ainvoke(resume(1, action="confirm_search"), configuration())
         state = (await graph.aget_state(configuration())).values
@@ -671,7 +675,7 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
                 cleanup = getattr(graph, "cleanup_session", None)
                 assert callable(cleanup)
                 await cleanup("s1")
-                graph = build_live_graph(saver, provider, search, evidence_factory=factory)
+                graph = build_live_graph(saver, provider, search, assessment_factory=factory)
             command = resume(
                 state["revision"], action="edit_conditions", profile_updates={"skills": skills}
             ).resume
@@ -810,7 +814,7 @@ def test_stage_logs_only_contain_safe_metadata(caplog: pytest.LogCaptureFixture)
     asyncio.run(scenario())
 
 
-def test_default_evidence_service_integrates_with_graph_offline() -> None:
+def test_default_job_assessment_service_integrates_with_graph_offline() -> None:
     async def scenario() -> None:
         search = FakeSearch([SearchResult(raw_jobs=[raw(i) for i in range(5)])])
         graph = build_live_graph(InMemorySaver(), FakeProvider(), search)
@@ -823,7 +827,7 @@ def test_default_evidence_service_integrates_with_graph_offline() -> None:
     asyncio.run(scenario())
 
 
-def test_completed_edit_restart_preserves_evidence_and_requires_confirmation() -> None:
+def test_completed_edit_restart_preserves_source_quotes_and_requires_confirmation() -> None:
     async def scenario() -> None:
         graph, provider, search, _ = setup()
         await graph.ainvoke(initial(), configuration())
@@ -903,7 +907,7 @@ def test_conflicts_require_confirmation_and_text_directions_are_split() -> None:
     asyncio.run(scenario())
 
 
-def test_conversation_keeps_free_text_and_displays_choice_labels_without_evidence_fields() -> None:
+def test_conversation_keeps_free_text_and_displays_choice_labels_without_internal_fields() -> None:
     class ChoiceProvider(FakeProvider):
         async def structured[SchemaT: BaseModel](
             self,

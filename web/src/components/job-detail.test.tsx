@@ -13,7 +13,8 @@ const noop = () => {}
 test('detail retains supplied facts and quotes and excludes notices for discarded jobs', () => {
   const item = createRecommendationFixture()
   item.job.description = 'Original listing content'
-  item.matching_reasons[0]!.profile_evidence[0]!.excerpt = 'I worked on Group 6: detail_limit=None'
+  item.matching_reasons[0]!.profile_source_quotes[0]!.excerpt =
+    'I worked on Group 6: detail_limit=None'
   const notice: ApplicantNotice = {
     code: 'listing_incomplete',
     scope: 'job',
@@ -36,7 +37,7 @@ test('detail retains supplied facts and quotes and excludes notices for discarde
     />,
   )
   expect(html).toContain(item.job.description)
-  expect(html).toContain(item.matching_reasons[0]!.profile_evidence[0]!.excerpt)
+  expect(html).toContain(item.matching_reasons[0]!.profile_source_quotes[0]!.excerpt)
   expect(html).not.toContain('discarded-notice-sentinel')
   expect(html.split(notice.message)).toHaveLength(2)
   expect(html).toContain(`href="${item.job.source_url}"`)

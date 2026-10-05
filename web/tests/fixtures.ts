@@ -44,29 +44,29 @@ export function createRecommendationFixture(): RecommendationItem {
       employment_type: 'full-time',
       target_directions: ['Frontend development'],
     },
-    preparation_suggestions: ['Add evidence of how you used React in a project.'],
+    preparation_suggestions: ['Describe how you used React in a project.'],
     matching_reasons: [
       {
         requirement: 'React',
         level: 'strong',
         explanation: 'Your project materials support your React experience.',
-        job_evidence: [
+        job_source_quotes: [
           {
             document_id: 'job-1',
             excerpt: 'React development experience required.',
             source_url: 'https://example.test/jobs/1',
           },
         ],
-        profile_evidence: [
+        profile_source_quotes: [
           { document_id: 'description', excerpt: 'React development experience', source_url: null },
         ],
       },
       {
         requirement: 'SQL',
-        level: 'not_evidenced',
+        level: 'not_documented',
         explanation: 'Your materials do not mention SQL.',
-        job_evidence: [],
-        profile_evidence: [],
+        job_source_quotes: [],
+        profile_source_quotes: [],
       },
     ],
     notices: [],

@@ -1,4 +1,4 @@
-"""Conversation, summary and evidence contracts owned by the application."""
+"""Conversation, summary and source quotation contracts owned by the application."""
 
 from datetime import UTC, datetime
 from typing import Literal
@@ -53,7 +53,7 @@ class SearchSummary(BaseModel):
     coverage_notice: str = "Search supported job sources in Hong Kong and mainland China."
 
 
-class EvidenceReference(BaseModel):
+class SourceQuoteReference(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     document_id: str
@@ -65,7 +65,7 @@ class MatchingReason(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     requirement: str
-    level: Literal["strong", "partial", "related_experience", "not_evidenced"]
+    level: Literal["strong", "partial", "related_experience", "not_documented"]
     explanation: str
-    job_evidence: list[EvidenceReference] = Field(default_factory=list)
-    profile_evidence: list[EvidenceReference] = Field(default_factory=list)
+    job_source_quotes: list[SourceQuoteReference] = Field(default_factory=list)
+    profile_source_quotes: list[SourceQuoteReference] = Field(default_factory=list)

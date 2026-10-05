@@ -172,6 +172,8 @@ describe('Session HTTP API', () => {
     const recommendation = { ...completed.recommendation!, jobs: [item] }
     const current = { ...completed, recommendation }
     const message = current.conversation[0]!
+    const reason = item.matching_reasons[0]!
+    const quote = reason.job_source_quotes[0]!
     const invalidReplies = [
       { ...current, notices: undefined },
       { ...current, conversation: [{ ...message, responses: undefined }] },
@@ -188,6 +190,20 @@ describe('Session HTTP API', () => {
         ...current,
         recommendation: { ...recommendation, jobs: [{ ...item, analysis_status: 'fallback' }] },
       },
+      ...[
+        { ...reason, job_source_quotes: undefined },
+        { ...reason, profile_source_quotes: undefined },
+        { ...reason, level: 'unsupported' },
+        { ...reason, job_source_quotes: [{ ...quote, document_id: undefined }] },
+        { ...reason, job_source_quotes: [{ ...quote, excerpt: 42 }] },
+        { ...reason, job_source_quotes: [{ ...quote, source_url: 42 }] },
+      ].map((matchingReason) => ({
+        ...current,
+        recommendation: {
+          ...recommendation,
+          jobs: [{ ...item, matching_reasons: [matchingReason] }],
+        },
+      })),
       { ...current, errors: [{ code: 'service_unavailable', message: 'Private failure' }] },
       {
         ...current,

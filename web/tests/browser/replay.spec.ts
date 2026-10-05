@@ -85,23 +85,23 @@ async function confirmAndVerifyResults(page: Page, id: string) {
   const item = jobs[0]!
   expect(item.matching_reasons.some((reason) => reason.level === 'strong')).toBe(true)
   for (const reason of item.matching_reasons) {
-    for (const evidence of reason.job_evidence) {
+    for (const quote of reason.job_source_quotes) {
       const document = item.job.source_documents.find(
-        (entry) => entry.document_id === evidence.document_id,
+        (entry) => entry.document_id === quote.document_id,
       )
-      expect(document?.text).toContain(evidence.excerpt)
+      expect(document?.text).toContain(quote.excerpt)
     }
-    for (const evidence of reason.profile_evidence) expect(description).toContain(evidence.excerpt)
+    for (const quote of reason.profile_source_quotes) expect(description).toContain(quote.excerpt)
   }
   await page.getByRole('button', { name: 'View job: ' + item.job.title, exact: true }).click()
   const article = page.getByRole('article', { name: 'Job details', exact: true })
-  await article.getByText('View supporting evidence', { exact: true }).click()
+  await article.getByText('View source excerpts', { exact: true }).click()
   await expect(article.getByRole('link', { name: 'Check source' }).first()).toHaveAttribute(
     'href',
     /^https?:\/\//,
   )
   const lastSupportedReason = item.matching_reasons
-    .filter((reason) => reason.job_evidence.length || reason.profile_evidence.length)
+    .filter((reason) => reason.job_source_quotes.length || reason.profile_source_quotes.length)
     .at(-1)
   if (lastSupportedReason)
     await expect(
@@ -119,7 +119,7 @@ async function confirmAndVerifyResults(page: Page, id: string) {
       fullPage: true,
       animations: 'disabled',
     })
-    await article.getByText('View supporting evidence', { exact: true }).click()
+    await article.getByText('View source excerpts', { exact: true }).click()
     await page.evaluate(() =>
       Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => {}))),
     )
@@ -137,7 +137,7 @@ async function confirmAndVerifyResults(page: Page, id: string) {
 }
 
 for (const complete of [true, false]) {
-  test(`real replay backend: ${complete ? 'complete input' : 'dynamic clarification'} → confirm → evidenced results → refresh`, async ({
+  test(`real replay backend: ${complete ? 'complete input' : 'dynamic clarification'} → confirm → results with source excerpts → refresh`, async ({
     page,
   }) => {
     test.setTimeout(45_000)

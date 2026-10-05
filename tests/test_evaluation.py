@@ -57,7 +57,7 @@ def test_baseline_and_authored_replay_share_candidates_but_not_quality_claims() 
     assert [row["candidate_sha256"] for row in baseline["cases"]] == [
         row["candidate_sha256"] for row in replay["cases"]
     ]
-    assert not replay["quality_evidence"]
+    assert not replay["measures_model_quality"]
     assert recording is None
     assert replay["usage"]["actual_network_requests"] == 0
     assert replay["latency"]["kind"] == "local_execution_only"

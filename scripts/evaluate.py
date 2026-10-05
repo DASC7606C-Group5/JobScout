@@ -16,7 +16,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from jobscout.schemas.conversation import EvidenceReference
+from jobscout.schemas.conversation import SourceQuoteReference
 from jobscout.schemas.job import JobPosting
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
@@ -41,7 +41,7 @@ class StrictModel(BaseModel):
 class Fact(StrictModel):
     field: Literal["education", "skills", "internships", "projects"]
     value: str
-    references: list[EvidenceReference] = Field(min_length=1)
+    references: list[SourceQuoteReference] = Field(min_length=1)
 
 
 class Relevance(StrictModel):
@@ -71,13 +71,13 @@ class ProfileCase(StrictModel):
 class RequirementAnnotation(StrictModel):
     requirement_id: str
     text: str
-    references: list[EvidenceReference] = Field(min_length=1)
+    references: list[SourceQuoteReference] = Field(min_length=1)
 
 
 class VacancyAnnotations(StrictModel):
     requirements: list[RequirementAnnotation]
     hard_facts: dict[str, str]
-    hard_fact_references: list[EvidenceReference]
+    hard_fact_references: list[SourceQuoteReference]
     freshness_basis: str
 
 
@@ -123,7 +123,9 @@ def verify_baseline(root: Path = DATA) -> None:
         raise ValueError("Frozen baseline report provenance mismatch")
 
 
-def _references_valid(references: Sequence[EvidenceReference], documents: dict[str, str]) -> bool:
+def _references_valid(
+    references: Sequence[SourceQuoteReference], documents: dict[str, str]
+) -> bool:
     return bool(references) and all(
         bool(ref.excerpt.strip()) and ref.excerpt in documents.get(ref.document_id, "")
         for ref in references
@@ -257,15 +259,17 @@ def ranking_metrics(case: ProfileCase, result: RecommendationResult) -> JsonObje
         documents = {doc.document_id: doc.text for doc in item.job.source_documents}
         for reason in item.matching_reasons:
             claims += 1
-            valid = _references_valid(reason.job_evidence, documents)
-            if reason.level != "not_evidenced":
-                valid = valid and _references_valid(reason.profile_evidence, case.profile_documents)
+            valid = _references_valid(reason.job_source_quotes, documents)
+            if reason.level != "not_documented":
+                valid = valid and _references_valid(
+                    reason.profile_source_quotes, case.profile_documents
+                )
             else:
-                valid = valid and not reason.profile_evidence
+                valid = valid and not reason.profile_source_quotes
             supported += int(valid)
             for refs, docs in (
-                (reason.job_evidence, documents),
-                (reason.profile_evidence, case.profile_documents),
+                (reason.job_source_quotes, documents),
+                (reason.profile_source_quotes, case.profile_documents),
             ):
                 references += len(refs)
                 valid_references += sum(_references_valid([ref], docs) for ref in refs)
@@ -278,7 +282,7 @@ def ranking_metrics(case: ProfileCase, result: RecommendationResult) -> JsonObje
         "constraint_violation_rate": violating / len(ids) if ids else None,
         "claim_count": claims,
         "supported_claim_count": supported,
-        "evidence_support_rate": supported / claims if claims else None,
+        "citation_support_rate": supported / claims if claims else None,
         "reference_count": references,
         "valid_reference_count": valid_references,
         "semantic_entailment_rate": None,
@@ -305,7 +309,7 @@ def baseline_report(dataset: Dataset) -> JsonObject:
 
 
 class AuthoredReplayProvider:
-    """Fixture-only provider. Deliberately not evidence of any model's quality."""
+    """Fixture-only provider. Cannot measure any model's quality."""
 
     model = "authored-fixture-not-a-model"
 
@@ -461,8 +465,8 @@ def _aggregate(rows: list[JsonObject]) -> JsonObject:
         "constraint_violation_rate": (
             sum(row["violating_recommendations"] for row in ranks) / returned if returned else None
         ),
-        "evidence_claims": claims,
-        "evidence_support_rate": (
+        "citation_claims": claims,
+        "citation_support_rate": (
             sum(row["supported_claim_count"] for row in ranks) / claims if claims else None
         ),
         "semantic_entailment_rate": None,
@@ -510,11 +514,11 @@ async def evaluate(
             # Both rankers receive the SAME annotation-confirmed profile and candidate pool.
             if case.expected_clarification_complete:
                 candidates = [jobs[jid].model_copy(deep=True) for jid in case.candidate_ids]
-                from jobscout.services.evidence_service import EvidenceService
+                from jobscout.services.job_assessment_service import JobAssessmentService
 
-                evidence_service = EvidenceService(provider)
-                await evidence_service.begin_search(case.profile_id)
-                result = await evidence_service.assess(
+                assessment_service = JobAssessmentService(provider)
+                await assessment_service.begin_search(case.profile_id)
+                result = await assessment_service.assess(
                     case.expected_confirmed.model_copy(deep=True),
                     candidates,
                     case.profile_documents,
@@ -549,7 +553,7 @@ async def evaluate(
         "profile_schema_sha256": digest(UserProfile.model_json_schema()),
         "provider": "deepseek" if mode == "live" else "replay",
         "model": str(getattr(shared, "model", AuthoredReplayProvider.model)),
-        "quality_evidence": mode in {"live", "recorded-replay"},
+        "measures_model_quality": mode in {"live", "recorded-replay"},
         "quality_caveat": "Synthetic machine annotations are unreviewed; no real-world quality claim.",
         "ranking_protocol": "Fixed candidate pool and annotation-confirmed profile for both arms; not end-to-end.",
         "profile_protocol": "Direct schema extraction prompt; not the production graph conversation prompt.",

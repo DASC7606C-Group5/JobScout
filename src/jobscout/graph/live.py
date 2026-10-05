@@ -30,7 +30,7 @@ from jobscout.services.conversation_service import (
     missing_fields,
     profile_documents,
 )
-from jobscout.services.evidence_service import EvidenceService, eligible_jobs
+from jobscout.services.job_assessment_service import JobAssessmentService, eligible_jobs
 from jobscout.services.job_processing_service import process_jobs, select_balanced_candidates
 from jobscout.services.job_retrieval.models import SearchResult
 from jobscout.services.job_search_service import JobSearchService
@@ -207,25 +207,25 @@ def build_live_graph(
     provider: LLMProvider,
     search_service: SearchService | None = None,
     *,
-    evidence_factory: Callable[[LLMProvider], AssessmentService] | None = None,
+    assessment_factory: Callable[[LLMProvider], AssessmentService] | None = None,
 ) -> CompiledStateGraph[AgentState, None, AgentState, AgentState]:
     conversation = ConversationService(provider)
     search = search_service if search_service is not None else JobSearchService()
-    factory = evidence_factory or EvidenceService
-    evidence: dict[str, AssessmentService] = {}
-    evidence_search_ids: dict[str, str] = {}
+    factory = assessment_factory or JobAssessmentService
+    assessment_services: dict[str, AssessmentService] = {}
+    assessment_search_ids: dict[str, str] = {}
 
     async def cleanup_session(session_id: str) -> None:
-        """Dispose session evidence after its operation has been cancelled/awaited."""
-        service = evidence.pop(session_id, None)
-        evidence_search_ids.pop(session_id, None)
+        """Dispose session assessment services after its operation has been cancelled/awaited."""
+        service = assessment_services.pop(session_id, None)
+        assessment_search_ids.pop(session_id, None)
         if service is not None:
             await service.cleanup_session(session_id)
 
-    async def session_evidence(
+    async def session_assessment(
         session_id: str, revision: int, snapshot: dict[str, object] | None = None
     ) -> AssessmentService:
-        if session_id not in evidence:
+        if session_id not in assessment_services:
             service = factory(provider)
             if snapshot:
                 try:
@@ -235,12 +235,12 @@ def build_live_graph(
                         "workflow_cache_rejected", extra={"error_code": "invalid_checkpoint_cache"}
                     )
                     service = factory(provider)
-            evidence[session_id] = service
-        service = evidence[session_id]
+            assessment_services[session_id] = service
+        service = assessment_services[session_id]
         search_id = f"{session_id}:{revision}"
-        if evidence_search_ids.get(session_id) != search_id:
+        if assessment_search_ids.get(session_id) != search_id:
             await service.begin_search(search_id)
-            evidence_search_ids[session_id] = search_id
+            assessment_search_ids[session_id] = search_id
         return service
 
     def entry(state: AgentState) -> dict[str, Any]:
@@ -570,7 +570,7 @@ def build_live_graph(
                 *(change.value for change in updates),
                 *request.profile_updates.values(),
             ]
-            evidence_text = "\n".join(
+            submitted_text = "\n".join(
                 filter(
                     None,
                     [
@@ -589,13 +589,13 @@ def build_live_graph(
                     ],
                 )
             )
-            if evidence_text:
+            if submitted_text:
                 documents.append(
                     SourceDocument(
                         document_id=f"profile:{state['session_id']}:answer:{request.request_id}",
                         source="user",
                         source_url="",
-                        text=evidence_text,
+                        text=submitted_text,
                         fetched_at=datetime.now(UTC),
                     )
                 )
@@ -656,7 +656,7 @@ def build_live_graph(
                     }
                 )
                 async with asyncio.timeout_at(result["operation_deadline"]):
-                    await session_evidence(
+                    await session_assessment(
                         state["session_id"], accepted_revision, state.get("jd_cache")
                     )
             return result
@@ -854,7 +854,7 @@ def build_live_graph(
         assert profile is not None
         try:
             async with asyncio.timeout_at(state["operation_deadline"]):
-                service = await session_evidence(
+                service = await session_assessment(
                     state["session_id"], state["revision"], state.get("jd_cache")
                 )
                 assessment = await service.assess(
@@ -899,7 +899,7 @@ def build_live_graph(
                 "assessment": assessment,
                 "current_stage": "coverage",
                 "warnings": [
-                    "Model evidence analysis did not finish. Keeping the deterministic analysis results."
+                    "Model job analysis did not finish. Keeping the deterministic analysis results."
                 ],
             }
 

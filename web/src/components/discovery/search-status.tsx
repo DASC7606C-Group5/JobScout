@@ -13,7 +13,7 @@ const stages: Record<string, string> = {
   normalize: 'Organizing job listings',
   understand: 'Reviewing job requirements',
   assess_coverage: 'Checking search coverage',
-  recommend: 'Assessing match evidence',
+  recommend: 'Assessing job matches',
   present: 'Preparing your recommendations',
 }
 export function SearchLoading({ stage }: { stage: string }) {

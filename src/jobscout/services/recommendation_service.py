@@ -108,10 +108,10 @@ def _unique_skills(skills: Sequence[str]) -> list[str]:
     return result
 
 
-def _skill_in_evidence(skill: str, evidence: Sequence[str]) -> bool:
+def _skill_in_texts(skill: str, texts: Sequence[str]) -> bool:
     key = _skill_key(skill)
     aliases = next((group for group in _SKILL_ALIASES if key == group[0]), (key,))
-    return any(_mentions(text, alias) for text in evidence for alias in aliases)
+    return any(_mentions(text, alias) for text in texts for alias in aliases)
 
 
 def _atomic_skill(text: str) -> bool:
@@ -145,7 +145,7 @@ def _capabilities(text: str, supplied: Sequence[str] = ()) -> list[str]:
         return [text.strip()]
     candidates = [*supplied, *_SKILL_LEXICON, *(aliases[0] for aliases in _SKILL_ALIASES)]
     return _unique_skills(
-        [term for term in candidates if _atomic_skill(term) and _skill_in_evidence(term, [text])]
+        [term for term in candidates if _atomic_skill(term) and _skill_in_texts(term, [text])]
     )
 
 
@@ -291,8 +291,8 @@ def _evaluate(profile: UserProfile, job: JobPosting) -> _Candidate:
     )
     user_skills = {_skill_key(skill) for skill in profile.skills if skill.strip()}
     missing = [skill for skill in requirements if _skill_key(skill) not in user_skills]
-    evidence = [*profile.internships, *profile.projects]
-    relevant = [skill for skill in requirements if _skill_in_evidence(skill, evidence)]
+    experience_texts = [*profile.internships, *profile.projects]
+    relevant = [skill for skill in requirements if _skill_in_texts(skill, experience_texts)]
     score = Fraction(0)
     if requirements:
         score += 70 * Fraction(len(requirements) - len(missing), len(requirements))

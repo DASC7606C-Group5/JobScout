@@ -16,9 +16,9 @@ from jobscout.config import Settings
 from jobscout.schemas.job import FreshnessStatus, JobPosting, SourceDocument
 from jobscout.schemas.profile import ProfilePreferences, UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
-from jobscout.services.evidence_service import (
-    EvidenceService,
+from jobscout.services.job_assessment_service import (
     JobAnalysis,
+    JobAssessmentService,
     JobMatch,
     _documents,
     _fallback_match,
@@ -112,7 +112,7 @@ class ReplayProvider:
                                     "requirement_id": "python",
                                     "text": "Python",
                                     "category": "skill",
-                                    "evidence": [
+                                    "source_quotes": [
                                         {
                                             "document_id": candidate["documents"][0]["document_id"],
                                             "excerpt": "Python required.",
@@ -133,8 +133,8 @@ class ReplayProvider:
                             "matches": [
                                 {
                                     "requirement_id": item["requirement_id"],
-                                    "level": "strong" if has_python else "not_evidenced",
-                                    "profile_evidence": (
+                                    "level": "strong" if has_python else "not_documented",
+                                    "profile_source_quotes": (
                                         [{"document_id": "resume", "excerpt": "Python"}]
                                         if has_python
                                         else []
@@ -164,7 +164,7 @@ def assess(
     documents: dict[str, str] | None = None,
 ) -> RecommendationResult:
     async def scenario() -> RecommendationResult:
-        service = EvidenceService(provider)
+        service = JobAssessmentService(provider)
         await service.begin_search("s:confirmed:1")
         return await service.assess(
             user or profile(), jobs, PROFILE_DOCUMENTS if documents is None else documents, "s"
@@ -181,9 +181,9 @@ def test_preserves_metadata_quotes_and_global_top_five_without_mutation() -> Non
     assert [item.job for item in result.jobs] == jobs[:5]
     reason = result.jobs[0].matching_reasons[0]
     assert reason.level == "strong"
-    assert reason.job_evidence[0].excerpt == "Python required."
-    assert reason.job_evidence[0].source_url == jobs[0].source_url
-    assert reason.profile_evidence[0].document_id == "resume"
+    assert reason.job_source_quotes[0].excerpt == "Python required."
+    assert reason.job_source_quotes[0].source_url == jobs[0].source_url
+    assert reason.profile_source_quotes[0].document_id == "resume"
     assert RecommendationResult.model_validate_json(result.model_dump_json()) == result
     result.jobs[0].job.source_documents[0].text = "changed"
     assert [item.model_dump_json() for item in jobs] == before
@@ -208,9 +208,9 @@ def test_rejects_unsupported_claims_per_job_not_entire_batch(kind: str) -> None:
         if kind == "jd" and task == "jd_analysis":
             row["requirements"][0]["text"] = "Expert Rust"
         if kind == "source_id" and task == "jd_analysis":
-            row["requirements"][0]["evidence"][0]["document_id"] = "invented"
+            row["requirements"][0]["source_quotes"][0]["document_id"] = "invented"
         if kind == "profile" and task == "matching":
-            row["matches"][0]["profile_evidence"][0]["excerpt"] = "Rust expert"
+            row["matches"][0]["profile_source_quotes"][0]["excerpt"] = "Rust expert"
         if kind == "requirement" and task == "matching":
             row["matches"][0]["requirement_id"] = "invented"
         if kind == "missing" and task == "matching":
@@ -218,11 +218,11 @@ def test_rejects_unsupported_claims_per_job_not_entire_batch(kind: str) -> None:
         if kind == "duplicate" and task == "matching":
             row["matches"].append(dict(row["matches"][0]))
         if kind == "unrelated" and task == "matching":
-            row["matches"][0]["profile_evidence"] = [
+            row["matches"][0]["profile_source_quotes"] = [
                 {"document_id": "resume", "excerpt": "Bachelor of Computer Science"}
             ]
         if kind == "nonexperience" and task == "matching":
-            row["matches"][0]["experience_evidence"] = [
+            row["matches"][0]["experience_source_quotes"] = [
                 {"document_id": "resume", "excerpt": "Python"}
             ]
 
@@ -238,7 +238,7 @@ def test_rejects_unsupported_claims_per_job_not_entire_batch(kind: str) -> None:
         reference.excerpt in PROFILE_DOCUMENTS[reference.document_id]
         for item in result.jobs
         for reason in item.matching_reasons
-        for reference in reason.profile_evidence
+        for reference in reason.profile_source_quotes
     )
 
 
@@ -264,7 +264,7 @@ def test_document_instructions_stay_untrusted_and_cannot_change_server_fields() 
     assert all(
         reference.source_url != "https://attacker.invalid"
         for reason in result.jobs[0].matching_reasons
-        for reference in reason.job_evidence
+        for reference in reason.job_source_quotes
     )
 
 
@@ -296,7 +296,7 @@ def test_invented_job_id_cannot_enter_result(task: str) -> None:
 def test_user_quote_cannot_reference_a_job_document_id() -> None:
     def corrupt(task: str, response: dict[str, Any]) -> None:
         if task == "matching":
-            response["jobs"][0]["matches"][0]["profile_evidence"] = [
+            response["jobs"][0]["matches"][0]["profile_source_quotes"] = [
                 {"document_id": "doc-a", "excerpt": "Python"}
             ]
 
@@ -305,11 +305,11 @@ def test_user_quote_cannot_reference_a_job_document_id() -> None:
     assert all(
         reference.document_id == "resume"
         for reason in result.jobs[0].matching_reasons
-        for reference in reason.profile_evidence
+        for reference in reason.profile_source_quotes
     )
 
 
-def test_chinese_confirmed_location_keeps_english_source_job_and_generates_evidence() -> None:
+def test_chinese_confirmed_location_keeps_english_source_job_and_generates_source_quotes() -> None:
     user = profile()
     user.preferences.location = "香港"
     candidate = job("a")
@@ -321,7 +321,7 @@ def test_chinese_confirmed_location_keeps_english_source_job_and_generates_evide
     assert user.preferences.location == "香港"
 
 
-def test_missing_conditions_and_evidence_are_not_hard_mismatches() -> None:
+def test_missing_conditions_and_source_quotes_are_not_hard_mismatches() -> None:
     candidate = job("a")
     candidate.title = "Data analyst"
     candidate.location = "unknown"
@@ -341,14 +341,14 @@ def test_missing_conditions_and_evidence_are_not_hard_mismatches() -> None:
 def test_empty_user_materials_are_not_inferred_from_structured_profile() -> None:
     result = assess(ReplayProvider(), [job("a")], documents={})
     reason = result.jobs[0].matching_reasons[0]
-    assert reason.level == "not_evidenced"
-    assert reason.profile_evidence == []
+    assert reason.level == "not_documented"
+    assert reason.profile_source_quotes == []
 
 
 def test_profile_change_reuses_only_jd_analysis_and_recomputes_match() -> None:
     async def scenario() -> None:
         provider = ReplayProvider()
-        service = EvidenceService(provider)
+        service = JobAssessmentService(provider)
         await service.begin_search("s:confirmed:1")
         user = profile()
         jobs = [job("a")]
@@ -356,7 +356,7 @@ def test_profile_change_reuses_only_jd_analysis_and_recomputes_match() -> None:
         user.skills = []
         second = await service.assess(user, jobs, PROFILE_DOCUMENTS, "s")
         assert first.jobs[0].matching_reasons[0].level == "strong"
-        assert second.jobs[0].matching_reasons[0].level == "not_evidenced"
+        assert second.jobs[0].matching_reasons[0].level == "not_documented"
         assert Counter(call["task"] for call in provider.calls) == {"jd_analysis": 1, "matching": 2}
         assert service.analyzed_count == 1
         jobs[0].source_documents[0].text += " New content."
@@ -373,7 +373,7 @@ def test_profile_change_reuses_only_jd_analysis_and_recomputes_match() -> None:
 def test_batches_concurrency_balanced_selection_and_cumulative_limit() -> None:
     async def scenario() -> None:
         provider = ReplayProvider()
-        service = EvidenceService(provider)
+        service = JobAssessmentService(provider)
         await service.begin_search("s:confirmed:1")
         jobs = [
             job(f"{direction}-{source}-{i:02}", source=source, direction=direction)
@@ -404,7 +404,7 @@ def test_batches_concurrency_balanced_selection_and_cumulative_limit() -> None:
 def test_limit_accumulates_across_retrieval_rounds() -> None:
     async def scenario() -> None:
         provider = ReplayProvider()
-        service = EvidenceService(provider)
+        service = JobAssessmentService(provider)
         await service.begin_search("s:confirmed:1")
         jobs = [job(f"{i:02}") for i in range(30)]
         await service.assess(profile(), jobs[:12], PROFILE_DOCUMENTS, "s")
@@ -421,7 +421,7 @@ def test_limit_accumulates_across_retrieval_rounds() -> None:
 def test_new_confirmation_resets_budget_without_discarding_session_jd_cache() -> None:
     async def scenario() -> None:
         provider = ReplayProvider()
-        service = EvidenceService(provider)
+        service = JobAssessmentService(provider)
         jobs = [job(f"{i:02}") for i in range(21)]
         await service.begin_search("s:confirmed:1")
         await service.assess(profile(), jobs[:20], PROFILE_DOCUMENTS, "s")
@@ -437,7 +437,7 @@ def test_new_confirmation_resets_budget_without_discarding_session_jd_cache() ->
         user.skills = []
         result = await service.assess(user, [jobs[0], jobs[20]], PROFILE_DOCUMENTS, "s")
         assert service.analyzed_count == 2 and len(service.cache) == 21
-        assert all(item.matching_reasons[0].level == "not_evidenced" for item in result.jobs)
+        assert all(item.matching_reasons[0].level == "not_documented" for item in result.jobs)
         extractions = [call for call in provider.calls[before:] if call["task"] == "jd_analysis"]
         assert [item["job_id"] for call in extractions for item in call["jobs"]] == ["20"]
         assert any(call["task"] == "matching" for call in provider.calls[before:])
@@ -447,13 +447,13 @@ def test_new_confirmation_resets_budget_without_discarding_session_jd_cache() ->
 
 def test_checkpoint_cache_roundtrip_reuses_jd_but_not_matches_or_search_budget() -> None:
     async def scenario() -> None:
-        first = EvidenceService(ReplayProvider())
+        first = JobAssessmentService(ReplayProvider())
         await first.begin_search("s:1")
         await first.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s")
         snapshot = json.loads(json.dumps(first.export_cache()))
         assert set(snapshot) == {"version", "session_id", "entries"}
         provider = ReplayProvider()
-        restored = EvidenceService(provider)
+        restored = JobAssessmentService(provider)
         restored.import_cache(snapshot, "s")
         snapshot["entries"].clear()
         await restored.begin_search("s:2")
@@ -462,7 +462,7 @@ def test_checkpoint_cache_roundtrip_reuses_jd_but_not_matches_or_search_budget()
         user.skills = []
         result = await restored.assess(user, [job("a")], PROFILE_DOCUMENTS, "s")
         assert [call["task"] for call in provider.calls] == ["matching"]
-        assert result.jobs[0].matching_reasons[0].level == "not_evidenced"
+        assert result.jobs[0].matching_reasons[0].level == "not_documented"
         exported = json.loads(json.dumps(restored.export_cache()))
         exported["entries"].clear()
         assert len(first.cache) == len(restored.cache) == 1
@@ -473,7 +473,7 @@ def test_checkpoint_cache_roundtrip_reuses_jd_but_not_matches_or_search_budget()
 @pytest.mark.parametrize("corruption", ["session", "version", "key", "schema"])
 def test_cache_import_rejects_bad_checkpoint_atomically(corruption: str) -> None:
     async def scenario() -> None:
-        service = EvidenceService(ReplayProvider())
+        service = JobAssessmentService(ReplayProvider())
         await service.begin_search("s:confirmed:1")
         await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s")
         snapshot = json.loads(json.dumps(service.export_cache()))
@@ -483,9 +483,14 @@ def test_cache_import_rejects_bad_checkpoint_atomically(corruption: str) -> None
             snapshot["entries"] = {"not-a-content-hash": next(iter(snapshot["entries"].values()))}
         else:
             snapshot["entries"] = {"a" * 64: {"invented": "field"}}
-        restored = EvidenceService(ReplayProvider())
-        with pytest.raises(RecommendationError):
+        restored = JobAssessmentService(ReplayProvider())
+        with pytest.raises(RecommendationError) as caught:
             restored.import_cache(snapshot, "s")
+        assert caught.value.error.code == (
+            "recommendation_invalid_session"
+            if corruption == "session"
+            else "recommendation_invalid_cache"
+        )
         assert restored.cache == {}
         assert len(service.cache) == 1
 
@@ -494,26 +499,26 @@ def test_cache_import_rejects_bad_checkpoint_atomically(corruption: str) -> None
 
 def test_restored_cache_revalidates_quotes_against_current_source() -> None:
     async def scenario() -> None:
-        service = EvidenceService(ReplayProvider())
+        service = JobAssessmentService(ReplayProvider())
         await service.begin_search("s:confirmed:1")
         await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s")
         snapshot = json.loads(json.dumps(service.export_cache()))
         entry = next(iter(snapshot["entries"].values()))
-        entry["requirements"][0]["evidence"][0]["excerpt"] = "invented"
+        entry["requirements"][0]["source_quotes"][0]["excerpt"] = "invented"
         provider = ReplayProvider()
-        restored = EvidenceService(provider)
+        restored = JobAssessmentService(provider)
         restored.import_cache(snapshot, "s")
         await restored.begin_search("s:confirmed:1")
         result = await restored.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s")
         assert [call["task"] for call in provider.calls] == ["jd_analysis", "matching"]
-        assert result.jobs[0].matching_reasons[0].job_evidence[0].excerpt == "Python required."
+        assert result.jobs[0].matching_reasons[0].job_source_quotes[0].excerpt == "Python required."
 
     asyncio.run(scenario())
 
 
 def test_cleanup_clears_state_is_idempotent_and_prevents_service_reuse() -> None:
     async def scenario() -> None:
-        service = EvidenceService(ReplayProvider())
+        service = JobAssessmentService(ReplayProvider())
         await service.begin_search("confirmation-1")
         await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s")
         with pytest.raises(RecommendationError, match="does not match"):
@@ -530,7 +535,7 @@ def test_cleanup_clears_state_is_idempotent_and_prevents_service_reuse() -> None
     asyncio.run(scenario())
 
 
-def test_cleanup_during_model_call_cannot_publish_or_keep_late_evidence() -> None:
+def test_cleanup_during_model_call_cannot_publish_or_keep_late_analyses() -> None:
     async def scenario() -> None:
         started = asyncio.Event()
         release = asyncio.Event()
@@ -547,7 +552,7 @@ def test_cleanup_during_model_call_cannot_publish_or_keep_late_evidence() -> Non
                 await release.wait()
                 return await super().structured(schema, messages, deadline=deadline)
 
-        service = EvidenceService(PausedProvider())
+        service = JobAssessmentService(PausedProvider())
         await service.begin_search("s:confirmed:1")
         pending = asyncio.create_task(service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s"))
         await started.wait()
@@ -564,7 +569,7 @@ def test_cleanup_during_model_call_cannot_publish_or_keep_late_evidence() -> Non
 
 def test_blank_search_id_does_not_reset_budget() -> None:
     async def scenario() -> None:
-        service = EvidenceService(ReplayProvider())
+        service = JobAssessmentService(ReplayProvider())
         await service.begin_search("s:confirmed:1")
         await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s")
         with pytest.raises(RecommendationError, match="search_id"):
@@ -574,7 +579,7 @@ def test_blank_search_id_does_not_reset_budget() -> None:
     asyncio.run(scenario())
 
 
-def test_missing_jd_has_no_fictional_source_evidence_or_model_call() -> None:
+def test_missing_jd_has_no_fictional_source_quotes_or_model_call() -> None:
     candidate = job("a")
     candidate.source_documents = []
     candidate.description = ""
@@ -589,9 +594,9 @@ def test_description_fallback_and_excerpt_warning() -> None:
     candidate.source_documents = []
     candidate.description_is_excerpt = True
     result = assess(ReplayProvider(), [candidate])
-    evidence = result.jobs[0].matching_reasons[0].job_evidence[0]
-    assert evidence.document_id == "job:a:description"
-    assert evidence.excerpt in candidate.description
+    source_quote = result.jobs[0].matching_reasons[0].job_source_quotes[0]
+    assert source_quote.document_id == "job:a:description"
+    assert source_quote.excerpt in candidate.description
 
 
 def test_provider_failure_is_explicit_deterministic_fallback_without_caching() -> None:
@@ -618,7 +623,7 @@ def test_deadline_and_cancellation_do_not_hang_or_silently_succeed() -> None:
             return await super().structured(schema, messages, deadline=deadline)
 
     async def scenario() -> None:
-        service = EvidenceService(SleepingProvider())
+        service = JobAssessmentService(SleepingProvider())
         await service.begin_search("s:confirmed:1")
         deadline = asyncio.get_running_loop().time() + 0.01
         result = await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s", deadline)
@@ -635,7 +640,7 @@ def test_deadline_and_cancellation_do_not_hang_or_silently_succeed() -> None:
 def test_semantic_invalid_row_falls_back_without_a_second_repair_budget() -> None:
     def corrupt(task: str, response: dict[str, Any]) -> None:
         if task == "matching":
-            response["jobs"][0]["matches"][0]["profile_evidence"][0]["excerpt"] = "invented"
+            response["jobs"][0]["matches"][0]["profile_source_quotes"][0]["excerpt"] = "invented"
 
     provider = ReplayProvider(corrupt)
     result = assess(provider, [job("a"), job("b")])
@@ -648,7 +653,7 @@ def test_semantic_invalid_row_falls_back_without_a_second_repair_budget() -> Non
 
 @pytest.mark.parametrize("invalid_stage", ["jd_analysis", "matching"])
 @pytest.mark.parametrize("malformed", ["not JSON", '{"jobs": "invalid schema"}'])
-def test_provider_repair_followed_by_bad_evidence_does_not_trigger_more_calls(
+def test_provider_repair_followed_by_bad_source_quotes_does_not_trigger_more_calls(
     invalid_stage: str, malformed: str
 ) -> None:
     valid_analysis = {
@@ -660,7 +665,7 @@ def test_provider_repair_followed_by_bad_evidence_does_not_trigger_more_calls(
                         "requirement_id": "python",
                         "text": "Python",
                         "category": "skill",
-                        "evidence": [{"document_id": "doc-a", "excerpt": "Python required."}],
+                        "source_quotes": [{"document_id": "doc-a", "excerpt": "Python required."}],
                     }
                 ],
             }
@@ -677,7 +682,9 @@ def test_provider_repair_followed_by_bad_evidence_does_not_trigger_more_calls(
                         {
                             "requirement_id": "python",
                             "level": "strong",
-                            "profile_evidence": [{"document_id": "resume", "excerpt": "invented"}],
+                            "profile_source_quotes": [
+                                {"document_id": "resume", "excerpt": "invented"}
+                            ],
                         }
                     ],
                 }
@@ -685,7 +692,7 @@ def test_provider_repair_followed_by_bad_evidence_does_not_trigger_more_calls(
         }
     )
     if invalid_stage == "jd_analysis":
-        invalid["jobs"][0]["requirements"][0]["evidence"][0]["excerpt"] = "invented"
+        invalid["jobs"][0]["requirements"][0]["source_quotes"][0]["excerpt"] = "invented"
     responses = [malformed, json.dumps(invalid)]
     if invalid_stage == "matching":
         responses.insert(0, json.dumps(valid_analysis))
@@ -718,7 +725,7 @@ def test_provider_repair_followed_by_bad_evidence_does_not_trigger_more_calls(
         )
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             provider = DeepSeekProvider(settings, client=client)
-            service = EvidenceService(provider)
+            service = JobAssessmentService(provider)
             await service.begin_search("s:confirmed:1")
             result = await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s")
             assert provider.usage.repairs == 1
@@ -733,7 +740,7 @@ def test_deadline_is_forwarded_unchanged_to_both_stages() -> None:
     async def scenario() -> None:
         provider = ReplayProvider()
         deadline = asyncio.get_running_loop().time() + 10
-        service = EvidenceService(provider)
+        service = JobAssessmentService(provider)
         await service.begin_search("s:confirmed:1")
         await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s", deadline)
         assert provider.deadlines == [deadline, deadline]
@@ -760,7 +767,7 @@ def test_failed_match_does_not_discard_valid_jd_cache() -> None:
 
     async def scenario() -> None:
         provider = ReplayProvider(corrupt)
-        service = EvidenceService(provider)
+        service = JobAssessmentService(provider)
         await service.begin_search("s:confirmed:1")
         result = await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s")
         assert len(service.cache) == 1 and service.analyzed_count == 1
@@ -784,12 +791,12 @@ def test_incomplete_profile_rejected_before_model_calls() -> None:
 
 def test_service_cannot_be_shared_between_sessions() -> None:
     async def scenario() -> None:
-        service = EvidenceService(ReplayProvider())
+        service = JobAssessmentService(ReplayProvider())
         await service.begin_search("s:confirmed:1")
         await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "first")
         with pytest.raises(RecommendationError, match="across sessions"):
             await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "other")
-        other = EvidenceService(ReplayProvider())
+        other = JobAssessmentService(ReplayProvider())
         assert other.cache == {} and other.analyzed_count == 0
 
     asyncio.run(scenario())
@@ -801,7 +808,7 @@ def test_service_cannot_be_shared_between_sessions() -> None:
         ("strong", Fraction(70)),
         ("partial", Fraction(35)),
         ("related_experience", Fraction(35, 2)),
-        ("not_evidenced", Fraction(0)),
+        ("not_documented", Fraction(0)),
     ],
 )
 def test_exact_requirement_score_weights(level: str, expected: Fraction) -> None:
@@ -813,7 +820,7 @@ def test_exact_requirement_score_weights(level: str, expected: Fraction) -> None
                 {
                     "requirement_id": "r",
                     "text": "Python",
-                    "evidence": [{"document_id": "doc-a", "excerpt": "Python required."}],
+                    "source_quotes": [{"document_id": "doc-a", "excerpt": "Python required."}],
                 }
             ],
         }
@@ -825,8 +832,8 @@ def test_exact_requirement_score_weights(level: str, expected: Fraction) -> None
                 {
                     "requirement_id": "r",
                     "level": level,
-                    "profile_evidence": []
-                    if level == "not_evidenced"
+                    "profile_source_quotes": []
+                    if level == "not_documented"
                     else [{"document_id": "resume", "excerpt": "Python"}],
                 }
             ],
@@ -838,7 +845,7 @@ def test_exact_requirement_score_weights(level: str, expected: Fraction) -> None
     assert ranked.score == expected
 
 
-def test_scoring_adds_twenty_experience_and_ten_education_only_when_evidenced() -> None:
+def test_scoring_adds_twenty_experience_and_ten_education_only_when_cited() -> None:
     candidate = job("a")
     analysis = JobAnalysis.model_validate(
         {
@@ -847,7 +854,7 @@ def test_scoring_adds_twenty_experience_and_ten_education_only_when_evidenced() 
                 {
                     "requirement_id": "r",
                     "text": "Python",
-                    "evidence": [{"document_id": "doc-a", "excerpt": "Python"}],
+                    "source_quotes": [{"document_id": "doc-a", "excerpt": "Python"}],
                 }
             ],
         }
@@ -859,8 +866,8 @@ def test_scoring_adds_twenty_experience_and_ten_education_only_when_evidenced() 
                 {
                     "requirement_id": "r",
                     "level": "strong",
-                    "profile_evidence": [{"document_id": "resume", "excerpt": "Python"}],
-                    "experience_evidence": [
+                    "profile_source_quotes": [{"document_id": "resume", "excerpt": "Python"}],
+                    "experience_source_quotes": [
                         {"document_id": "resume", "excerpt": "Built a Python dashboard"}
                     ],
                 }
@@ -873,9 +880,9 @@ def test_scoring_adds_twenty_experience_and_ten_education_only_when_evidenced() 
     assert ranked.score == 90
     analysis.requirements[0].text = "Bachelor"
     analysis.requirements[0].category = "education"
-    analysis.requirements[0].evidence[0].excerpt = "Bachelor"
-    match.matches[0].profile_evidence[0].excerpt = "Bachelor of Computer Science"
-    match.matches[0].experience_evidence = []
+    analysis.requirements[0].source_quotes[0].excerpt = "Bachelor"
+    match.matches[0].profile_source_quotes[0].excerpt = "Bachelor of Computer Science"
+    match.matches[0].experience_source_quotes = []
     ranked = _render(
         profile(), candidate, analysis, match, _documents(candidate), PROFILE_DOCUMENTS, []
     )
@@ -887,12 +894,12 @@ def test_unverified_education_cannot_earn_credit() -> None:
         if task == "jd_analysis":
             requirement = response["jobs"][0]["requirements"][0]
             requirement.update(text="Bachelor", category="education")
-            requirement["evidence"][0]["excerpt"] = "Bachelor degree required."
+            requirement["source_quotes"][0]["excerpt"] = "Bachelor degree required."
 
     result = assess(ReplayProvider(corrupt), [job("a")])
     assert result.jobs[0].analysis_status == "unavailable"
     assert (
-        result.jobs[0].matching_reasons[0].profile_evidence[0].excerpt
+        result.jobs[0].matching_reasons[0].profile_source_quotes[0].excerpt
         == "Bachelor of Computer Science"
     )
 
@@ -968,15 +975,15 @@ def test_capabilities_match_aliases_and_project_work_without_sentence_matching(
                     "requirement_id": "capability",
                     "text": "Relevant capability" if terms else source_text,
                     "capability_terms": terms,
-                    "evidence": [{"document_id": "doc-a", "excerpt": source_text}],
+                    "source_quotes": [{"document_id": "doc-a", "excerpt": source_text}],
                 }
             ]
         else:
             for entry in row["matches"]:
                 entry.update(
                     level="strong",
-                    profile_evidence=[{"document_id": "resume", "excerpt": project}],
-                    experience_evidence=[{"document_id": "resume", "excerpt": project}],
+                    profile_source_quotes=[{"document_id": "resume", "excerpt": project}],
+                    experience_source_quotes=[{"document_id": "resume", "excerpt": project}],
                 )
             row["preparation_suggestions"] = [
                 {"requirement_id": row["matches"][0]["requirement_id"], "action": "portfolio"}
@@ -987,8 +994,8 @@ def test_capabilities_match_aliases_and_project_work_without_sentence_matching(
     item = result.jobs[0]
     assert item.analysis_status == ("complete" if terms else "partial")
     assert all(reason.level == "strong" for reason in item.matching_reasons)
-    assert item.matching_reasons[0].job_evidence[0].excerpt == source_text
-    assert item.matching_reasons[0].profile_evidence[0].excerpt == project
+    assert item.matching_reasons[0].job_source_quotes[0].excerpt == source_text
+    assert item.matching_reasons[0].profile_source_quotes[0].excerpt == project
     assert [call["task"] for call in provider.calls] == ["jd_analysis", "matching"]
     assert provider.calls[1]["jobs"][0]["requirements"][0]["capability_terms"]
 
@@ -1010,7 +1017,7 @@ def test_invalid_requirement_keeps_valid_sibling_and_uses_no_extra_model_call(st
                     "requirement_id": "sql",
                     "text": "SQL",
                     "capability_terms": ["SQL"],
-                    "evidence": [
+                    "source_quotes": [
                         {
                             "document_id": "doc-a",
                             "excerpt": "invented source" if stage == task else "SQL required.",
@@ -1022,11 +1029,11 @@ def test_invalid_requirement_keeps_valid_sibling_and_uses_no_extra_model_call(st
             for entry in row["matches"]:
                 if entry["requirement_id"] == "python":
                     entry["level"] = "partial"
-                    entry["experience_evidence"] = [
+                    entry["experience_source_quotes"] = [
                         {"document_id": "resume", "excerpt": "Built a Python dashboard"}
                     ]
                 else:
-                    entry["profile_evidence"] = [
+                    entry["profile_source_quotes"] = [
                         {
                             "document_id": "resume",
                             "excerpt": "invented user text" if stage == task else "SQL",
@@ -1039,9 +1046,9 @@ def test_invalid_requirement_keeps_valid_sibling_and_uses_no_extra_model_call(st
     by_capability = {reason.requirement: reason for reason in item.matching_reasons}
     assert item.analysis_status == "partial"
     assert by_capability["Python"].level == "partial"
-    assert by_capability["Python"].profile_evidence[-1].excerpt == "Built a Python dashboard"
+    assert by_capability["Python"].profile_source_quotes[-1].excerpt == "Built a Python dashboard"
     assert by_capability["SQL"].level == "strong"
-    assert by_capability["SQL"].profile_evidence[0].excerpt == "SQL"
+    assert by_capability["SQL"].profile_source_quotes[0].excerpt == "SQL"
     assert {notice.code for notice in item.notices} == {"analysis_partial"}
     assert [call["task"] for call in provider.calls] == ["jd_analysis", "matching"]
 
@@ -1070,12 +1077,15 @@ def test_compound_capabilities_are_matched_independently() -> None:
             row["requirements"][0].update(
                 text="Frontend tools",
                 capability_terms=["React", "TypeScript"],
-                evidence=[{"document_id": "doc-a", "excerpt": "React and TypeScript required."}],
+                source_quotes=[
+                    {"document_id": "doc-a", "excerpt": "React and TypeScript required."}
+                ],
             )
         else:
             for entry in row["matches"]:
                 entry.update(
-                    level="strong", profile_evidence=[{"document_id": "resume", "excerpt": "React"}]
+                    level="strong",
+                    profile_source_quotes=[{"document_id": "resume", "excerpt": "React"}],
                 )
             row["preparation_suggestions"] = []
 
@@ -1084,7 +1094,7 @@ def test_compound_capabilities_are_matched_independently() -> None:
     assert item.analysis_status == "partial"
     assert {reason.requirement: reason.level for reason in item.matching_reasons} == {
         "React": "strong",
-        "TypeScript": "not_evidenced",
+        "TypeScript": "not_documented",
     }
 
 
@@ -1102,25 +1112,25 @@ def test_project_duration_cannot_establish_employment_years() -> None:
             row["requirements"][0].update(
                 text=requirement,
                 category="experience",
-                evidence=[{"document_id": "doc-a", "excerpt": requirement}],
+                source_quotes=[{"document_id": "doc-a", "excerpt": requirement}],
             )
         else:
             quote = {"document_id": "resume", "excerpt": requirement}
             row["matches"][0].update(
-                level="strong", profile_evidence=[quote], experience_evidence=[quote]
+                level="strong", profile_source_quotes=[quote], experience_source_quotes=[quote]
             )
 
     result = assess(ReplayProvider(respond), [candidate], user, {"resume": requirement})
     item = result.jobs[0]
     assert item.analysis_status == "unavailable"
-    assert item.matching_reasons[0].level == "not_evidenced"
-    assert item.matching_reasons[0].profile_evidence == []
+    assert item.matching_reasons[0].level == "not_documented"
+    assert item.matching_reasons[0].profile_source_quotes == []
 
 
 def test_assessment_requires_a_confirmed_search_before_spending_budget() -> None:
     async def scenario() -> None:
         provider = ReplayProvider()
-        service = EvidenceService(provider)
+        service = JobAssessmentService(provider)
         with pytest.raises(RecommendationError) as caught:
             await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s")
         assert caught.value.error.code == "recommendation_search_not_started"
@@ -1139,7 +1149,7 @@ def test_notices_only_describe_selected_jobs_after_ranking() -> None:
         if task == "matching":
             for row in response["jobs"]:
                 if row["job_id"] == "z-discarded":
-                    row["matches"][0]["profile_evidence"] = [
+                    row["matches"][0]["profile_source_quotes"] = [
                         {"document_id": "resume", "excerpt": "invented"}
                     ]
 
@@ -1180,12 +1190,12 @@ def test_unknown_capability_keeps_valid_match_without_generic_preparation(action
             row["requirements"][0].update(
                 text=capability,
                 capability_terms=[capability],
-                evidence=[{"document_id": "doc-a", "excerpt": capability}],
+                source_quotes=[{"document_id": "doc-a", "excerpt": capability}],
             )
         else:
             row["matches"][0].update(
                 level="strong",
-                profile_evidence=[{"document_id": "resume", "excerpt": capability}],
+                profile_source_quotes=[{"document_id": "resume", "excerpt": capability}],
             )
             row["preparation_suggestions"] = [{"requirement_id": "python", "action": action}]
 
@@ -1193,13 +1203,13 @@ def test_unknown_capability_keeps_valid_match_without_generic_preparation(action
     result = assess(provider, [candidate], user, {"resume": capability})
     assert result.jobs[0].analysis_status == "complete"
     assert result.jobs[0].matching_reasons[0].level == "strong"
-    assert result.jobs[0].matching_reasons[0].profile_evidence[0].excerpt == capability
+    assert result.jobs[0].matching_reasons[0].profile_source_quotes[0].excerpt == capability
     assert result.jobs[0].preparation_suggestions == []
     assert [call["task"] for call in provider.calls] == ["jd_analysis", "matching"]
 
 
 @pytest.mark.parametrize(
-    ("years", "level", "status"), [(4, "strong", "complete"), (2, "not_evidenced", "unavailable")]
+    ("years", "level", "status"), [(4, "strong", "complete"), (2, "not_documented", "unavailable")]
 )
 def test_employment_duration_compares_numbers_without_requiring_identical_sentences(
     years: int, level: str, status: str
@@ -1217,12 +1227,12 @@ def test_employment_duration_compares_numbers_without_requiring_identical_senten
             row["requirements"][0].update(
                 text=requirement,
                 category="experience",
-                evidence=[{"document_id": "doc-a", "excerpt": requirement}],
+                source_quotes=[{"document_id": "doc-a", "excerpt": requirement}],
             )
         else:
             quote = {"document_id": "resume", "excerpt": experience}
             row["matches"][0].update(
-                level="strong", profile_evidence=[quote], experience_evidence=[quote]
+                level="strong", profile_source_quotes=[quote], experience_source_quotes=[quote]
             )
 
     result = assess(ReplayProvider(respond), [candidate], user, {"resume": experience})
@@ -1248,7 +1258,7 @@ def test_rule_recovery_does_not_bypass_duration_or_degree_subject_constraints() 
             "requirements": [
                 {
                     **requirement,
-                    "evidence": [{"document_id": "doc-a", "excerpt": requirement["text"]}],
+                    "source_quotes": [{"document_id": "doc-a", "excerpt": requirement["text"]}],
                 }
                 for requirement in requirements
             ],
@@ -1259,13 +1269,13 @@ def test_rule_recovery_does_not_bypass_duration_or_degree_subject_constraints() 
     )
     assert {item.requirement_id: item.level for item in match.matches} == {
         "years": "partial",
-        "education": "not_evidenced",
+        "education": "not_documented",
     }
 
 
 def test_analysis_limit_emits_structured_coverage_notice() -> None:
     async def scenario() -> None:
-        service = EvidenceService(ReplayProvider())
+        service = JobAssessmentService(ReplayProvider())
         await service.begin_search("s:confirmed:1")
         result = await service.assess(
             profile(), [job(str(index)) for index in range(21)], PROFILE_DOCUMENTS, "s"

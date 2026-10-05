@@ -171,7 +171,7 @@ async function introduce(page: Page) {
   await page.getByRole('button', { name: 'Analyze and continue' }).click()
 }
 
-test('three-step flow uses IDs, explicit confirmation, evidence, saved jobs and same-session edits', async ({
+test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jobs and same-session edits', async ({
   page,
 }) => {
   const state = await mockSessions(
@@ -225,7 +225,7 @@ test('three-step flow uses IDs, explicit confirmation, evidence, saved jobs and 
   await page.waitForTimeout(1300)
   expect(state.getCount()).toBe(count)
   await page.getByRole('button', { name: 'View job: React Engineer' }).click()
-  await page.getByText('View supporting evidence', { exact: true }).click()
+  await page.getByText('View source excerpts', { exact: true }).click()
   await expect(page.getByText('“React development experience required.”')).toBeVisible()
   await page.getByRole('button', { name: 'Save job: React Engineer', exact: true }).click()
   await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
@@ -747,7 +747,7 @@ test('expanded notices expose only applicant content and incomplete analysis ret
   const session = resultSession()
   const item = session.recommendation!.jobs[0]!
   item.job.job_id = 'gen-private-id'
-  item.matching_reasons[0]!.job_evidence[0]!.document_id = 'private-document-id'
+  item.matching_reasons[0]!.job_source_quotes[0]!.document_id = 'private-document-id'
   item.analysis_status = 'unavailable'
   item.preparation_suggestions = ['unsupported-preparation-sentinel']
   item.notices = [
@@ -785,7 +785,7 @@ test('expanded notices expose only applicant content and incomplete analysis ret
     message: 'This listing is a summary. Check the full listing before applying.',
     action: 'open_listing',
   })
-  item.matching_reasons[0]!.profile_evidence[0]!.excerpt = 'I worked on Group 6 using Python.'
+  item.matching_reasons[0]!.profile_source_quotes[0]!.excerpt = 'I worked on Group 6 using Python.'
   session.source_outcomes = [
     {
       request_index: 0,
@@ -810,7 +810,7 @@ test('expanded notices expose only applicant content and incomplete analysis ret
   )
   await expect(detail).toContainText(item.job.responsibilities[0]!)
   await expect(
-    detail.getByText(`“${item.matching_reasons[0]!.profile_evidence[0]!.excerpt}”`, {
+    detail.getByText(`“${item.matching_reasons[0]!.profile_source_quotes[0]!.excerpt}”`, {
       exact: true,
     }),
   ).toBeVisible()

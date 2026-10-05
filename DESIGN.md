@@ -42,7 +42,7 @@ Reuse existing daisyUI controls, card radii and component utilities. Do not copy
 
 ## Components
 
-Reuse `Results`, `JobCard`, `JobDetail`, `ResultWarnings` and `MatchingEvidence` across discovery and saved jobs. Keep familiar daisyUI buttons, native select controls, disclosures and a native modal dialog. Use the existing `Icon` component. Global focus and reduced-motion rules live in the application stylesheet.
+Reuse `Results`, `JobCard`, `JobDetail`, `ResultWarnings` and `MatchingSourceQuotes` across discovery and saved jobs. Keep familiar daisyUI buttons, native select controls, disclosures and a native modal dialog. Use the existing `Icon` component. Global focus and reduced-motion rules live in the application stylesheet.
 
 ## Do's and Don'ts
 

@@ -266,7 +266,7 @@ class ConversationService:
             QuestionGeneration,
             _messages(
                 "Ask at most three concise clarification questions in English. Always write questions, reasons, and informational messages in English. Only use allowed_fields. If required_fields exist, ask only those fields. Otherwise ask only useful missing context, and return [] when sufficient. Never ask a suppressed field. Directions must be explicitly user-chosen, at most three; offer choices but never choose. Location supports Hong Kong/mainland China or unrestricted. Employment accepts full-time/part-time/internship/contract/freelance or unrestricted. Informational messages are not questions. Options must have unique IDs; use a text control when free editing is needed. "
-                "Address the applicant directly. Ask for the decision or useful experience, without mentioning field IDs, schemas, model reasoning, team handoffs, or evidence validation. Give a short practical reason only when it helps the applicant answer; avoid repeated disclaimers.",
+                "Address the applicant directly. Ask for the decision or useful experience, without mentioning field IDs, schemas, model reasoning, team handoffs, or quotation checks. Give a short practical reason only when it helps the applicant answer; avoid repeated disclaimers.",
                 {
                     "profile": profile.model_dump(),
                     "allowed_fields": allowed,

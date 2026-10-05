@@ -4,7 +4,7 @@ import { uniqueNotices } from '../lib/applicant-notices'
 import type { ApplicantNotice, JobPosting, RecommendationItem } from '../lib/contracts'
 import { dateLabel, safeSourceUrl } from '../lib/job-display'
 import { Icon } from './icon'
-import { MatchingEvidence } from './matching-evidence'
+import { MatchingSourceQuotes } from './matching-source-quotes'
 import { ResultWarnings } from './results/result-warnings'
 
 export function JobDetail({
@@ -80,7 +80,7 @@ export function JobDetail({
         <Responsibilities job={job} />
         <Preparation item={item} />
         <ResultWarnings notices={jobNotices} listingUrl={links[0]} onEdit={onEdit} />
-        <MatchingEvidence reasons={item.matching_reasons} />
+        <MatchingSourceQuotes reasons={item.matching_reasons} />
         <ListingMetadata job={job} links={links} />
       </div>
     </article>
@@ -90,7 +90,7 @@ export function JobDetail({
 function JobMatch({ item }: { item: RecommendationItem }) {
   if (item.analysis_status === 'unavailable') return null
   const reasons = item.matching_reasons
-    .filter((reason) => reason.level !== 'not_evidenced')
+    .filter((reason) => reason.level !== 'not_documented')
     .slice(0, 3)
   if (!reasons.length) return null
   return (

@@ -60,7 +60,7 @@ export interface SearchSummary {
   coverage_notice: string
 }
 
-export interface EvidenceReference {
+export interface SourceQuoteReference {
   document_id: string
   excerpt: string
   source_url: string | null
@@ -68,10 +68,10 @@ export interface EvidenceReference {
 
 export interface MatchingReason {
   requirement: string
-  level: 'strong' | 'partial' | 'related_experience' | 'not_evidenced'
+  level: 'strong' | 'partial' | 'related_experience' | 'not_documented'
   explanation: string
-  job_evidence: EvidenceReference[]
-  profile_evidence: EvidenceReference[]
+  job_source_quotes: SourceQuoteReference[]
+  profile_source_quotes: SourceQuoteReference[]
 }
 
 export interface SourceOutcome {

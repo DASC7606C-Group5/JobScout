@@ -583,10 +583,10 @@ def passes_filters(job: RawJob, request: SearchRequest) -> bool:
     return bool(types & aliases.get(kind, set()))
 
 
-def keyword_evidence(job: RawJob, request: SearchRequest) -> str:
+def keyword_match_status(job: RawJob, request: SearchRequest) -> str:
     """Conservative lexical guard, not profile matching or semantic ranking.
 
-    Reject only when a source description is available and has no query evidence.
+    Reject only when a source description is available and has no query keyword match.
     Missing details/excerpts remain explicitly unverified to avoid false exclusions.
     """
     text = normalized((job.title or "") + " " + (job.description or ""))
@@ -771,12 +771,12 @@ class LocalAdapter:
                         # Do not pad the candidate list with font-obfuscated, nameless cards.
                         unreadable += 1
                         continue
-                    evidence = keyword_evidence(job, request)
-                    if evidence == "no_match":
+                    match_status = keyword_match_status(job, request)
+                    if match_status == "no_match":
                         unrelated += 1
                         continue
-                    unverified += evidence == "unverified"
-                    job.raw_payload["keyword_evidence"] = evidence
+                    unverified += match_status == "unverified"
+                    job.raw_payload["keyword_match_status"] = match_status
                     job.raw_payload["search_keywords"] = list(plan.keywords)
                     job.description_is_excerpt = bool(
                         not job.description
@@ -842,10 +842,10 @@ class LocalAdapter:
         if unrelated:
             result.notices.append(make_notice("coverage_limited", source=self.name))
             result.warnings.append(
-                f"{label}: excluded {unrelated} candidates without lexical keyword evidence in available title/description; this conservative check may miss synonyms."
+                f"{label}: excluded {unrelated} candidates without lexical keyword matches in available title/description; this conservative check may miss synonyms."
             )
         if unverified:
             result.warnings.append(
-                f"{label}: {unverified} candidates have unverified keyword evidence because description is missing/an excerpt; downstream review required."
+                f"{label}: {unverified} candidates have unverified keyword matches because description is missing/an excerpt; downstream review required."
             )
         return result

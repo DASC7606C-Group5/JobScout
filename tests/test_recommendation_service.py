@@ -13,7 +13,7 @@ from jobscout.services.recommendation_service import (
     RecommendationError,
     _capabilities,
     _evaluate,
-    _skill_in_evidence,
+    _skill_in_texts,
     recommend_jobs,
 )
 
@@ -301,7 +301,7 @@ def test_skill_names_do_not_match_substrings_or_other_languages() -> None:
     assert candidate.score == Fraction(70, 3)
 
 
-def test_chinese_evidence_location_and_education() -> None:
+def test_chinese_experience_location_and_education() -> None:
     profile = make_profile()
     profile.preferences.location = "上海"
     profile.education = ["计算机科学本科"]
@@ -382,6 +382,6 @@ def test_compound_skill_fields_do_not_require_a_verbatim_resume_phrase(text: str
 
 
 def test_skill_aliases_work_in_both_language_directions_and_keep_open_ended_names() -> None:
-    assert _skill_in_evidence("API 对接", ["API integration"])
-    assert _skill_in_evidence("API integration", ["API 对接"])
+    assert _skill_in_texts("API 对接", ["API integration"])
+    assert _skill_in_texts("API integration", ["API 对接"])
     assert _capabilities("User Experience Design") == ["User Experience Design"]

@@ -138,20 +138,20 @@ class ReplayProvider:
                     ):
                         continue
                     for requirement in sample["annotations"]["requirements"]:
-                        evidence = [
+                        source_quotes = [
                             {"document_id": document["document_id"], "excerpt": ref["excerpt"]}
                             for ref in requirement["references"]
                             for document in job["documents"]
                             if document["source_url"] == ref["source_url"]
                             and ref["excerpt"] in document["text"]
                         ]
-                        if evidence:
+                        if source_quotes:
                             requirements.append(
                                 {
                                     "requirement_id": requirement["requirement_id"],
                                     "text": requirement["text"],
                                     "category": "skill",
-                                    "evidence": evidence,
+                                    "source_quotes": source_quotes,
                                 }
                             )
                 output["jobs"].append({"job_id": job["job_id"], "requirements": requirements})
@@ -177,9 +177,9 @@ class ReplayProvider:
                     matches.append(
                         {
                             "requirement_id": requirement["requirement_id"],
-                            "level": "strong" if strong else "not_evidenced",
-                            "profile_evidence": [ref] if strong else [],
-                            "experience_evidence": [],
+                            "level": "strong" if strong else "not_documented",
+                            "profile_source_quotes": [ref] if strong else [],
+                            "experience_source_quotes": [],
                         }
                     )
                     suggestions.append(

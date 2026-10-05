@@ -53,6 +53,24 @@ function conversation(value: unknown) {
 function error(value: unknown) {
   return record(value) && string(value.code) && string(value.message) && recovery(value.action)
 }
+function sourceQuote(value: unknown) {
+  return (
+    record(value) &&
+    string(value.document_id) &&
+    string(value.excerpt) &&
+    nullableString(value.source_url)
+  )
+}
+function matchingReason(value: unknown) {
+  return (
+    record(value) &&
+    string(value.requirement) &&
+    member(value.level, ['strong', 'partial', 'related_experience', 'not_documented']) &&
+    string(value.explanation) &&
+    list(value.job_source_quotes, sourceQuote) &&
+    list(value.profile_source_quotes, sourceQuote)
+  )
+}
 function recommendationItem(value: unknown) {
   return (
     record(value) &&
@@ -60,7 +78,7 @@ function recommendationItem(value: unknown) {
     string(value.job.job_id) &&
     member(value.analysis_status, ['complete', 'partial', 'unavailable']) &&
     list(value.notices, notice) &&
-    Array.isArray(value.matching_reasons) &&
+    list(value.matching_reasons, matchingReason) &&
     list(value.preparation_suggestions, string)
   )
 }

@@ -17,7 +17,7 @@ from jobscout.services.job_retrieval.local_sources import (
     build_search_plan,
     clean_field,
     detail_url,
-    keyword_evidence,
+    keyword_match_status,
     map_listing,
     parse_listing,
     passes_filters,
@@ -355,7 +355,7 @@ def test_lexical_guard_does_not_claim_profile_matching(
     title: str, description: str | None, expected: str
 ) -> None:
     assert (
-        keyword_evidence(
+        keyword_match_status(
             raw("zhaopin", title=title, description=description),
             req(target_direction="Business Analyst"),
         )
@@ -363,12 +363,12 @@ def test_lexical_guard_does_not_claim_profile_matching(
     )
 
 
-def test_explicit_keyword_evidence_requires_all_keywords() -> None:
+def test_explicit_keyword_match_status_requires_all_keywords() -> None:
     job = raw("zhaopin", title="SQL analyst", description="Business Intelligence SQL")
-    assert keyword_evidence(job, req(keywords=["SQL", "Business Intelligence"])) == "matched"
-    assert keyword_evidence(job, req(keywords=["SQL", "Python"])) == "no_match"
+    assert keyword_match_status(job, req(keywords=["SQL", "Business Intelligence"])) == "matched"
+    assert keyword_match_status(job, req(keywords=["SQL", "Python"])) == "no_match"
     job.source = "jobsdb"
-    assert keyword_evidence(job, req(keywords=["SQL", "Python"])) == "unverified"
+    assert keyword_match_status(job, req(keywords=["SQL", "Python"])) == "unverified"
 
 
 def test_low_relevance_complete_description_is_excluded() -> None:

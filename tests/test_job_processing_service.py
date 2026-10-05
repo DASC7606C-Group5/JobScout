@@ -4,7 +4,7 @@ All inputs are fixed, self-made Mock records (plus the shared
 ``data/mock_jobs.json`` sample); no external service is called.
 
 Coverage follows the ten acceptance scenarios: normal conversion, cross-source
-fields, absent salary, evidence-based JD extraction, duplicate merging, distinct
+fields, absent salary, source-based JD extraction, duplicate merging, distinct
 seniority, expired/unknown status, diagnostics, and empty input. Group 4 maps
 website-specific field names to common top-level keys before calling Group 5.
 New acceptance tests remain ordinary tests so unsupported behavior is visible.
@@ -547,7 +547,7 @@ def test_freshness_honors_explicit_source_status_case_insensitively() -> None:
     assert job.freshness_status is FreshnessStatus.EXPIRED
 
 
-def test_freshness_unknown_without_evidence() -> None:
+def test_freshness_unknown_without_source_data() -> None:
     record = make_raw(expiry_at=None, freshness_status=None)
 
     job = process_jobs([record], now=NOW).jobs[0]

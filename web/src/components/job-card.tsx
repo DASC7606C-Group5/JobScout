@@ -17,7 +17,7 @@ export function JobCard({
   const { job } = item
   const reason =
     item.analysis_status !== 'unavailable'
-      ? item.matching_reasons.find((entry) => entry.level !== 'not_evidenced')?.explanation
+      ? item.matching_reasons.find((entry) => entry.level !== 'not_documented')?.explanation
       : null
   return (
     <article

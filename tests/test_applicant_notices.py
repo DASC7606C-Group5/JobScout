@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from jobscout.main import create_app
-from jobscout.schemas.conversation import EvidenceReference, MatchingReason
+from jobscout.schemas.conversation import MatchingReason, SourceQuoteReference
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import FreshnessStatus, JobPosting
 from jobscout.schemas.notices import ApplicantNotice
@@ -98,8 +98,8 @@ def test_diagnostic_shaped_original_content_and_exact_quotes_are_preserved() -> 
         requirement="Python",
         level="partial",
         explanation="A supplied project involves Python.",
-        job_evidence=[EvidenceReference(document_id="job-source", excerpt=original)],
-        profile_evidence=[EvidenceReference(document_id="resume", excerpt=original)],
+        job_source_quotes=[SourceQuoteReference(document_id="job-source", excerpt=original)],
+        profile_source_quotes=[SourceQuoteReference(document_id="resume", excerpt=original)],
     )
     item = RecommendationItem(
         job=posting(description=original),
