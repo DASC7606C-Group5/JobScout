@@ -20,6 +20,7 @@ class RecommendationItem(BaseModel):
     matching_reasons: list[MatchingReason] = Field(default_factory=list)
     notices: list[ApplicantNotice] = Field(default_factory=list)
     analysis_status: Literal["complete", "partial", "unavailable"] = "complete"
+    review_status: Literal["queued", "reviewing", "reviewed", "not_reviewed"] = "reviewed"
     verification_status: Literal["confirmed", "pending", "unknown"] = "unknown"
     unknown_conditions: list[str] = Field(default_factory=list)
     recommendation_fit: RecommendationFit = "unknown"

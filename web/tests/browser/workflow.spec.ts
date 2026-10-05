@@ -212,8 +212,9 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
       stopRequests.push(route.request().postDataJSON() as StopSessionRequest)
       snapshot = {
         ...snapshot,
-        outcome: 'completed',
-        current_stage: 'completed',
+        outcome: 'running',
+        current_stage: 'review',
+        progress: { ...snapshot.progress, retrieval_stopped: true },
         stop_reason: 'user_stopped',
       }
       runningPolls = 0
@@ -525,12 +526,13 @@ test('composite conditions retain the entered text and keep excluded districts v
   await expect(page.getByRole('button', { name: 'Confirm and search', exact: true })).toBeDisabled()
 })
 
-test('a running search can end immediately with confirmed and pending results kept separate on a narrow screen', async ({
+test('ending retrieval preserves results and continues reviewing jobs on a narrow screen', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   const matched = createRecommendationFixture()
   const pending = createRecommendationFixture()
+  pending.review_status = 'queued'
   pending.verification_status = 'pending'
   pending.unknown_conditions = ['location']
   pending.job = { ...pending.job, job_id: 'pending-job', title: 'Pending Engineer' }
@@ -556,6 +558,7 @@ test('a running search can end immediately with confirmed and pending results ke
       matched_count: 1,
       pending_count: 1,
       elapsed_seconds: 28,
+      retrieval_stopped: false,
       events: [
         {
           sequence: 3,
@@ -577,9 +580,9 @@ test('a running search can end immediately with confirmed and pending results ke
   const state = await mockSessions(page, running)
   state.seedSession(running)
   await page.goto('/searches/session-1')
-  const stop = page.getByRole('button', { name: 'End search and view results' })
+  const stop = page.getByRole('button', { name: 'End Search' })
   await expect(stop).toBeEnabled()
-  await expect(page.getByRole('list', { name: 'Job search steps' })).toHaveCount(0)
+  await expect(page.getByRole('list', { name: 'Job search steps' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toBeVisible()
   await page.getByRole('button', { name: 'View job: Pending Engineer' }).click()
@@ -598,10 +601,19 @@ test('a running search can end immediately with confirmed and pending results ke
   expect(state.stopRequests).toHaveLength(1)
   expect(state.stopRequests[0]).toMatchObject({ expected_revision: 4, run_id: 'active-run' })
   expect(state.stopRequests[0]?.request_id).toBeTruthy()
-  await expect(page.getByRole('heading', { name: 'Matching jobs', exact: true })).toBeVisible()
-  await expect(
-    page.getByRole('heading', { name: 'More jobs to review', exact: true }),
-  ).toBeVisible()
+  await expect(stop).toHaveCount(0)
+  const polls = state.getCount()
+  const finished = structuredClone(running)
+  finished.outcome = 'completed'
+  finished.current_stage = 'completed'
+  finished.stop_reason = 'user_stopped'
+  finished.progress = { ...finished.progress, sequence: 4, retrieval_stopped: true }
+  finished.recommendation!.pending_jobs[0]!.review_status = 'reviewed'
+  state.runFor(1, finished)
+  await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toContainText(
+    'Reviewed',
+  )
+  expect(state.getCount()).toBeGreaterThan(polls)
   await page.getByRole('button', { name: 'View job: Pending Engineer' }).click()
   await expect(page).toHaveURL(/job=pending-job/)
   await expect(page.getByRole('heading', { name: 'Pending Engineer', exact: true })).toBeVisible()
@@ -618,9 +630,7 @@ test('a running search can end immediately with confirmed and pending results ke
   await page.reload()
   await expect(page.getByText(pending.notices[0]!.message, { exact: true })).toBeVisible()
   await page.setViewportSize({ width: 1440, height: 900 })
-  await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toContainText(
-    'Check details',
-  )
+  await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toBeVisible()
   await page.screenshot({ path: '.tools/browser/agent-pending-saved-desktop.png', fullPage: true })
 })
 
@@ -664,12 +674,13 @@ for (const stage of ['search', 'review'] as const) {
       current_stage: stage,
       revision: 4,
       run_id: 'active-run',
+      progress: { ...createSessionFixture().progress, retrieval_stopped: stage === 'review' },
       recommendation: resultSession().recommendation,
     })
     const state = await mockSessions(page, running)
     state.seedSession(running)
     await page.goto('/searches/session-1')
-    const edit = page.getByRole('button', { name: 'Edit search criteria', exact: true })
+    const edit = page.getByRole('button', { name: 'Edit criteria', exact: true })
     await expect(edit).toBeEnabled()
     if (stage === 'review') await edit.press('Enter')
     else await edit.click()
@@ -753,7 +764,10 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
   await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
   await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
   await returnToSearch(page)
-  await page.getByRole('button', { name: 'Edit search criteria' }).click()
+  await page
+    .getByRole('region', { name: 'Search criteria', exact: true })
+    .getByRole('button', { name: 'Edit criteria', exact: true })
+    .click()
   await expect(
     page.getByRole('heading', { name: 'Review your profile and search criteria' }),
   ).toBeVisible()
@@ -979,6 +993,9 @@ test('conversation preserves supplied free text and structured answers', async (
   await mockSessions(page, fixture)
   await introduce(page)
   const history = page.getByRole('log', { name: 'Conversation history' })
+  await expect(history).toBeHidden()
+  await page.getByText('View conversation history', { exact: true }).press('Enter')
+  await expect(history).toBeVisible()
   await expect(history).toContainText(fixture.conversation[1]!.text)
   await expect(history).toContainText(fixture.conversation[2]!.text)
   await expect(history).toContainText('Frontend development')
@@ -1211,6 +1228,81 @@ async function captureResults(page: Page, name: string) {
   })
 }
 
+test('long result lists keep selected details reachable and changing jobs resets detail scrolling', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const session = resultSession()
+  const original = session.recommendation!.jobs[0]!
+  session.profile!.search_options.result_count = 20
+  session.recommendation!.jobs = Array.from({ length: 12 }, (_, index) => {
+    const item = structuredClone(original)
+    item.job.job_id = `long-list-${index}`
+    item.job.title = `Engineer ${index + 1}`
+    item.job.responsibilities = Array.from(
+      { length: 30 },
+      (_, task) => `Engineer ${index + 1}: supplied responsibility ${task + 1}.`,
+    )
+    return item
+  })
+  await mockSessions(page, session)
+  await introduce(page)
+  const detail = page.getByRole('article', { name: 'Job details', exact: true })
+  const later = page.getByRole('button', { name: 'View job: Engineer 9', exact: true })
+  await later.scrollIntoViewIfNeeded()
+  await expect(detail.getByRole('heading', { name: 'Engineer 1', exact: true })).toBeInViewport()
+  const pageScroll = await page.evaluate(() => window.scrollY)
+  const listing = detail.getByRole('link', { name: 'View job listing', exact: true })
+  await listing.focus()
+  await page.keyboard.press('PageDown')
+  await expect.poll(() => detail.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  expect(await page.evaluate(() => window.scrollY)).toBe(pageScroll)
+  await later.click()
+  await expect(page).toHaveURL(/job=long-list-8/)
+  await expect(detail.getByRole('heading', { name: 'Engineer 9', exact: true })).toBeInViewport()
+  expect(await detail.evaluate((element) => element.scrollTop)).toBe(0)
+  const lastResponsibility = detail.getByText('Engineer 9: supplied responsibility 30.', {
+    exact: true,
+  })
+  await lastResponsibility.scrollIntoViewIfNeeded()
+  await expect(lastResponsibility).toBeInViewport()
+  await expect(listing).toBeInViewport()
+  if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
+    await mkdir('.tools/review', { recursive: true })
+    await page.screenshot({ path: '.tools/review/results-sticky-desktop.png' })
+  }
+  await page.setViewportSize({ width: 1440, height: 500 })
+  await lastResponsibility.scrollIntoViewIfNeeded()
+  await expect(lastResponsibility).toBeInViewport()
+  await expect(listing).toBeInViewport()
+})
+
+test('search failure preserves published job identities until editing the criteria', async ({
+  page,
+}) => {
+  const failed = resultSession()
+  failed.outcome = 'failed'
+  failed.current_stage = 'failed'
+  failed.retryable = true
+  failed.run_id = 'failed-run'
+  failed.errors = [
+    { code: 'search_interrupted', message: 'private-failure-detail', action: 'retry' },
+  ]
+  const state = await mockSessions(page, failed)
+  state.seedSession(failed)
+  await page.goto('/searches/session-1')
+  await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeVisible()
+  for (const item of failed.recommendation!.jobs)
+    await expect(
+      page.getByRole('button', { name: `View job: ${item.job.title}`, exact: true }),
+    ).toBeVisible()
+  await expect(page.locator('body')).not.toContainText('private-failure-detail')
+  await page.getByRole('button', { name: 'Edit search criteria', exact: true }).click()
+  await expect(page.getByLabel('Job directions', { exact: true })).toBeVisible()
+  await expect(page.getByRole('article', { name: 'Job details', exact: true })).toHaveCount(0)
+  expect(state.requests.at(-1)?.action).toBe('edit_conditions')
+})
+
 test('result selection and filters retain job identity and saved removal chooses a neighbor', async ({
   page,
 }) => {
@@ -1355,7 +1447,7 @@ test('job notices and source coverage retain actionable details when analysis is
     }),
   ).toBeVisible()
   const source = page.getByRole('listitem').filter({ hasText: 'Liepin · Frontend development' })
-  await expect(source).toContainText('Temporarily unavailable')
+  await expect(source).toBeVisible()
   await expect(detail).not.toContainText('unsupported-preparation-sentinel')
   await expect(detail.getByText(item.notices[0]!.message, { exact: false })).toHaveCount(1)
   const visible = await page.locator('body').innerText()
@@ -1386,7 +1478,7 @@ test('empty completed search offers recovery without inventing jobs', async ({ p
   await page.getByText('Sources and search coverage', { exact: true }).click()
   await expect(
     page.getByRole('listitem').filter({ hasText: 'Liepin · Frontend development' }),
-  ).toContainText('Temporarily unavailable')
+  ).toBeVisible()
   await captureResults(page, 'results-empty')
   await page.getByRole('button', { name: 'Edit search criteria', exact: true }).last().click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()

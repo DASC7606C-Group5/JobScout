@@ -71,6 +71,7 @@ function progress(value: unknown) {
     typeof value.elapsed_seconds === 'number' &&
     Number.isFinite(value.elapsed_seconds) &&
     value.elapsed_seconds >= 0 &&
+    typeof value.retrieval_stopped === 'boolean' &&
     list(
       value.events,
       (event) =>
@@ -144,6 +145,7 @@ export function isRecommendationItem(value: unknown): value is RecommendationIte
     record(value.job) &&
     string(value.job.job_id) &&
     member(value.analysis_status, ['complete', 'partial', 'unavailable']) &&
+    member(value.review_status, ['queued', 'reviewing', 'reviewed', 'not_reviewed']) &&
     member(value.verification_status, ['confirmed', 'pending', 'unknown']) &&
     member(value.recommendation_fit, ['recommended', 'possible', 'unlikely', 'unknown']) &&
     string(value.recommendation_reason) &&

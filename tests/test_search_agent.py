@@ -476,9 +476,10 @@ def test_transient_query_retry_is_bounded_and_failure_observation_is_available()
     asyncio.run(scenario())
 
 
-def test_stop_cancels_unfinished_batch_and_keeps_published_vacancies() -> None:
+def test_stop_finishes_active_reviews_without_searching_again() -> None:
     class BlockingAssessment(Assessment):
         cancelled = False
+        finished = False
 
         async def assess(
             self,
@@ -494,32 +495,61 @@ def test_stop_cancels_unfinished_batch_and_keeps_published_vacancies() -> None:
             assert on_batch is not None
             await on_batch(completed)
             try:
-                await asyncio.sleep(30)
+                await asyncio.sleep(0)
+                remaining = await super().assess(profile, jobs[1:], documents, session_id)
+                await on_batch(remaining)
             except asyncio.CancelledError:
                 self.cancelled = True
                 raise
-            raise AssertionError("Unfinished work must be cancelled")
+            self.finished = True
+            return completed.model_copy(update={"jobs": [*completed.jobs, *remaining.jobs]})
 
     async def scenario() -> None:
         event = asyncio.Event()
         assessment = BlockingAssessment()
-        saved_ids: list[str] = []
+        search = SnapshotSearch(5)
 
         async def progress(update: dict[str, Any]) -> None:
             if update["progress"]["matched_count"] == 1:
-                saved_ids.extend(item.job.job_id for item in update["recommendation"].jobs)
                 event.set()
 
         result = await run(
-            ReplayProvider(), SnapshotSearch(5), assessment, stop_event=event, on_progress=progress
+            ReplayProvider(), search, assessment, stop_event=event, on_progress=progress
         )
         assert result["stop_reason"] == "user_stopped"
-        assert assessment.cancelled
-        assert [item.job.job_id for item in result["recommendation"].jobs] == saved_ids[:1]
-        assert result["progress"]["matched_count"] == 1
-        assert {item.job.source_url for item in result["recommendation"].pending_jobs} == {
-            f"https://jobsdb.example/jobs/{index}" for index in range(1, 5)
+        assert assessment.finished
+        assert not assessment.cancelled
+        assert len(search.requests) == 1
+        assert result["progress"]["retrieval_stopped"]
+        assert {item.job.source_url for item in result["recommendation"].jobs} == {
+            f"https://jobsdb.example/jobs/{index}" for index in range(5)
         }
+        assert all(item.review_status == "reviewed" for item in result["recommendation"].jobs)
+        assert result["recommendation"].pending_jobs == []
+
+    asyncio.run(scenario())
+
+
+def test_stop_before_assessment_reviews_published_vacancies() -> None:
+    async def scenario() -> None:
+        event = asyncio.Event()
+        search = SnapshotSearch(5)
+
+        async def progress(update: dict[str, Any]) -> None:
+            if update["progress"]["pending_count"] == 5:
+                event.set()
+
+        result = await run(
+            ReplayProvider(), search, Assessment(), stop_event=event, on_progress=progress
+        )
+        assert result["stop_reason"] == "user_stopped"
+        assert len(search.requests) == 1
+        assert set(search.details) == {item.job.job_id for item in result["recommendation"].jobs}
+        assert {item.job.source_url for item in result["recommendation"].jobs} == {
+            f"https://jobsdb.example/jobs/{index}" for index in range(5)
+        }
+        assert all(item.review_status == "reviewed" for item in result["recommendation"].jobs)
+        assert result["recommendation"].pending_jobs == []
 
     asyncio.run(scenario())
 

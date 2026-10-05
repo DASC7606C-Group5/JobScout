@@ -11,7 +11,7 @@ from jobscout.database import tortoise_config
 from jobscout.schemas.conversation import QuestionOption
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.search import ClarificationMessage
-from jobscout.schemas.session import SessionCreateRequest, SessionResumeRequest
+from jobscout.schemas.session import SessionCreateRequest, SessionResumeRequest, SessionStopRequest
 from jobscout.services.notice_service import make_notice
 from jobscout.services.session_service import SessionOperationError, SessionService, _Session
 
@@ -86,6 +86,78 @@ def test_create_is_accepted_and_idempotent() -> None:
         await asyncio.sleep(0)
         assert (await manager.get(first.session_id)).outcome == "completed"
         await close_manager(manager)
+
+    asyncio.run(check())
+
+
+def test_stop_preserves_the_running_task_and_accepts_later_review_progress() -> None:
+    class ReviewingGraph(ControlledGraph):
+        def __init__(self) -> None:
+            super().__init__()
+            self.stopped = asyncio.Event()
+
+        async def ainvoke(self, data: Any, config: dict[str, Any]) -> dict[str, Any]:
+            settings = config["configurable"]
+            session_id = settings["thread_id"]
+            run_id = settings["run_id"]
+            await settings["on_progress"](
+                {"run_id": run_id, "current_stage": "search", "progress": {"sequence": 1}}
+            )
+            self.started.set()
+            await settings["stop_event"].wait()
+            await settings["on_progress"](
+                {
+                    "run_id": run_id,
+                    "current_stage": "review",
+                    "stop_reason": None,
+                    "progress": {"sequence": 2, "analyzed_count": 2},
+                }
+            )
+            self.stopped.set()
+            await self.release.wait()
+            state = {
+                "session_id": session_id,
+                "run_id": run_id,
+                "current_stage": "completed",
+                "stop_reason": "user_stopped",
+                "progress_seq": 3,
+                "progress": {"sequence": 3, "analyzed_count": 3, "retrieval_stopped": True},
+            }
+            self.states[session_id] = state
+            return state
+
+    async def check() -> None:
+        graph = ReviewingGraph()
+        manager = await manager_for(graph, Memory())
+        try:
+            created = await manager.create(create_payload())
+            await graph.started.wait()
+            running = await manager.get(created.session_id)
+            assert running.run_id is not None
+            payload = SessionStopRequest(
+                request_id="stop-1", expected_revision=running.revision, run_id=running.run_id
+            )
+            stopped = await manager.stop(created.session_id, payload)
+            assert stopped.outcome == "running"
+            assert stopped.current_stage == "review"
+            assert stopped.progress.retrieval_stopped
+            assert (await manager.stop(created.session_id, payload)).run_id == running.run_id
+            await asyncio.wait_for(graph.stopped.wait(), timeout=1)
+            reviewing = await manager.get(created.session_id)
+            assert reviewing.outcome == "running"
+            assert reviewing.progress.analyzed_count == 2
+            assert reviewing.progress.retrieval_stopped
+            assert reviewing.stop_reason == "user_stopped"
+            graph.release.set()
+            task = manager.sessions[created.session_id].task
+            assert task is not None
+            await task
+            completed = await manager.get(created.session_id)
+            assert completed.outcome == "completed"
+            assert completed.progress.analyzed_count == 3
+            assert completed.stop_reason == "user_stopped"
+        finally:
+            await close_manager(manager)
 
     asyncio.run(check())
 

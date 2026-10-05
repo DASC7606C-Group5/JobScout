@@ -53,28 +53,32 @@ function SessionContent() {
   const saved = useScout((state) => state.saved)
   const toggleSaved = useScout((state) => state.toggleSaved)
   if (!session) return <ProfileForm />
+  const hasResults = Boolean(
+    session.recommendation?.jobs.length || session.recommendation?.pending_jobs.length,
+  )
+  const results = (
+    <Results
+      key={session.session_id}
+      result={session.recommendation}
+      notices={session.notices}
+      saved={saved}
+      onToggle={toggleSaved}
+      onEdit={edit}
+      reviewActive={session.outcome === 'running' && Boolean(session.run_id)}
+    />
+  )
   switch (session.outcome) {
     case 'running':
       return (
         <>
           <SearchLoading session={session} onStop={stop} stopping={stopping} />
-          {Boolean(
-            session.recommendation?.jobs.length || session.recommendation?.pending_jobs.length,
-          ) && (
-            <Results
-              result={session.recommendation}
-              notices={session.notices}
-              saved={saved}
-              onToggle={toggleSaved}
-              onEdit={edit}
-            />
-          )}
+          {hasResults && results}
         </>
       )
     case 'paused':
       return (
         <>
-          <ConversationHistory session={session} />
+          <ConversationHistory session={session} collapsed />
           {session.current_stage === 'confirm' && session.search_summary ? (
             <SearchSummary
               key={`${session.session_id}-${session.revision}`}
@@ -106,7 +110,9 @@ function SessionContent() {
             onRetry={retry}
             onEdit={edit}
             retryable={session.retryable}
+            compact={hasResults}
           />
+          {hasResults && results}
           <div className="mt-5 space-y-5">
             <SourceOutcomes outcomes={session.source_outcomes} />
             <ConversationHistory session={session} collapsed />
@@ -116,14 +122,7 @@ function SessionContent() {
     case 'completed':
       return (
         <>
-          <Results
-            key={session.session_id}
-            result={session.recommendation}
-            notices={session.notices}
-            saved={saved}
-            onToggle={toggleSaved}
-            onEdit={edit}
-          />
+          {results}
           <div className="mt-6 space-y-5">
             <SourceOutcomes outcomes={session.source_outcomes} />
             <ConversationHistory session={session} collapsed />

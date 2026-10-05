@@ -72,6 +72,7 @@ export function createRecommendationFixture(): RecommendationItem {
     ],
     notices: [],
     analysis_status: 'complete',
+    review_status: 'reviewed',
     recommendation_fit: 'recommended',
     recommendation_reason:
       'The role builds on your React projects; SQL experience is not yet documented.',
@@ -143,6 +144,7 @@ export function createSessionFixture(overrides: Partial<ScoutSession> = {}): Sco
       matched_count: 0,
       pending_count: 0,
       elapsed_seconds: 0,
+      retrieval_stopped: false,
       events: [],
     },
     stop_reason: null,

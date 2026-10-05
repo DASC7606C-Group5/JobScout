@@ -31,4 +31,5 @@ class SearchProgress(BaseModel):
     matched_count: int = Field(default=0, ge=0)
     pending_count: int = Field(default=0, ge=0)
     elapsed_seconds: float = Field(default=0, ge=0)
+    retrieval_stopped: bool = False
     events: list[SearchEvent] = Field(default_factory=list)

@@ -9,6 +9,10 @@ export const router = createRouter({
   scrollRestoration: false,
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
+  defaultViewTransition: {
+    types: ({ fromLocation, toLocation }) =>
+      fromLocation && fromLocation.pathname !== toLocation.pathname ? ['page'] : false,
+  },
 })
 
 declare module '@tanstack/react-router' {

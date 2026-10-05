@@ -11,7 +11,7 @@ function Responses({ responses }: { responses: ConversationResponse[] }) {
           <dt className="mb-1.5 text-xs font-medium text-base-content/60">{response.label}</dt>
           <dd className="text-sm leading-6">
             {response.status === 'skipped' ? (
-              <span className="badge badge-ghost text-xs badge-sm">Skipped (optional)</span>
+              <span className="badge badge-ghost text-xs badge-sm">Skipped</span>
             ) : Array.isArray(response.value) ? (
               response.value.length ? (
                 <div className="flex flex-wrap gap-2">

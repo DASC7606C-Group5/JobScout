@@ -19,6 +19,7 @@ WorkflowStage = Literal[
     "edit_conditions",
     "plan",
     "retrieve",
+    "review",
     "normalize",
     "understand",
     "check_result_count",

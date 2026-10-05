@@ -178,6 +178,8 @@ class SearchAgent:
                 for decision in range(MAX_DECISIONS):
                     self.decision_count = decision + 1
                     self.check_budget()
+                    if self.stop_event.is_set():
+                        raise SearchEnded("user_stopped")
                     current_messages = [
                         *messages,
                         *recent_messages,
@@ -190,14 +192,20 @@ class SearchAgent:
                     if method is None:
                         raise ModelServiceError("model_configuration")
                     turn: ToolTurn = await self.interruptible(
-                        method(current_messages, self.registry.schemas(), deadline=self.deadline)
+                        method(current_messages, self.registry.schemas(), deadline=self.deadline),
+                        stop_retrieval=True,
                     )
                     recent_messages = [turn.assistant_message()]
                     for call in turn.calls:
                         self.check_budget()
+                        if self.stop_event.is_set():
+                            raise SearchEnded("user_stopped")
                         try:
                             arguments = self.registry.validate(call.name, call.arguments)
-                            reply = await self.interruptible(self.execute(call.name, arguments))
+                            reply = await self.interruptible(
+                                self.execute(call.name, arguments),
+                                stop_retrieval=call.name == "search_jobs",
+                            )
                         except ValueError:
                             reply = {
                                 "error": "invalid_tool_arguments",
@@ -232,6 +240,15 @@ class SearchAgent:
                         )
             except SearchEnded as ended:
                 reason = ended.reason
+                if self.stop_event.is_set():
+                    reason = "user_stopped"
+                    self.deadline = max(
+                        self.deadline, asyncio.get_running_loop().time() + MAX_SEARCH_SECONDS
+                    )
+                    try:
+                        await self.finish_reviews()
+                    except SearchEnded:
+                        pass
             except ModelServiceError as error:
                 reason = (
                     "budget_exhausted"
@@ -266,7 +283,7 @@ class SearchAgent:
             "progress_seq": self.progress_seq,
             "progress": self.progress(),
             "stop_reason": reason,
-            "recommendation": self.result(reason),
+            "recommendation": self.result(reason, final=True),
             "source_outcomes": self.outcomes,
             "source_errors": self.source_errors,
             "notices": self.notices,
@@ -279,31 +296,68 @@ class SearchAgent:
         }
 
     def check_budget(self) -> None:
-        if self.stop_event.is_set():
-            raise SearchEnded("user_stopped")
         if asyncio.get_running_loop().time() >= self.deadline:
             raise SearchEnded("budget_exhausted")
 
-    async def interruptible(self, action: Awaitable[Any]) -> Any:
+    async def interruptible(self, action: Awaitable[Any], *, stop_retrieval: bool = False) -> Any:
         """Cancellation always joins children, preventing late writes or orphaned I/O."""
         task = asyncio.ensure_future(action)
-        stopped = asyncio.create_task(self.stop_event.wait())
+        stopped = asyncio.create_task(self.stop_event.wait()) if stop_retrieval else None
+        children = {task}
+        if stopped is not None:
+            children.add(stopped)
         try:
             done, _ = await asyncio.wait(
-                {task, stopped},
+                children,
                 timeout=max(0, self.deadline - asyncio.get_running_loop().time()),
                 return_when=asyncio.FIRST_COMPLETED,
             )
-            if stopped in done and self.stop_event.is_set():
+            if stopped is not None and stopped in done and self.stop_event.is_set():
                 raise SearchEnded("user_stopped")
             if task not in done:
                 raise SearchEnded("budget_exhausted")
             return await task
         finally:
-            for child in (task, stopped):
+            for child in children:
                 if not child.done():
                     child.cancel()
-            await asyncio.gather(task, stopped, return_exceptions=True)
+            await asyncio.gather(*children, return_exceptions=True)
+
+    async def finish_reviews(self) -> None:
+        """Drain the visible review queue after retrieval is ended early."""
+        await self.publish(
+            "retrieval_stopped",
+            "Search ended early; continuing job reviews.",
+            stop_reason="user_stopped",
+        )
+        while True:
+            self.check_budget()
+            visible = self.result()
+            remaining = [
+                item.job.job_id
+                for item in [*visible.jobs, *visible.pending_jobs]
+                if item.review_status in {"queued", "not_reviewed"}
+                and self.attempts.get(item.job.job_id, 0) < 2
+                and (item.job.job_id in self.attempts or len(self.attempts) < self.candidate_limit)
+            ][:10]
+            if not remaining:
+                return
+            try:
+                await self.interruptible(
+                    self.execute("fetch_job_details", CandidateSelection(job_ids=remaining))
+                )
+            except SearchEnded:
+                raise
+            except Exception as error:
+                _LOGGER.warning("job_details_failed_after_retrieval error=%s", type(error).__name__)
+            try:
+                reply = await self.interruptible(self.assess(remaining))
+                if reply.get("error") == "analysis_limit_or_completed":
+                    return
+            except SearchEnded:
+                raise
+            except Exception as error:
+                _LOGGER.warning("job_review_failed_after_retrieval error=%s", type(error).__name__)
 
     async def execute(self, name: str, arguments: Any) -> dict[str, Any]:
         fingerprint = arguments.model_dump()
@@ -398,6 +452,7 @@ class SearchAgent:
                             self.pending[job.job_id] = RecommendationItem(
                                 job=job.model_copy(deep=True),
                                 analysis_status="unavailable",
+                                review_status="queued",
                                 verification_status="pending",
                                 unknown_conditions=["target_direction"],
                             )
@@ -509,6 +564,7 @@ class SearchAgent:
                 self.pending[job.job_id] = RecommendationItem(
                     job=job.model_copy(deep=True),
                     analysis_status="unavailable",
+                    review_status="queued",
                     verification_status="pending",
                     unknown_conditions=["target_direction"],
                 )
@@ -557,6 +613,12 @@ class SearchAgent:
             selected.append(self.jobs[job_id])
         if not selected:
             return {"error": "analysis_limit_or_completed", "observation": self.observation()}
+        for job in selected:
+            for destination in (self.pending, self.matched):
+                if job.job_id in destination:
+                    destination[job.job_id] = destination[job.job_id].model_copy(
+                        update={"review_status": "reviewing"}
+                    )
         await self.publish(
             "assess_candidates", f"Comparing {len(selected)} jobs with your experience."
         )
@@ -581,7 +643,7 @@ class SearchAgent:
                 destination = self.pending if pending else self.matched
                 other = self.matched if pending else self.pending
                 other.pop(job_id, None)
-                destination[job_id] = item
+                destination[job_id] = item.model_copy(update={"review_status": "reviewed"})
                 await self.publish(
                     "analysis_completed", "Finished comparing a job with your experience."
                 )
@@ -599,13 +661,23 @@ class SearchAgent:
                     and issue.retryable
                 },
             }
-        result = await self.assessment.assess(
-            self.profile.model_copy(deep=True),
-            selected,
-            self.profile_documents,
-            self.session_id,
-            **kwargs,
-        )
+        try:
+            result = await self.assessment.assess(
+                self.profile.model_copy(deep=True),
+                selected,
+                self.profile_documents,
+                self.session_id,
+                **kwargs,
+            )
+        except Exception:
+            for job in selected:
+                for destination in (self.pending, self.matched):
+                    if job.job_id in destination and job.job_id not in processed:
+                        destination[job.job_id] = destination[job.job_id].model_copy(
+                            update={"review_status": "not_reviewed"}
+                        )
+            await self.publish("analysis_failed", "Some job reviews could not be completed.")
+            raise
         diagnostics = getattr(self.assessment, "diagnostics", {})
         for job in selected:
             issue = diagnostics.get(job.job_id)
@@ -617,6 +689,12 @@ class SearchAgent:
             else:
                 self.analysis_diagnostics.pop(job.job_id, None)
         await accept_batch(result)
+        for job in selected:
+            for destination in (self.pending, self.matched):
+                if job.job_id in destination and job.job_id not in processed:
+                    destination[job.job_id] = destination[job.job_id].model_copy(
+                        update={"review_status": "not_reviewed"}
+                    )
         return {
             "analysis_diagnostics": {
                 job.job_id: self.analysis_diagnostics[job.job_id].model_dump()
@@ -682,13 +760,21 @@ class SearchAgent:
             ],
         }
 
-    def result(self, reason: str | None = None) -> RecommendationResult:
+    def result(self, reason: str | None = None, *, final: bool = False) -> RecommendationResult:
+        def displayed(items: list[RecommendationItem]) -> list[RecommendationItem]:
+            return [
+                item.model_copy(update={"review_status": "not_reviewed"})
+                if final and item.review_status in {"queued", "reviewing"}
+                else item
+                for item in self.ranked(items)
+            ]
+
         return finalize_recommendation(
             RecommendationResult(
                 session_id=self.session_id,
                 generated_at=datetime.now(UTC),
-                jobs=self.ranked(list(self.matched.values())),
-                pending_jobs=self.ranked(list(self.pending.values()))[
+                jobs=displayed(list(self.matched.values())),
+                pending_jobs=displayed(list(self.pending.values()))[
                     : max(0, self.target - len(self.matched))
                 ],
                 introduction=self.finish_message(reason) if reason else "",
@@ -791,6 +877,7 @@ class SearchAgent:
             "matched_count": min(len(self.matched), self.target),
             "pending_count": min(len(self.pending), max(0, self.target - len(self.matched))),
             "elapsed_seconds": round(max(0, asyncio.get_running_loop().time() - self.started), 3),
+            "retrieval_stopped": self.stop_event.is_set(),
             "events": self.events[-80:],
         }
 
@@ -812,7 +899,7 @@ class SearchAgent:
                     "run_id": self.run_id,
                     "progress_seq": self.progress_seq,
                     "progress": self.progress(),
-                    "recommendation": self.result(stop_reason),
+                    "recommendation": self.result(stop_reason, final=action == "search_finished"),
                     "source_outcomes": list(self.outcomes),
                     "stop_reason": stop_reason,
                 }

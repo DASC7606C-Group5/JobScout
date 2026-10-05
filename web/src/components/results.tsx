@@ -18,6 +18,7 @@ export function Results({
   onEdit,
   savedOnly = false,
   notices = [],
+  reviewActive = false,
 }: {
   result: RecommendationResult | null
   saved: RecommendationItem[]
@@ -25,11 +26,16 @@ export function Results({
   onEdit: () => void
   savedOnly?: boolean
   notices?: ApplicantNotice[]
+  reviewActive?: boolean
 }) {
   const matched = result?.jobs ?? []
   const pending = savedOnly ? [] : (result?.pending_jobs ?? [])
-  const jobs = savedOnly ? saved : [...matched, ...pending]
-  const pendingIds = new Set(pending.map(({ job }) => job.job_id))
+  const jobs = savedOnly
+    ? saved
+    : [...matched, ...pending].sort(
+        (left, right) =>
+          Number(left.review_status !== 'reviewed') - Number(right.review_status !== 'reviewed'),
+      )
   const selection = useResultSelection(jobs, savedOnly, onToggle)
   const jobNotices = uniqueNotices(
     [...(result ? result.notices : []), ...notices].filter((notice) => notice.scope === 'job'),
@@ -44,7 +50,7 @@ export function Results({
         selection={selection}
         onEdit={onEdit}
         notices={jobNotices}
-        pendingIds={pendingIds}
+        reviewActive={reviewActive}
       />
       {!savedOnly && result && (
         <p className="mt-6 flex items-center gap-1.5 text-xs text-base-content/45">
@@ -94,7 +100,7 @@ function ResultItems({
   selection,
   onEdit,
   notices,
-  pendingIds,
+  reviewActive,
 }: {
   hasJobs: boolean
   savedOnly: boolean
@@ -102,7 +108,7 @@ function ResultItems({
   selection: Selection
   onEdit: () => void
   notices: ApplicantNotice[]
-  pendingIds: Set<string>
+  reviewActive: boolean
 }) {
   const {
     selected,
@@ -128,40 +134,28 @@ function ResultItems({
   return (
     <div className="grid items-start gap-6 min-[1100px]:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
       <div className={`space-y-4 ${detailOpen ? 'hidden min-[1100px]:block' : ''}`}>
-        {filtered.map((item, index) => (
-          <div key={item.job.job_id}>
-            {pendingIds.size > 0 &&
-              (index === 0 ||
-                pendingIds.has(filtered[index - 1]!.job.job_id) !==
-                  pendingIds.has(item.job.job_id)) && (
-                <div className="mb-3">
-                  <h2 className="text-sm font-semibold">
-                    {pendingIds.has(item.job.job_id) ? 'More jobs to review' : 'Matching jobs'}
-                  </h2>
-                  {pendingIds.has(item.job.job_id) && (
-                    <p className="mt-1 text-xs text-base-content/60">
-                      These roles have details to check before they count as matches.
-                    </p>
-                  )}
-                </div>
-              )}
-            <JobCard
-              item={item}
-              selected={selected.job.job_id === item.job.job_id}
-              saved={saved.some((entry) => entry.job.job_id === item.job.job_id)}
-              onSelect={() => selectJob(item.job.job_id)}
-              buttonRef={(node) => {
-                if (node) buttons.current.set(item.job.job_id, node)
-                else buttons.current.delete(item.job.job_id)
-              }}
-            />
-          </div>
+        {filtered.map((item) => (
+          <JobCard
+            key={item.job.job_id}
+            item={item}
+            reviewActive={reviewActive}
+            selected={selected.job.job_id === item.job.job_id}
+            saved={saved.some((entry) => entry.job.job_id === item.job.job_id)}
+            onSelect={() => selectJob(item.job.job_id)}
+            buttonRef={(node) => {
+              if (node) buttons.current.set(item.job.job_id, node)
+              else buttons.current.delete(item.job.job_id)
+            }}
+          />
         ))}
       </div>
-      <div className={detailOpen ? 'min-w-0' : 'hidden min-w-0 min-[1100px]:block'}>
+      <div
+        className={`min-w-0 min-[1100px]:sticky min-[1100px]:top-[var(--job-detail-top,1.5rem)] ${detailOpen ? '' : 'hidden min-[1100px]:block'}`}
+      >
         <JobDetail
           key={selected.job.job_id}
           item={selected}
+          reviewActive={reviewActive}
           notices={notices}
           headingRef={detailHeading}
           saved={saved.some((entry) => entry.job.job_id === selected.job.job_id)}

@@ -169,6 +169,7 @@ export interface RecommendationItem {
   matching_reasons: MatchingReason[]
   notices: ApplicantNotice[]
   analysis_status: 'complete' | 'partial' | 'unavailable'
+  review_status: 'queued' | 'reviewing' | 'reviewed' | 'not_reviewed'
   verification_status: 'confirmed' | 'pending' | 'unknown'
   unknown_conditions: string[]
   recommendation_fit: 'recommended' | 'possible' | 'unlikely' | 'unknown'
@@ -255,6 +256,7 @@ export interface SearchProgress {
   matched_count: number
   pending_count: number
   elapsed_seconds: number
+  retrieval_stopped: boolean
   events: SearchEvent[]
 }
 

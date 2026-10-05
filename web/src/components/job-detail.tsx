@@ -4,6 +4,7 @@ import { uniqueNotices } from '../lib/applicant-notices'
 import type { ApplicantNotice, JobPosting, RecommendationItem } from '../lib/contracts'
 import { dateLabel, safeSourceUrl, sourceLabel } from '../lib/job-display'
 import { Icon } from './icon'
+import { JobReviewStatus } from './job-review-status'
 import { MatchingSourceQuotes } from './matching-source-quotes'
 import { ResultWarnings } from './results/result-warnings'
 
@@ -14,6 +15,7 @@ export function JobDetail({
   onBack,
   notices,
   headingRef,
+  reviewActive = false,
 }: {
   item: RecommendationItem
   saved: boolean
@@ -21,6 +23,7 @@ export function JobDetail({
   onBack: () => void
   notices: ApplicantNotice[]
   headingRef: RefObject<HTMLHeadingElement | null>
+  reviewActive?: boolean
 }) {
   const { job } = item
   const links = [...new Set([job.source_url, ...job.source_links])].flatMap((value) => {
@@ -33,13 +36,19 @@ export function JobDetail({
     ),
   )
   return (
-    <article aria-label="Job details" className="card min-w-0 border border-base-300 bg-base-100">
+    <article
+      aria-label="Job details"
+      className="card min-w-0 border border-base-300 bg-base-100 min-[1100px]:max-h-[calc(100dvh-var(--job-detail-top,1.5rem)-1.5rem)] min-[1100px]:scroll-pt-24 min-[1100px]:[scrollbar-gutter:stable] min-[1100px]:overflow-y-auto"
+    >
       <div className="p-5 pb-0 sm:p-6 sm:pb-0">
         <button className="btn mb-5 btn-ghost btn-sm min-[1100px]:hidden" onClick={onBack}>
           <Icon name="arrow" size={15} className="rotate-180" />
           Back to jobs
         </button>
-        <p className="text-sm text-base-content/65">{job.company}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-base-content/65">{job.company}</p>
+          <JobReviewStatus item={item} active={reviewActive} />
+        </div>
         <h2
           ref={headingRef}
           tabIndex={-1}

@@ -2,15 +2,15 @@ import type { SourceOutcome } from '../../lib/contracts'
 import { sourceLabel } from '../../lib/job-display'
 
 const labels: Record<string, string> = {
-  ok: 'Search complete',
-  success: 'Search complete',
-  partial: 'Some listings were unavailable',
-  empty: 'Search complete, no results',
-  blocked: 'Temporarily unavailable',
-  unavailable: 'Temporarily unavailable',
-  failed: 'Search unavailable',
-  error: 'Search unavailable',
-  timeout: 'Search timed out',
+  ok: 'Complete',
+  success: 'Complete',
+  partial: 'Partial',
+  empty: 'Empty',
+  blocked: 'Unavailable',
+  unavailable: 'Unavailable',
+  failed: 'Failed',
+  error: 'Failed',
+  timeout: 'Timeout',
 }
 
 export function SourceOutcomes({ outcomes }: { outcomes: SourceOutcome[] }) {
@@ -35,8 +35,8 @@ export function SourceOutcomes({ outcomes }: { outcomes: SourceOutcome[] }) {
                 <span className="badge h-auto shrink-0 py-1 text-xs badge-sm">
                   {(outcome.status === 'ok' || outcome.status === 'success') &&
                   outcome.returned_count === 0
-                    ? 'Search complete, no results'
-                    : (labels[outcome.status] ?? 'Search status unconfirmed')}
+                    ? 'Empty'
+                    : (labels[outcome.status] ?? 'Unknown')}
                 </span>
               </div>
             </li>

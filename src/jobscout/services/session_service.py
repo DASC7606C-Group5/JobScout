@@ -19,7 +19,7 @@ from tortoise.transactions import in_transaction
 from jobscout.models import AcceptedRequest, SearchSession, WorkspaceDraft
 from jobscout.schemas.conversation import ConversationMessage, SearchSummary
 from jobscout.schemas.errors import WorkflowError
-from jobscout.schemas.execution import SearchEvent, SearchProgress
+from jobscout.schemas.execution import SearchProgress
 from jobscout.schemas.job import JobPosting, SourceDocument
 from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.profile import UserProfile
@@ -446,9 +446,8 @@ class SessionService:
             return self._response(record)
 
     async def stop(self, session_id: str, payload: SessionStopRequest) -> SessionResponse:
-        """Freeze the last published vacancies and analyses before cancelling outstanding work."""
+        """Stop further retrieval while the current run finishes reviewing its vacancies."""
         fingerprint = _fingerprint(payload.model_dump(mode="json"))
-        task: asyncio.Task[None] | None = None
         async with self.lock:
             record = self._get(session_id)
             if record.state.get("run_id") != payload.run_id:
@@ -477,57 +476,12 @@ class SessionService:
 
             previous_state = dict(record.state)
             previous_updated_at = record.updated_at
-            recommendation = record.state.get("recommendation")
-            result = (
-                RecommendationResult.model_validate(recommendation).model_copy(deep=True)
-                if recommendation is not None
-                else RecommendationResult(session_id=session_id, generated_at=datetime.now(UTC))
-            )
-            profile = record.state.get("confirmed_profile") or record.state.get("profile")
-            count = (
-                UserProfile.model_validate(profile).search_options.result_count if profile else 10
-            )
-            jobs = result.jobs[:count]
-            pending = result.pending_jobs[: max(0, count - len(jobs))]
-            result = result.model_copy(
-                update={
-                    "jobs": jobs,
-                    "pending_jobs": pending,
-                    "generated_at": datetime.now(UTC),
-                    "introduction": (
-                        f"Search ended at your request with {len(jobs)} confirmed matches. "
-                        "You can edit your criteria to search again."
-                    ),
-                }
-            )
             progress = SearchProgress.model_validate(record.state.get("progress", {}))
-            sequence = max(progress.sequence, record.state.get("progress_seq", 0)) + 1
-            progress = progress.model_copy(
-                update={
-                    "sequence": sequence,
-                    "matched_count": len(jobs),
-                    "pending_count": len(pending),
-                    "events": [
-                        *progress.events,
-                        SearchEvent(
-                            sequence=sequence,
-                            action="finish_search",
-                            message="Search ended at your request.",
-                        ),
-                    ],
-                }
-            )
             record.state.update(
-                recommendation=result,
-                progress=progress,
-                progress_seq=sequence,
+                progress=progress.model_copy(update={"retrieval_stopped": True}),
                 stop_reason="user_stopped",
-                current_stage="completed",
-                outcome="completed",
-                retryable=False,
+                current_stage="review",
             )
-            record.state.pop("accepted_resume", None)
-            record.outcome = "completed"
             record.updated_at = datetime.now(UTC)
             try:
                 async with in_transaction() as connection:
@@ -545,12 +499,7 @@ class SessionService:
                 record.updated_at = previous_updated_at
                 raise
             record.stop_event.set()
-            task = record.task
-            if task is not None and not task.done():
-                task.cancel()
             response = self._response(record)
-        if task is not None:
-            await asyncio.gather(task, return_exceptions=True)
         return response
 
     @staticmethod
@@ -589,6 +538,8 @@ class SessionService:
             progress = SearchProgress.model_validate(update.get("progress", {})).model_copy(
                 deep=True
             )
+            if record.stop_event.is_set():
+                progress = progress.model_copy(update={"retrieval_stopped": True})
             sequence = update.get("progress_seq", progress.sequence)
             if sequence <= record.state.get("progress_seq", 0):
                 return
@@ -605,6 +556,8 @@ class SessionService:
                 ]
             for key in ("stop_reason", "current_stage"):
                 if key in update:
+                    if key == "stop_reason" and record.stop_event.is_set() and update[key] is None:
+                        continue
                     record.state[key] = update[key]
             try:
                 await self._persist(record)
