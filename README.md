@@ -27,7 +27,7 @@ bun dev
 
 Open the URL printed in the terminal. By default, it is [http://localhost:3000](http://localhost:3000).
 
-See [.env.example](.env.example) for an example of the backend's local configuration. To make live model calls, set the server-side `LLM_API_KEY`. For database configuration, see the [Python development guide](docs/python-development.md). To use synthetic replay mode, set `JOBSCOUT_MODE=replay` in the backend terminal. See the [demo walkthrough](docs/demo-walkthrough.md) for instructions. If live mode fails, the app does not automatically fall back to replay mode.
+See [.env.example](.env.example) for an example of the backend's local configuration. To make live model calls, set the server-side `LLM_API_KEY`.
 
 If the backend is running at a different address, copy [`web/.env.example`](web/.env.example) to `web/.env.local`, update `API_PROXY_TARGET`, and restart Vite.
 
