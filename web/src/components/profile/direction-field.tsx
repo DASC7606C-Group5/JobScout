@@ -26,9 +26,6 @@ export function DirectionField() {
         maxLength={300}
         aria-describedby="directions-hint"
       />
-      <p id="directions-hint" className="mt-1 text-xs text-base-content/60">
-        Enter one direction per line. Keep punctuation within a direction.
-      </p>
       <div className="mt-2.5 flex flex-wrap gap-2">
         {['Frontend development', 'Data analysis', 'Product design', 'Software engineering'].map(
           (direction) => {

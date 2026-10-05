@@ -48,8 +48,8 @@ function SavedPage() {
     <>
       <PageHeading
         eyebrow="SAVED JOBS"
-        title={`${saved.length} saved ${saved.length === 1 ? 'job' : 'jobs'}`}
-        description="Compare the roles saved in your workspace."
+        title={`${saved.length} ${saved.length === 1 ? 'job' : 'jobs'} saved`}
+        description="Review and compare your saved jobs."
       />
       {query.isError && (
         <div className="mb-5 alert alert-warning" role="alert">

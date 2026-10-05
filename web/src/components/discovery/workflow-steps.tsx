@@ -13,7 +13,7 @@ export function WorkflowSteps({ step }: { step: number }) {
             className={`flex items-center justify-center gap-2 border-base-300 text-xs sm:justify-start sm:gap-3 sm:px-4 sm:text-sm ${index !== 2 ? 'border-r' : ''} ${step >= index ? 'font-medium text-base-content' : 'text-base-content/40'}`}
           >
             <span
-              className={`flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] sm:size-7 ${step > index ? 'bg-primary/25 text-primary-content' : step === index ? 'bg-base-content text-base-100' : 'bg-base-200'}`}
+              className={`flex size-8 shrink-0 items-center justify-center rounded-full text-[10px] leading-tight sm:size-7 ${step > index ? 'bg-primary/25 text-primary-content' : step === index ? 'bg-base-content text-base-100' : 'bg-base-200'}`}
             >
               {step > index ? <Icon name="check" size={13} /> : `0${index + 1}`}
             </span>

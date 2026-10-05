@@ -94,11 +94,6 @@ function SummaryFields({
                 onChange={(event) => onChange(key, event.target.value)}
               />
             )}
-            {key === 'target_directions' && (
-              <p id="summary-directions-hint" className="mt-2 text-xs text-base-content/55">
-                Enter one direction per line. Keep punctuation within a direction.
-              </p>
-            )}
             {unrestrictedKey && (
               <label className="mt-2.5 flex w-fit cursor-pointer items-center gap-2 text-xs text-base-content/65">
                 <input

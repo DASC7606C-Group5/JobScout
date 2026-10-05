@@ -7,15 +7,15 @@ export function ResultEmpty({ savedOnly, onEdit }: { savedOnly: boolean; onEdit:
         <Icon name={savedOnly ? 'bookmark' : 'search'} size={28} />
       </span>
       <h2 className="text-xl font-semibold">
-        {savedOnly ? 'Save jobs that catch your eye' : 'No matching jobs found yet'}
+        {savedOnly ? 'No saved jobs yet' : 'No matching jobs found yet'}
       </h2>
       <p className="mt-3 max-w-sm text-sm leading-7 text-base-content/60">
         {savedOnly
-          ? 'Save roles that interest you to compare them during this visit.'
+          ? 'Save jobs that interest you to compare them here.'
           : 'Try another job direction or broaden your location preferences.'}
       </p>
       <button className="btn mt-7 border-0 btn-primary" onClick={onEdit}>
-        {savedOnly ? 'Explore opportunities' : 'Edit search criteria'}
+        {savedOnly ? 'Explore jobs' : 'Edit search criteria'}
         <Icon name="arrow" size={17} />
       </button>
     </section>

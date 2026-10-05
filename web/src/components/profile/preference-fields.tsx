@@ -74,7 +74,7 @@ export function PreferenceFields() {
           aria-describedby="employment-hint"
         />
         <p id="employment-hint" className="mt-2 text-xs text-base-content/55">
-          Include or exclude full-time, internship, part-time, contract, or freelance work.
+          Choose full-time, internship, part-time, contract, or freelance work.
         </p>
         <label className="mt-2.5 flex w-fit cursor-pointer items-center gap-2 text-xs text-base-content/65">
           <input
