@@ -212,6 +212,15 @@ class LocationCatalog:
 
     def _merge(self, entries: list[CatalogEntry], *, translations: bool = False) -> None:
         for entry in entries:
+            if entry.location.region == "hk" and entry.location.level == "district":
+                # Listing sites add the administrative suffix to official English names.
+                # These aliases retain the district's identity and hierarchy.
+                entry.names |= {
+                    f"{name} District"
+                    for name in entry.names
+                    if re.fullmatch(r"[A-Za-z &'’-]+", name)
+                    and not location_key(name).endswith(" district")
+                }
             if entry.location.id in self.entries:
                 previous = self.entries[entry.location.id]
                 entry.names |= previous.names

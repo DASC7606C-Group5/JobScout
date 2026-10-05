@@ -94,7 +94,9 @@ def test_strong_education_match_requires_sufficient_normalized_qualification(
         profile(),
         "BSc in Computer Science",
     )
-    assert result.jobs == result.pending_jobs == []
+    assert [row.job.job_id for row in result.jobs] == ["semantic"]
+    assert result.jobs[0].matching_reasons == []
+    assert result.jobs[0].analysis_status == "unavailable"
 
 
 @pytest.mark.parametrize(
@@ -126,7 +128,9 @@ def test_work_duration_compares_normalized_months_with_employment_evidence(
         applicant,
         excerpt,
     )
-    assert [row.job.job_id for row in result.jobs] == (["semantic"] if accepted else [])
+    assert [row.job.job_id for row in result.jobs] == ["semantic"]
+    assert bool(result.jobs[0].matching_reasons) is accepted
+    assert result.jobs[0].analysis_status == ("complete" if accepted else "unavailable")
 
 
 def test_project_duration_cannot_be_counted_as_employment() -> None:
@@ -144,7 +148,9 @@ def test_project_duration_cannot_be_counted_as_employment() -> None:
         applicant,
         excerpt,
     )
-    assert result.jobs == result.pending_jobs == []
+    assert [row.job.job_id for row in result.jobs] == ["semantic"]
+    assert result.jobs[0].matching_reasons == []
+    assert result.jobs[0].analysis_status == "unavailable"
 
 
 def test_semantically_linked_short_evidence_and_unlisted_skill_advice_are_preserved() -> None:
@@ -177,7 +183,9 @@ def test_invalid_or_wrong_category_fact_ids_cannot_prove_education(fact_ids: lis
         applicant,
         "BSc",
     )
-    assert result.jobs == result.pending_jobs == []
+    assert [row.job.job_id for row in result.jobs] == ["semantic"]
+    assert result.jobs[0].matching_reasons == []
+    assert result.jobs[0].analysis_status == "unavailable"
 
 
 def test_current_fact_catalog_preserves_full_text_and_field_identity() -> None:

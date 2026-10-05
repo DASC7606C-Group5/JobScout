@@ -714,7 +714,7 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
         json.dumps(state["jd_cache"])
         first_ids = set(state["analyzed_job_ids"])
         assert services[0].analyzed_count == 20
-        assert provider.jd_calls == provider.match_calls == 4
+        assert provider.jd_calls == provider.match_calls == 20
         for skills in (["SQL"], ["Java"]):
             if rebuild_graph:
                 cleanup = getattr(graph, "cleanup_session", None)
@@ -738,9 +738,9 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
             assert state["profile"].skills == skills
         assert len(services) == (3 if rebuild_graph else 1)
         assert len(services[-1].cache) == 40
-        assert provider.jd_calls == 8
-        assert provider.match_calls == 12
-        assert provider.match_profiles == [["Python"]] * 4 + [["SQL"]] * 4 + [["Java"]] * 4
+        assert provider.jd_calls == 40
+        assert provider.match_calls == 60
+        assert provider.match_profiles == [["Python"]] * 20 + [["SQL"]] * 20 + [["Java"]] * 20
         cleanup = getattr(graph, "cleanup_session", None)
         assert callable(cleanup)
         await cleanup("s1")
@@ -855,14 +855,18 @@ def test_stage_logs_only_contain_safe_metadata(caplog: pytest.LogCaptureFixture)
     asyncio.run(scenario())
 
 
-def test_unfinished_analysis_is_excluded_from_graph_results() -> None:
+def test_unavailable_analysis_preserves_source_vacancies_in_graph_results() -> None:
     async def scenario() -> None:
         search = FakeSearch([SearchResult(raw_jobs=[raw(i) for i in range(5)])])
         graph = build_live_graph(InMemorySaver(), FakeProvider(), search)
         await graph.ainvoke(initial(), configuration())
         state = await graph.ainvoke(resume(action="confirm_search"), configuration())
         assert state["current_stage"] == "completed"
-        assert state["recommendation"].jobs == []
+        assert {item.job.source_url for item in state["recommendation"].jobs} == {
+            raw(index).source_url for index in range(5)
+        }
+        assert all(item.analysis_status == "unavailable" for item in state["recommendation"].jobs)
+        assert all(item.matching_reasons == [] for item in state["recommendation"].jobs)
         assert state["recommendation"].introduction
 
     asyncio.run(scenario())

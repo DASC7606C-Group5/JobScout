@@ -49,12 +49,12 @@ class ToolRegistry:
         ),
         "assess_candidates": (
             CandidateSelection,
-            "Analyze existing jobs and independently review the result against original evidence. "
-            "Only complete, reviewed analyses become available results.",
+            "Analyze existing jobs using original evidence. Keep useful vacancies and supported partial conclusions; "
+            "personal skills and experience guide ranking, not hiring eligibility.",
         ),
         "review_results": (
             CandidateSelection,
-            "Review existing analyses and obtain concrete defects and repair suggestions. "
+            "Inspect analysis diagnostics and obtain concrete repair suggestions without another model review. "
             "A failed analysis may be corrected once using assess_candidates.",
         ),
         "finish_search": (

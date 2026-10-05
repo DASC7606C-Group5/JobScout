@@ -430,7 +430,7 @@ class SessionService:
             return self._response(record)
 
     async def stop(self, session_id: str, payload: SessionStopRequest) -> SessionResponse:
-        """Freeze the last completed analyses before cancelling any outstanding work."""
+        """Freeze the last published vacancies and analyses before cancelling outstanding work."""
         fingerprint = _fingerprint(payload.model_dump(mode="json"))
         task: asyncio.Task[None] | None = None
         async with self.lock:
@@ -471,10 +471,8 @@ class SessionService:
             count = (
                 UserProfile.model_validate(profile).search_options.result_count if profile else 10
             )
-            jobs = [item for item in result.jobs if item.analysis_status == "complete"][:count]
-            pending = [item for item in result.pending_jobs if item.analysis_status == "complete"][
-                :count
-            ]
+            jobs = result.jobs[:count]
+            pending = result.pending_jobs[: max(0, count - len(jobs))]
             result = result.model_copy(
                 update={
                     "jobs": jobs,

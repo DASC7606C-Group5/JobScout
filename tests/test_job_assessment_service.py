@@ -254,7 +254,9 @@ def test_requested_count_and_source_facts_are_preserved(count: int) -> None:
         "experience",
     ],
 )
-def test_invalid_evidence_excludes_only_affected_completed_candidate(damage: str) -> None:
+def test_invalid_evidence_removes_only_the_analysis_and_preserves_source_vacancy(
+    damage: str,
+) -> None:
     def corrupt(task: str, response: dict[str, Any]) -> None:
         row = next((row for row in response["jobs"] if row["job_id"] == "a"), None)
         if row is None:
@@ -283,7 +285,12 @@ def test_invalid_evidence_excludes_only_affected_completed_candidate(damage: str
                 ]
 
     result = assess(ReplayProvider(corrupt), [job("a"), job("b")])
-    assert [row.job.job_id for row in result.jobs] == ["b"]
+    rows = {row.job.job_id: row for row in result.jobs}
+    assert set(rows) == {"a", "b"}
+    assert rows["a"].analysis_status == "unavailable"
+    assert rows["a"].matching_reasons == []
+    assert rows["a"].job.source_url == "https://example.org/a"
+    assert rows["b"].matching_reasons[0].level == "strong"
     assert result.pending_jobs == []
 
 
@@ -293,8 +300,111 @@ def test_model_cannot_write_server_owned_fields(field: str) -> None:
         if task == "jd_analysis":
             response["jobs"][0][field] = "forged"
 
-    result = assess(ReplayProvider(corrupt), [job("a")])
-    assert result.jobs == result.pending_jobs == []
+    candidate = job("a")
+    before = candidate.model_dump()
+    result = assess(ReplayProvider(corrupt), [candidate])
+    assert [row.job.job_id for row in result.jobs] == ["a"]
+    assert result.jobs[0].analysis_status == "unavailable"
+    for field in ("source_url", "posted_at", "freshness_status"):
+        assert getattr(result.jobs[0].job, field) == getattr(candidate, field)
+    assert candidate.model_dump() == before
+
+
+def test_bad_quote_preserves_other_conclusions_and_transferable_experience() -> None:
+    candidate = job("transfer")
+    candidate.description = candidate.source_documents[0].text = "Vue required. SQL required."
+    applicant = profile()
+    applicant.skills = ["React"]
+    applicant.projects = ["Built a React dashboard"]
+    original = candidate.model_dump()
+
+    def respond(task: str, response: dict[str, Any]) -> None:
+        row = response["jobs"][0]
+        if task == "jd_analysis":
+            row["requirements"] = [
+                {
+                    "requirement_id": term,
+                    "text": term,
+                    "skill_terms": [term],
+                    "source_quotes": [
+                        {"document_id": "doc-transfer", "excerpt": f"{term} required."}
+                    ],
+                }
+                for term in ("Vue", "SQL")
+            ]
+        elif task == "matching":
+            row["matches"] = [
+                {
+                    "requirement_id": "Vue",
+                    "level": "related_experience",
+                    "profile_fact_ids": ["projects:0"],
+                    "experience_fact_ids": ["projects:0"],
+                    "profile_source_quotes": [
+                        {"document_id": "resume", "excerpt": "Built a React dashboard"}
+                    ],
+                    "experience_source_quotes": [
+                        {"document_id": "resume", "excerpt": "Built a React dashboard"}
+                    ],
+                },
+                {
+                    "requirement_id": "SQL",
+                    "level": "strong",
+                    "profile_fact_ids": ["skills:0"],
+                    "profile_source_quotes": [
+                        {"document_id": "resume", "excerpt": "Invented SQL experience"}
+                    ],
+                },
+            ]
+            row["preparation_suggestions"] = []
+
+    result = assess(
+        ReplayProvider(respond), [candidate], applicant, {"resume": "Built a React dashboard"}
+    )
+    item = result.jobs[0]
+    assert item.job.job_id == "transfer"
+    assert item.analysis_status == "partial"
+    assert [(reason.requirement, reason.level) for reason in item.matching_reasons] == [
+        ("Vue", "related_experience")
+    ]
+    assert item.matching_reasons[0].profile_source_quotes[0].excerpt == "Built a React dashboard"
+    assert candidate.model_dump() == original
+
+
+def test_stray_skill_fields_do_not_hide_an_education_requirement() -> None:
+    def respond(task: str, response: dict[str, Any]) -> None:
+        row = response["jobs"][0]
+        if task == "jd_analysis":
+            row["requirements"] = [
+                {
+                    "requirement_id": "degree",
+                    "text": "Bachelor degree",
+                    "category": "education",
+                    "skill_terms": ["Bachelor"],
+                    "qualification_options": ["Bachelor"],
+                    "source_quotes": [
+                        {"document_id": "doc-a", "excerpt": "Bachelor degree required."}
+                    ],
+                }
+            ]
+        elif task == "matching":
+            row["matches"] = [
+                {
+                    "requirement_id": "degree",
+                    "level": "strong",
+                    "profile_fact_ids": ["education:0"],
+                    "qualifications": ["Bachelor of Computer Science"],
+                    "qualification_relation": "meets",
+                    "profile_source_quotes": [
+                        {"document_id": "resume", "excerpt": "Bachelor of Computer Science"}
+                    ],
+                }
+            ]
+            row["preparation_suggestions"] = []
+
+    result = assess(ReplayProvider(respond), [job("a")])
+    assert result.jobs[0].job.job_id == "a"
+    assert result.jobs[0].matching_reasons[0].requirement == "Bachelor degree"
+    assert result.jobs[0].matching_reasons[0].level == "strong"
 
 
 def test_unknown_conditions_are_completed_but_pending_and_mismatch_is_rejected() -> None:
@@ -480,7 +590,7 @@ def test_deadline_cancellation_and_completed_batch_callback() -> None:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
-        assert completed == ["00", "01", "02", "03", "04"]
+        assert completed == ["00", "01"]
         await service.cleanup_session("s")
         assert service.cache == {}
         with pytest.raises(RecommendationError):

@@ -34,7 +34,9 @@ def test_district_evaluation_preserves_unknown_broad_locations_and_twenty_job_ta
     cases = {row["id"]: row for row in json.loads(DATA.read_text(encoding="utf-8"))["scenarios"]}
     district = asyncio.run(run_policy(cases["district_precision"], "authored-replay", "adaptive"))
     assert set(district["returned_job_ids"]) == {"j4", "j5", "j6", "j7", "j8"}
-    assert set(district["pending_job_ids"]) == {"j1", "j2", "j3"}
+    assert (
+        district["pending_job_ids"] == []
+    )  # The requested five confirmed jobs fill the display limit.
     assert district["hard_condition_violations"] == {}
     twenty = asyncio.run(run_policy(cases["target_twenty"], "authored-replay", "adaptive"))
     assert set(twenty["returned_job_ids"]) == {f"j{index}" for index in range(1, 21)}

@@ -1,4 +1,4 @@
-"""Stopping freezes durable complete results and rejects stale execution callbacks."""
+"""Stopping freezes published vacancies and rejects stale execution callbacks."""
 
 import asyncio
 from datetime import UTC, datetime
@@ -94,7 +94,7 @@ class ProgressGraph(ControlledGraph):
 
 
 @pytest.mark.parametrize("publish_results", [True, False])
-def test_stop_preserves_only_complete_analysis_and_freezes_late_work(publish_results: bool) -> None:
+def test_stop_preserves_published_vacancies_and_freezes_late_work(publish_results: bool) -> None:
     async def check() -> None:
         graph = ProgressGraph(publish_results=publish_results)
         manager = await manager_for(graph, Memory())
@@ -109,7 +109,7 @@ def test_stop_preserves_only_complete_analysis_and_freezes_late_work(publish_res
             assert response.stop_reason == "user_stopped"
             assert graph.cancelled.is_set()
             assert response.recommendation is not None
-            expected = ["complete"] if publish_results else []
+            expected = ["complete", "unfinished"] if publish_results else []
             assert [entry.job.job_id for entry in response.recommendation.jobs] == expected
             assert all(entry.job.title == "Analyst" for entry in response.recommendation.jobs)
             assert [entry.job.job_id for entry in response.recommendation.pending_jobs] == (

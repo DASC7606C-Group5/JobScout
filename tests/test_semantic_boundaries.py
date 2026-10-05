@@ -150,7 +150,9 @@ def test_degree_status_or_unrelated_higher_degree_cannot_claim_strong_match(
         applicant,
         qualification,
     )
-    assert result.jobs == result.pending_jobs == []
+    assert [row.job.job_id for row in result.jobs] == ["semantic"]
+    assert result.jobs[0].matching_reasons == []
+    assert result.jobs[0].analysis_status == "unavailable"
 
 
 def test_global_ranking_does_not_reward_longer_lists_of_requirements() -> None:

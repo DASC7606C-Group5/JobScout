@@ -226,6 +226,20 @@ def test_hk_official_page_id_keeps_translation_and_parent_identity() -> None:
         parse_hk_directory(hk_page().replace("my_map_18.php", "unrecognized.php"), NOW)
 
 
+def test_jobsdb_district_suffix_resolves_without_erasing_district_or_extra_constraints() -> None:
+    page = hk_page().replace(">District 3</a>", ">Kwun Tong</a>")
+    directory = LocationCatalog(entries=parse_hk_directory(page, NOW))
+    canonical = directory.find("Kwun Tong")[0]
+    alias = directory.find("Kwun Tong District")[0]
+    assert alias.id == canonical.id == "hk:district:03"
+    assert alias.level == "district" and alias.ancestor_ids == ["hk:region:1", "hk"]
+    assert within(alias, directory.find("Hong Kong")[0])
+    assert directory.find("Region District") == []
+    assert directory.find("Hong Kong District") == []
+    assert directory.find("Kwun Tong District excluding Kwun Tong") == []
+    assert directory.find("Unknown Kwun Tong District") == []
+
+
 def test_catalog_refresh_updates_hierarchy_and_removes_disappeared_entries() -> None:
     class Client:
         async def request_async(

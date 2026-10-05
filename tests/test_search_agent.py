@@ -13,13 +13,14 @@ from jobscout.schemas.job import JobPosting
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult
 from jobscout.schemas.search import SearchRequest
+from jobscout.services.job_assessment_service import AssessmentDiagnostic
 from jobscout.services.job_retrieval.models import (
     RawJob,
     SearchResult,
     SourceOutcome,
     workflow_error,
 )
-from jobscout.services.llm_service import ToolCall, ToolTurn
+from jobscout.services.llm_service import ModelServiceError, ToolCall, ToolTurn
 from jobscout.services.replay_service import ReplayProvider, replay_catalog
 from jobscout.services.search_agent import SearchAgent
 
@@ -136,7 +137,7 @@ async def run(
 
 
 @pytest.mark.parametrize("target", [5, 10, 20])
-def test_requested_target_is_reached_by_completed_reviews(target: int) -> None:
+def test_requested_target_is_reached_by_relevant_vacancies(target: int) -> None:
     async def scenario() -> None:
         events: list[dict[str, Any]] = []
 
@@ -209,6 +210,43 @@ def query(**changes: Any) -> tuple[str, dict[str, Any]]:
         "keywords": ["Data Analyst"],
         **changes,
     }
+
+
+def test_model_failure_preserves_retrieved_vacancies_and_published_progress() -> None:
+    class FailingDecisionProvider(ScriptedProvider):
+        async def tool_turn(self, *args: Any, **kwargs: Any) -> ToolTurn:
+            if self.decisions:
+                raise ModelServiceError("model_output")
+            return await super().tool_turn(*args, **kwargs)
+
+    async def scenario() -> None:
+        events: list[dict[str, Any]] = []
+
+        async def progress(update: dict[str, Any]) -> None:
+            events.append(update)
+
+        result = await run(
+            FailingDecisionProvider([lambda _: query()]),
+            SnapshotSearch(2),
+            Assessment(),
+            profile(5),
+            on_progress=progress,
+        )
+        assert result["stop_reason"] == "error"
+        assert result["agent_error_code"] == "model_output"
+        pending = result["recommendation"].pending_jobs
+        assert {item.job.source_url for item in pending} == {
+            "https://jobsdb.example/jobs/0",
+            "https://jobsdb.example/jobs/1",
+        }
+        assert all(item.analysis_status == "unavailable" for item in pending)
+        assert all(item.matching_reasons == [] for item in pending)
+        assert all(item.verification_status == "pending" for item in pending)
+        assert {item.job.job_id for item in events[-2]["recommendation"].pending_jobs} == {
+            item.job.job_id for item in pending
+        }
+
+    asyncio.run(scenario())
 
 
 def test_untrusted_arguments_cannot_mutate_confirmed_conditions_or_repeat_success() -> None:
@@ -316,7 +354,7 @@ def test_transient_query_retry_is_bounded_and_failure_observation_is_available()
     asyncio.run(scenario())
 
 
-def test_stop_cancels_unfinished_batch_and_keeps_only_reviewed_result() -> None:
+def test_stop_cancels_unfinished_batch_and_keeps_published_vacancies() -> None:
     class BlockingAssessment(Assessment):
         cancelled = False
 
@@ -357,11 +395,50 @@ def test_stop_cancels_unfinished_batch_and_keeps_only_reviewed_result() -> None:
         assert assessment.cancelled
         assert [item.job.job_id for item in result["recommendation"].jobs] == saved_ids[:1]
         assert result["progress"]["matched_count"] == 1
+        assert {item.job.source_url for item in result["recommendation"].pending_jobs} == {
+            f"https://jobsdb.example/jobs/{index}" for index in range(1, 5)
+        }
 
     asyncio.run(scenario())
 
 
-def test_independent_review_defect_is_sent_to_single_correction() -> None:
+def test_subsequent_search_does_not_restore_a_confirmed_condition_mismatch() -> None:
+    class MismatchAssessment(Assessment):
+        diagnostics: dict[str, AssessmentDiagnostic]
+
+        async def assess(self, *args: Any, **kwargs: Any) -> RecommendationResult:
+            jobs = args[1]
+            self.diagnostics = {
+                job.job_id: AssessmentDiagnostic(
+                    code="condition_mismatch",
+                    stage="conditions",
+                    detail="The listing explicitly requires another employment type.",
+                    retryable=False,
+                )
+                for job in jobs
+            }
+            return RecommendationResult(session_id="session", generated_at=datetime.now(UTC))
+
+    async def scenario() -> None:
+        provider = ScriptedProvider(
+            [
+                lambda _: query(),
+                lambda o: ("assess_candidates", {"job_ids": [o["candidates"][0]["job_id"]]}),
+                lambda _: query(keywords=["Data Analyst jobs"]),
+            ]
+        )
+        result = await run(provider, SnapshotSearch(1), MismatchAssessment())
+        assert result["recommendation"].jobs == []
+        assert result["recommendation"].pending_jobs == []
+        assert provider.observations[3]["pending_count"] == 0
+        assert provider.observations[3]["candidates"][0]["analysis_diagnostic"]["code"] == (
+            "condition_mismatch"
+        )
+
+    asyncio.run(scenario())
+
+
+def test_independent_review_is_not_a_gate_for_job_visibility() -> None:
     class RejectOnce(ScriptedProvider):
         reviews = 0
 
@@ -392,8 +469,9 @@ def test_independent_review_defect_is_sent_to_single_correction() -> None:
         assessment = Assessment()
         result = await run(provider, SnapshotSearch(1), assessment)
         assert len(result["recommendation"].jobs) == 1
-        identity = result["recommendation"].jobs[0].job.job_id
-        assert assessment.feedback == [{}, {identity: "Correct unsupported match strength."}]
-        assert provider.reviews == 2
+        assert result["recommendation"].jobs[0].job.source_url == "https://jobsdb.example/jobs/0"
+        assert assessment.feedback == [{}]
+        assert provider.reviews == 0
+        assert result["progress"]["analyzed_count"] == 1
 
     asyncio.run(scenario())
