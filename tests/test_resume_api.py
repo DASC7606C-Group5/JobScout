@@ -64,10 +64,12 @@ def test_upload_requires_file_field() -> None:
 def test_parsed_resume_enters_profile_flow_without_contract_changes(
     name: str, content: bytes
 ) -> None:
-    from jobscout.services.replay_service import ReplayProvider
+    from tests.test_conversation_service import ExtractionProvider
     from tests.test_web_scaffold import settled
 
-    with TestClient(create_app(provider=ReplayProvider())) as client:
+    with TestClient(
+        create_app(provider=ExtractionProvider({"skills": ["Python", "SQL"]}))
+    ) as client:
         parsed = client.post("/api/v1/resumes/parse", files={"file": (name, content)})
         response = client.post(
             "/api/v1/sessions",

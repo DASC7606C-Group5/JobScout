@@ -22,9 +22,6 @@ WorkflowStage = Literal[
     "understand",
     "coverage",
     "present",
-    "search",
-    "process_jobs",
-    "recommend",
     "completed",
     "failed",
 ]

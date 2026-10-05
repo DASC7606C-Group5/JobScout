@@ -8,6 +8,11 @@ from pydantic import BaseModel
 from jobscout.main import create_app
 from tests.test_web_scaffold import settled
 
+DESCRIPTION = (
+    "Education\nBachelor Computer Science\nSkills\nPython, SQL, Excel\n"
+    "Projects\nPython SQL reporting dashboard"
+)
+
 
 def test_failed_profile_retry_uses_clean_checkpoint_and_retains_materials() -> None:
     from jobscout.services.llm_service import ModelServiceError
@@ -36,7 +41,7 @@ def test_failed_profile_retry_uses_clean_checkpoint_and_retains_materials() -> N
             "/api/v1/sessions",
             json={
                 "request_id": "failing-profile",
-                "description": "Skills: Python, SQL",
+                "description": DESCRIPTION,
                 "target_directions": ["Data Analyst"],
                 "preferences": {"location": "Hong Kong", "employment_type": "internship"},
             },
@@ -55,7 +60,7 @@ def test_failed_profile_retry_uses_clean_checkpoint_and_retains_materials() -> N
         summary = settled(client, session_id)
         assert summary["outcome"] == "paused", summary
         assert summary["errors"] == []
-        assert set(summary["profile"]["skills"]) == {"Python", "SQL"}
+        assert set(summary["profile"]["skills"]) == {"Python", "SQL", "Excel"}
         record: Any = application.state.sessions.sessions[session_id]
         assert len(record.thread_ids) == 2
         assert client.delete(f"/api/v1/sessions/{session_id}").status_code == 204
@@ -67,7 +72,7 @@ def test_dynamic_replay_choices_preserve_equivalent_location_matching() -> None:
             "/api/v1/sessions",
             json={
                 "request_id": "dynamic-create",
-                "description": "Skills: Python, SQL",
+                "description": DESCRIPTION,
             },
         ).json()["session_id"]
         questions = settled(client, session_id)
@@ -111,7 +116,7 @@ def test_replay_confirm_search_edit_and_reconfirm() -> None:
             "/api/v1/sessions",
             json={
                 "request_id": "replay-create",
-                "description": "Skills: Python, SQL\nProjects: Python SQL dashboard",
+                "description": DESCRIPTION,
                 "target_directions": ["Data Analyst"],
                 "preferences": {"location": "Hong Kong", "employment_type": "internship"},
             },

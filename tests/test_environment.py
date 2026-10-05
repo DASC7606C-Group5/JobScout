@@ -12,7 +12,7 @@ def test_package_imports_outside_repository(tmp_path: Path) -> None:
             sys.executable,
             "-I",
             "-c",
-            "import jobscout.main; import jobscout.graph.builder; "
+            "import jobscout.main; import jobscout.graph.live; "
             "import jobscout.schemas.profile; import jobscout.services.profile_service",
         ],
         cwd=tmp_path,

@@ -8,7 +8,6 @@ from pathlib import Path
 import httpx
 import pytest
 
-from jobscout.graph.nodes.search import search_node_async
 from jobscout.schemas.search import SearchRequest
 from jobscout.services.job_retrieval.async_transport import AsyncHttpWebClient
 from jobscout.services.job_retrieval.careerjet import careerjet_params
@@ -374,21 +373,18 @@ def test_timeout_retains_completed_jobs_inside_source() -> None:
     assert result.errors[0].code == "SEARCH_TIMEOUT"
 
 
-def test_async_node_separates_source_diagnostics_from_fatal_errors() -> None:
+def test_async_search_keeps_jobs_when_another_source_is_blocked() -> None:
     result = asyncio.run(
-        search_node_async(
-            {
-                "session_id": "synthetic",
-                "search_requests": [request(sources=["good", "bad"])],
-            },
-            service=JobSearchService(
-                {"good": Adapter("good"), "bad": Adapter("bad", error="SEARCH_AUTH")}
-            ),
+        JobSearchService(
+            {"good": Adapter("good"), "bad": Adapter("bad", error="SEARCH_AUTH")}
+        ).search_many_async(
+            [request(sources=["good", "bad"])],
         )
     )
-    assert result["raw_jobs"] and not result["errors"]
-    assert result["source_outcomes"][1]["status"] == "blocked"
-    assert any("SEARCH_AUTH" in warning for warning in result["warnings"])
+    assert result.raw_jobs
+    assert result.outcomes[1].status == "blocked"
+    assert result.errors[0].code == "SEARCH_AUTH"
+    assert (result.errors[0].details or {}).get("source") == "bad"
 
 
 def test_captcha_is_blocked_not_empty() -> None:

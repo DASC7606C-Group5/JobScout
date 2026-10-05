@@ -224,7 +224,7 @@ class ConversationService:
         extracted = await self.provider.structured(
             ProfileExtraction,
             _messages(
-                "Extract only explicit user facts. Merge complementary backgrounds/skills. Explicit corrections in the description override the resume. Mark real unresolved contradictions by field; different skill lists are not contradictions. Extract target_directions only when the user explicitly states desired roles; never infer, select, add or drop directions. Use canonical employment types full-time/part-time/internship/contract/freelance and explicit unrestricted flags. Do not infer a job preference from residence or past employment.",
+                "Extract only explicit user facts from the complete resume and description, regardless of language, headings or layout. Extract education, skills, work/internship experience into internships, and projects; retain meaningful experience details. Skills are open-ended, including unfamiliar tools and multiword or nontechnical skills; do not restrict them to a fixed vocabulary. Negated skills, desired future skills and job requirements are not acquired skills. Merge complementary backgrounds/skills. Explicit corrections in the description override the resume. Mark real unresolved contradictions by field; different skill lists are not contradictions. Extract target_directions only when the user explicitly states desired roles; never infer, select, add or drop directions. Use canonical employment types full-time/part-time/internship/contract/freelance and explicit unrestricted flags. Do not infer a job preference from residence or past employment.",
                 {"description": parsed.description, "resume": parsed.resume},
             ),
         )

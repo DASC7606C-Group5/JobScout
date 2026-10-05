@@ -27,7 +27,6 @@ from jobscout.services.conversation_service import (
 )
 from jobscout.services.job_retrieval.models import RawJob, SearchResult, SourceOutcome
 from jobscout.services.llm_service import LLMProvider, ModelServiceError
-from jobscout.services.profile_service import detect_conflicts, extract_background
 from jobscout.services.recommendation_service import recommend_jobs
 
 
@@ -858,13 +857,6 @@ def test_completed_edit_restart_preserves_evidence_and_requires_confirmation() -
         )
 
     asyncio.run(scenario())
-
-
-def test_complementary_skills_are_not_conflicts() -> None:
-    assert (
-        detect_conflicts(extract_background("Skills\nPython"), extract_background("Skills\nJava"))
-        == []
-    )
 
 
 def test_conflicts_require_confirmation_and_text_directions_are_split() -> None:

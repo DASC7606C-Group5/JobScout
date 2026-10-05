@@ -11,7 +11,6 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from jobscout.graph.nodes.search import search_node
 from jobscout.schemas.search import SearchRequest
 from jobscout.services.job_retrieval.local_sources import (
     LocalAdapter,
@@ -78,25 +77,17 @@ def test_selected_source_fields_and_description(source: str) -> None:
     json.loads(result.model_dump_json())
 
 
-def test_multi_direction_node_serialization_and_routing() -> None:
-    result = search_node(
-        {
-            "session_id": "synthetic",
-            "search_requests": [
-                req(),
-                req(target_direction="Business Analyst"),
-                req(location="Hong Kong"),
-            ],
-        },
-        service=JobSearchService(web_client=FixtureWebClient(FIXTURE)),
+def test_multi_direction_search_serialization_and_routing() -> None:
+    result = JobSearchService(web_client=FixtureWebClient(FIXTURE)).search_many(
+        [req(), req(target_direction="Business Analyst"), req(location="Hong Kong")]
     )
-    assert not result["errors"] and len(result["raw_jobs"]) == 7
-    assert {r["source"] for r in result["raw_jobs"]} == {"zhaopin", "liepin", "shixiseng", "jobsdb"}
-    assert {r["target_direction"] for r in result["raw_jobs"]} == {
+    assert not result.errors and len(result.raw_jobs) == 7
+    assert {r.source for r in result.raw_jobs} == {"zhaopin", "liepin", "shixiseng", "jobsdb"}
+    assert {r.target_direction for r in result.raw_jobs} == {
         "Data Analyst",
         "Business Analyst",
     }
-    json.dumps(result)
+    json.loads(result.model_dump_json())
 
 
 def test_native_params_preserve_explicit_intent() -> None:

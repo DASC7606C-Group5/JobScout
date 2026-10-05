@@ -13,12 +13,10 @@ New acceptance tests remain ordinary tests so unsupported behavior is visible.
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
-from jobscout.graph.nodes.process_jobs import process_jobs_node
-from jobscout.graph.state import AgentState
 from jobscout.schemas.job import FreshnessStatus
 from jobscout.services.job_processing_service import process_jobs
 
@@ -648,65 +646,3 @@ def test_shared_mock_sample_stays_unknown_and_keeps_provenance() -> None:
     assert any("missing salary" in warning for warning in result.warnings)
     assert any("missing posted_at" in warning for warning in result.warnings)
     assert any("missing expiry_at" in warning for warning in result.warnings)
-
-
-def test_node_reads_raw_jobs_and_writes_state_update(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Exercise the real service with the same fixed clock as the service tests.
-    monkeypatch.setattr(
-        "jobscout.services.job_processing_service.process_jobs",
-        lambda raw_jobs: process_jobs(raw_jobs, now=NOW),
-    )
-    state: AgentState = {"session_id": "test-session", "raw_jobs": [make_raw()]}
-
-    update = process_jobs_node(state)
-
-    assert len(update["normalized_jobs"]) == 1
-    assert update["normalized_jobs"][0].title == "Data Analyst"
-    assert update["warnings"] == []
-    assert update["errors"] == []
-    assert update["current_stage"] == "process_jobs"
-
-
-def test_node_forwards_service_warnings_for_missing_salary() -> None:
-    record = make_raw()
-    del record["salary"]
-    state: AgentState = {"session_id": "test-session", "raw_jobs": [record]}
-
-    update = process_jobs_node(state)
-
-    assert len(update["normalized_jobs"]) == 1
-    assert len(update["warnings"]) == 1
-    assert "salary" in update["warnings"][0]
-    assert update["errors"] == []
-    assert update["current_stage"] == "process_jobs"
-
-
-def test_node_handles_missing_raw_jobs_key() -> None:
-    state: AgentState = {"session_id": "test-session"}
-
-    update = process_jobs_node(state)
-
-    assert update["normalized_jobs"] == []
-    assert update["warnings"] == []
-    assert update["current_stage"] == "failed"
-    assert [error.code for error in update["errors"]] == ["RAW_JOBS_MISSING"]
-
-
-def test_node_handles_empty_raw_jobs() -> None:
-    state: AgentState = {"session_id": "test-session", "raw_jobs": []}
-
-    update = process_jobs_node(state)
-
-    assert update["normalized_jobs"] == []
-    assert update["warnings"] == []
-    assert update["errors"] == []
-    assert update["current_stage"] == "process_jobs"
-
-
-def test_node_rejects_invalid_raw_jobs() -> None:
-    state = cast(AgentState, {"session_id": "test-session", "raw_jobs": "not-a-list"})
-
-    update = process_jobs_node(state)
-
-    assert update["current_stage"] == "failed"
-    assert [error.code for error in update["errors"]] == ["RAW_JOBS_INVALID"]

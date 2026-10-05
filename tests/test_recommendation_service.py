@@ -1,13 +1,9 @@
 """Group 6 acceptance tests with fixed profiles and normalized jobs."""
 
 from datetime import UTC, datetime, timedelta, timezone
-from typing import Any, cast
 
 import pytest
-from langgraph.graph import END, START, StateGraph
 
-from jobscout.graph.nodes.recommend import recommend_node
-from jobscout.graph.state import AgentState
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import FreshnessStatus, JobPosting
 from jobscout.schemas.profile import ProfilePreferences, ProfileSource, UserProfile
@@ -374,61 +370,3 @@ def test_injected_time_is_converted_to_utc() -> None:
     )
     assert result.generated_at == NOW
     assert result.generated_at.tzinfo == UTC
-
-
-def test_node_forwards_warnings_without_duplicating_reducer_entries() -> None:
-    state: AgentState = {
-        "session_id": "s",
-        "profile": make_profile(),
-        "normalized_jobs": [make_job("a", status=FreshnessStatus.UNKNOWN)],
-        "warnings": ["upstream warning"],
-    }
-    update = recommend_node(state)
-    result = update["recommendation"]
-    assert result is not None
-    assert update["current_stage"] == "recommend"
-    assert result.generated_at.utcoffset() == timedelta(0)
-    assert result.warnings[0] == "upstream warning"
-    assert "upstream warning" not in update["warnings"]
-    assert state["warnings"] == ["upstream warning"]
-
-
-def test_node_returns_empty_result_for_no_jobs() -> None:
-    update = recommend_node({"session_id": "s", "profile": make_profile(), "normalized_jobs": []})
-    assert update["current_stage"] == "recommend"
-    result = update["recommendation"]
-    assert result is not None and result.jobs == []
-
-
-def test_node_missing_profile_clears_old_result_and_reports_error() -> None:
-    update = recommend_node(
-        {"session_id": "s", "recommendation": run(make_profile(), [make_job("a")])}
-    )
-    assert update["recommendation"] is None
-    assert update["current_stage"] == "failed"
-    assert update["errors"][0].code == "recommendation_missing_profile"
-
-
-def test_node_converts_service_exception_into_workflow_error() -> None:
-    profile = make_profile()
-    profile.conflicts = ["skills conflict"]
-    update = recommend_node({"session_id": "s", "profile": profile})
-    assert update["current_stage"] == "failed"
-    assert update["errors"][0].code == "recommendation_profile_not_ready"
-
-
-def test_node_runs_with_real_state_reducers_in_an_isolated_graph() -> None:
-    graph = StateGraph(AgentState)
-    graph.add_node("recommend", cast(Any, recommend_node))
-    graph.add_edge(START, "recommend")
-    graph.add_edge("recommend", END)
-    state: AgentState = {
-        "session_id": "s",
-        "profile": make_profile(),
-        "normalized_jobs": [make_job("a")],
-        "warnings": ["upstream warning"],
-    }
-    result = graph.compile().invoke(state)
-    assert result["recommendation"].warnings == ["upstream warning"]
-    assert result["warnings"] == ["upstream warning"]
-    assert result["current_stage"] == "recommend"

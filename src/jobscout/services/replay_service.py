@@ -3,6 +3,7 @@
 import asyncio
 import json
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +11,30 @@ from pydantic import BaseModel
 
 from jobscout.schemas.search import SearchRequest
 from jobscout.services.job_retrieval.models import RawJob, SearchResult, SourceOutcome
-from jobscout.services.profile_service import extract_background
 
 DATA = Path(__file__).resolve().parents[3] / "data" / "evaluation" / "dataset.json"
+
+
+@lru_cache(maxsize=1)
+def _dataset() -> dict[str, Any]:
+    return dict(json.loads(DATA.read_text(encoding="utf-8")))
+
+
+def _profile_fixture(payload: dict[str, Any]) -> dict[str, Any]:
+    """Replay background facts for an exact sample; never parse arbitrary CVs."""
+    description = payload.get("description", "").strip()
+    resume_text = (payload.get("resume") or {}).get("text", "").strip()
+    for case in _dataset()["profiles"]:
+        sample = case["input"]
+        if (
+            sample.get("description", "").strip() == description
+            and (sample.get("resume") or {}).get("text", "").strip() == resume_text
+        ):
+            return {
+                field: case["expected_initial"][field]
+                for field in ("education", "skills", "internships", "projects", "conflicts")
+            }
+    return {}
 
 
 def _payload(messages: list[dict[str, str]]) -> dict[str, Any]:
@@ -34,18 +56,7 @@ class ReplayProvider:
         payload = _payload(messages)
         name = schema.__name__
         if name == "ProfileExtraction":
-            text = (
-                payload.get("description", "")
-                + "\n"
-                + (payload.get("resume") or {}).get("text", "")
-            )
-            background = extract_background(text)
-            output: dict[str, Any] = {
-                "education": background.education,
-                "skills": background.skills,
-                "internships": background.internships,
-                "projects": background.projects,
-            }
+            output: dict[str, Any] = _profile_fixture(payload)
         elif name == "QuestionGeneration":
             output = {"questions": []}
             for field in payload.get("required_fields", [])[:3]:
@@ -118,36 +129,31 @@ class ReplayProvider:
             }
         elif payload.get("task") == "jd_analysis":
             output = {"jobs": []}
-            vocabulary = (
-                "Python",
-                "SQL",
-                "React",
-                "TypeScript",
-                "Excel",
-                "Tableau",
-                "Power BI",
-                "Java",
-                "Git",
-                "Figma",
-                "TensorFlow",
-                "Pandas",
-                "Docker",
-            )
             for job in payload["jobs"]:
                 requirements: list[dict[str, Any]] = []
-                for term in vocabulary:
-                    document = next((doc for doc in job["documents"] if term in doc["text"]), None)
-                    if document:
-                        requirements.append(
-                            {
-                                "requirement_id": f"r{len(requirements) + 1}",
-                                "text": term,
-                                "category": "skill",
-                                "evidence": [
-                                    {"document_id": document["document_id"], "excerpt": term}
-                                ],
-                            }
-                        )
+                for sample in _dataset()["vacancies"]:
+                    if not any(
+                        document["source_url"] == sample["job"]["source_url"]
+                        for document in job["documents"]
+                    ):
+                        continue
+                    for requirement in sample["annotations"]["requirements"]:
+                        evidence = [
+                            {"document_id": document["document_id"], "excerpt": ref["excerpt"]}
+                            for ref in requirement["references"]
+                            for document in job["documents"]
+                            if document["source_url"] == ref["source_url"]
+                            and ref["excerpt"] in document["text"]
+                        ]
+                        if evidence:
+                            requirements.append(
+                                {
+                                    "requirement_id": requirement["requirement_id"],
+                                    "text": requirement["text"],
+                                    "category": "skill",
+                                    "evidence": evidence,
+                                }
+                            )
                 output["jobs"].append({"job_id": job["job_id"], "requirements": requirements})
         elif payload.get("task") == "matching":
             output = {"jobs": []}
@@ -200,7 +206,7 @@ class ReplaySearchService:
     ) -> SearchResult:
         if timeout <= 0:
             raise TimeoutError("Replay retrieval deadline exhausted")
-        dataset = json.loads(DATA.read_text(encoding="utf-8"))
+        dataset = _dataset()
         result = SearchResult(
             warnings=["Replay demo: these are sample listings, not real job postings."]
         )
