@@ -14,13 +14,13 @@ async function snapshot(page: Page, id: string): Promise<ScoutSession> {
 }
 
 async function createFromForm(page: Page, complete: boolean) {
-  await page.goto('/')
+  await page.goto('/new')
   await page.getByLabel('About you', { exact: true }).fill(description)
-  if (complete) {
-    await page.getByLabel('Job directions', { exact: false }).fill('Data Analyst')
-    await page.getByLabel('Work location', { exact: true }).fill('Hong Kong')
-    await page.getByLabel('Employment type', { exact: true }).selectOption('internship')
-  }
+  await page.getByLabel('Job directions', { exact: false }).fill(complete ? 'Data Analyst' : '')
+  await page.getByLabel('Work location', { exact: true }).fill(complete ? 'Hong Kong' : '')
+  await page
+    .getByLabel('Employment type', { exact: true })
+    .selectOption(complete ? 'internship' : '')
   const accepted = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' && response.url().endsWith('/api/v1/sessions'),
@@ -133,7 +133,8 @@ async function confirmAndVerifyResults(page: Page, id: string) {
   await page.reload()
   await expect(page.getByRole('region', { name: 'Recommended jobs' })).toBeVisible()
   expect((await snapshot(page, id)).recommendation).toEqual(results.recommendation)
-  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual(['jobscout.session_id'])
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([])
+  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBe(id)
 }
 
 for (const complete of [true, false]) {

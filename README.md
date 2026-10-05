@@ -44,3 +44,7 @@ If the backend is running at a different address, copy [`web/.env.example`](web/
 | `bun preview` | `web/` | Preview the frontend build locally |
 
 Before committing, run all backend checks, plus `bun test` and `bun check` for the frontend. After fixing or formatting code, review the changes and run the checks again.
+
+## Documentation
+
+- [Design](DESIGN.md): visual identity and shared component conventions.

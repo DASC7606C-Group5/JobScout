@@ -1,16 +1,32 @@
 import { queryOptions } from '@tanstack/react-query'
 
-import type { SessionClient } from './contracts'
+import type { ScoutSession, SessionClient } from './contracts'
 import { SessionHttpError } from './session-client'
 
 export const sessionKey = (sessionId: string | null) => ['sessions', sessionId] as const
 
+export function latestSessionSnapshot(confirmed: ScoutSession | undefined, incoming: ScoutSession) {
+  if (!confirmed) return incoming
+  if (confirmed.revision > incoming.revision) return confirmed
+  if (
+    confirmed.revision === incoming.revision &&
+    confirmed.outcome !== 'running' &&
+    incoming.outcome === 'running'
+  )
+    return confirmed
+  return incoming
+}
+
 export function sessionQueryOptions(client: SessionClient, sessionId: string | null) {
   return queryOptions({
     queryKey: sessionKey(sessionId),
-    queryFn: ({ signal }) => {
+    queryFn: async ({ signal, client: cache }) => {
       if (!sessionId) throw new Error('No session has been created yet.')
-      return client.get(sessionId, signal)
+      const incoming = await client.get(sessionId, signal)
+      return latestSessionSnapshot(
+        cache.getQueryData<ScoutSession>(sessionKey(sessionId)),
+        incoming,
+      )
     },
     enabled: sessionId !== null,
     staleTime: 30_000,

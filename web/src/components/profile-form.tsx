@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { FormProvider, useForm } from 'react-hook-form'
 
-import { toScoutInput, type ProfileFormValues } from '../lib/profile-form'
-import { useScoutStore } from '../state/scout-context'
+import { createProfileDraft, toScoutInput, type ProfileFormValues } from '../lib/profile-form'
+import { workspaceDraftPath } from '../lib/workspace-client'
 import { useScoutSession } from '../state/session-context'
+import { usePersistedDraft } from '../state/use-persisted-draft'
+import { DraftStatus } from './draft-status'
 import { Icon } from './icon'
 import { DescriptionField } from './profile/description-field'
 import { DirectionField } from './profile/direction-field'
@@ -11,9 +13,10 @@ import { PreferenceFields } from './profile/preference-fields'
 import { ResumeField } from './profile/resume-field'
 
 export function ProfileForm() {
-  const store = useScoutStore()
+  const draft = usePersistedDraft(workspaceDraftPath, createProfileDraft())
+  const { setValue: saveDraft } = draft
   const { start, busy } = useScoutSession()
-  const form = useForm<ProfileFormValues>({ defaultValues: store.getState().draft })
+  const form = useForm<ProfileFormValues>({ values: draft.value })
   const {
     subscribe,
     handleSubmit,
@@ -24,9 +27,9 @@ export function ProfileForm() {
     () =>
       subscribe({
         formState: { values: true },
-        callback: ({ values }) => store.getState().saveDraft(values),
+        callback: ({ values }) => saveDraft(values),
       }),
-    [subscribe, store],
+    [subscribe, saveDraft],
   )
   const error = errors.description?.message || errors.root?.resume?.message
 
@@ -35,12 +38,16 @@ export function ProfileForm() {
       <form
         noValidate
         className="card border border-base-300 bg-base-100 shadow-sm"
+        onCompositionStart={draft.onCompositionStart}
+        onCompositionEnd={draft.onCompositionEnd}
         onSubmit={(event) => {
           if (reading) {
             event.preventDefault()
             return
           }
-          void handleSubmit((values) => start(toScoutInput(values)))(event)
+          void handleSubmit((values) => {
+            void start(toScoutInput(values))
+          })(event)
         }}
       >
         <div className="border-b border-base-300 px-5 py-5 sm:px-7">
@@ -58,11 +65,15 @@ export function ProfileForm() {
             </div>
           </div>
         </div>
-        <fieldset disabled={reading || busy} className="min-w-0 space-y-6 p-5 sm:p-7">
+        <fieldset
+          disabled={reading || busy || draft.status === 'loading'}
+          className="min-w-0 space-y-6 p-5 sm:p-7"
+        >
           <DescriptionField />
           <ResumeField reading={reading} onReadingChange={setReading} />
           <DirectionField />
           <PreferenceFields />
+          <DraftStatus {...draft} />
           <div id="profile-error" hidden={!error}>
             {error && (
               <div className="alert rounded-xl alert-soft text-sm alert-error" role="alert">

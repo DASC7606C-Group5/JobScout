@@ -1,16 +1,19 @@
 import { createContext, useContext } from 'react'
-import { useStore } from 'zustand'
 
-import type { ScoutState, ScoutStore } from './scout-store'
+import type { RecommendationItem } from '../lib/contracts'
 
-export const ScoutContext = createContext<ScoutStore | null>(null)
-
-export function useScoutStore() {
-  const store = useContext(ScoutContext)
-  if (!store) throw new Error('ScoutProvider is required')
-  return store
+export interface ScoutState {
+  saved: RecommendationItem[]
+  announcement: string
+  saveError: string
+  clearSaveError: () => void
+  toggleSaved: (item: RecommendationItem) => Promise<boolean>
 }
 
+export const ScoutContext = createContext<ScoutState | null>(null)
+
 export function useScout<T>(selector: (state: ScoutState) => T): T {
-  return useStore(useScoutStore(), selector)
+  const state = useContext(ScoutContext)
+  if (!state) throw new Error('ScoutProvider is required')
+  return selector(state)
 }

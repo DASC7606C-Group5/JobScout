@@ -12,7 +12,7 @@ import {
 export function useResultSelection(
   jobs: RecommendationItem[],
   savedOnly: boolean,
-  onToggle: (item: RecommendationItem) => void,
+  onToggle: (item: RecommendationItem) => boolean | Promise<boolean> | void,
 ) {
   const navigate = useNavigate()
   const router = useRouter()
@@ -30,12 +30,12 @@ export function useResultSelection(
   )
 
   function changeSearch(next: ResultSearch, replace = true) {
-    void navigate({ to: savedOnly ? '/saved' : '/', search: next, replace, resetScroll: false })
+    void navigate({ to: '.', search: next, replace, resetScroll: false })
   }
   useEffect(() => {
     if (invalidSelection)
       void navigate({
-        to: savedOnly ? '/saved' : '/',
+        to: '.',
         search: { ...search, job: undefined },
         replace: true,
         resetScroll: false,
@@ -73,13 +73,15 @@ export function useResultSelection(
       router.history.back()
     } else changeSearch({ ...search, job: undefined })
   }
-  function toggle(item: RecommendationItem) {
+  async function toggle(item: RecommendationItem) {
+    const location = router.state.location.href
+    const removed = await onToggle(item)
+    if (removed === false || router.state.location.href !== location) return
     if (savedOnly && item.job.job_id === selected?.job.job_id)
       changeSearch({
         ...search,
         job: detailOpen ? nextJobAfterRemoval(filtered, item.job.job_id) : undefined,
       })
-    onToggle(item)
   }
   return {
     search,

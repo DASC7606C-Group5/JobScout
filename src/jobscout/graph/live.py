@@ -613,6 +613,7 @@ def build_live_graph(
                 "revision": accepted_revision,
                 "command": None,
                 "failed_resume_payload": None,
+                "applied_request_id": request.request_id,
                 "conversation": history,
                 "profile_documents": documents,
                 "clarification_questions": questions,

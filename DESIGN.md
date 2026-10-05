@@ -7,46 +7,53 @@ typography:
     fontFamily: "Inter, Segoe UI, PingFang SC, Microsoft YaHei, sans-serif"
 omitted:
   - section: colors
-    reason: "The installed daisyUI cupcake theme is canonical; this file does not generate tokens."
+    reason: "Owned by the daisyUI cupcake theme."
   - section: spacing
-    reason: "Existing Tailwind utilities in shared workspace components remain canonical."
+    reason: "Owned by shared Tailwind layouts."
   - section: rounded
-    reason: "Existing daisyUI components and shared component utilities remain canonical."
+    reason: "Owned by daisyUI components."
 ---
 
 # JobScout design
 
 ## Overview
 
-Help applicants compare a short list of jobs, understand the relevant experience they already have, and choose a useful next step. Keep the existing workspace identity: warm cupcake surfaces, quiet borders, mint primary actions, and readable mixed-script content. The interface and system messages are English; supplied content retains its original language.
+Help applicants compare roles and prepare applications. Put job facts, relevant evidence and clear next actions first. Use English for interface copy; preserve the language of supplied content.
 
 ## Colors
 
-[The application stylesheet](web/src/styles.css) selects daisyUI's `cupcake` theme. Use semantic theme classes for surfaces, text, focus, selection and feedback. The installed theme is the source of truth; do not introduce a second palette.
+The `cupcake` theme in [styles.css](web/src/styles.css) owns the palette. Use warm surfaces, quiet borders and mint primary actions through semantic theme classes. Reserve warning and error colors for their meaning.
 
 ## Typography
 
-Use the existing font stack above. Preserve current text sizes, weights and line heights. Job titles may wrap; original quotations remain readable in their original language.
+Use the multilingual font stack above. Establish hierarchy with size, weight and spacing. Keep labels compact, body text readable and long titles and quotations able to wrap.
 
 ## Layout
 
-Preserve the workspace shell, padding and spacing. Shared results show a list beside details from `1100px`; narrower screens show the list or a selected role. The shared implementation is in [Results](web/src/components/results.tsx).
+Keep navigation in the sidebar and actions beside the content they affect. Use list/detail layouts on wide screens and one focused view on narrow screens. Preserve document scrolling; constrain long navigation lists independently.
 
 ## Elevation & Depth
 
-Use existing bordered cards and theme surfaces. Sticky application controls have an opaque base surface and remain in normal document flow before sticking.
+Separate sections with borders and theme surfaces. Use restrained shadows; sticky controls need opaque backgrounds.
 
 ## Shapes
 
-Reuse existing daisyUI controls, card radii and component utilities. Do not copy the exploratory prototype's independent spacing or shape values.
+Use daisyUI radii and control shapes consistently. Keep icons aligned and touch targets comfortably spaced.
 
 ## Components
 
-Reuse `Results`, `JobCard`, `JobDetail`, `ResultWarnings` and `MatchingSourceQuotes` across discovery and saved jobs. Keep familiar daisyUI buttons, native select controls, disclosures and a native modal dialog. Use the existing `Icon` component. Global focus and reduced-motion rules live in the application stylesheet.
+Reuse shared job views, `Icon` and native daisyUI controls. Give controls accessible names, visible focus and consistent states. Preserve input during errors, confirm destructive actions and respect reduced motion. Global interaction styles belong in the application stylesheet.
+
+| Capability | Canonical owner | Source of truth | Allowed variants | Verification |
+| --- | --- | --- | --- | --- |
+| Select/Listbox | Native daisyUI select | Form schemas | OS popup | Keyboard flows |
+| Form | Shared forms and DraftStatus | API schemas | Create/edit | Input and recovery tests |
+| Scrollbar | styles.css | Theme tokens | Global baseline | UI audit |
+| Toast | ScoutProvider and WorkspaceLayout | Mutation results | Status/inline error | Feedback tests |
+| CRUD | Shared route and service hooks | API lifecycle | Create/edit/delete | Workflow tests |
 
 ## Do's and Don'ts
 
-- Put job facts, a supported reason and the application action first.
-- Show uncertainty once, close to the role or search it affects.
-- Preserve user input, listing content and exact quotations.
-- Do not display internal diagnostics, invented match percentages, repeated disclaimers or empty detail sections.
+- Preserve supplied facts and exact quotations.
+- Show uncertainty once, beside the affected content.
+- Avoid invented scores, internal diagnostics, repeated disclaimers and empty sections.

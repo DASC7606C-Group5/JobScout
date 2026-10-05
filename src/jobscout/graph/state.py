@@ -58,6 +58,7 @@ class AgentState(TypedDict):
     command: NotRequired[dict[str, object] | None]
     resume_payload: NotRequired[dict[str, object]]
     failed_resume_payload: NotRequired[dict[str, object] | None]
+    applied_request_id: NotRequired[str]
     confirmed_profile: NotRequired[UserProfile | None]
     operation_deadline: NotRequired[float]
     retrieval_seconds: NotRequired[float]

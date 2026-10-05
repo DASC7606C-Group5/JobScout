@@ -1,4 +1,4 @@
-import type { ScoutSession } from './contracts'
+import type { RecommendationItem, ScoutSession } from './contracts'
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -71,7 +71,7 @@ function matchingReason(value: unknown) {
     list(value.profile_source_quotes, sourceQuote)
   )
 }
-function recommendationItem(value: unknown) {
+export function isRecommendationItem(value: unknown): value is RecommendationItem {
   return (
     record(value) &&
     record(value.job) &&
@@ -90,7 +90,7 @@ function recommendation(value: unknown) {
       string(value.generated_at) &&
       string(value.introduction) &&
       list(value.notices, notice) &&
-      list(value.jobs, recommendationItem))
+      list(value.jobs, isRecommendationItem))
   )
 }
 function sessionIdentity(value: Record<string, unknown>) {

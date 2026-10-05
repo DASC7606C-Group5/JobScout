@@ -4,6 +4,10 @@ import { expect, test, type Page } from '@playwright/test'
 
 import type {
   ClarificationMessage,
+  DraftResponse,
+  RecommendationItem,
+  SaveDraftRequest,
+  SessionSummary,
   ResumeSessionRequest,
   ScoutSession,
 } from '../../src/lib/contracts'
@@ -30,6 +34,14 @@ const makeQuestion = (
 
 async function mockSessions(page: Page, initial = createSessionFixture()) {
   let snapshot = structuredClone(initial)
+  const sessions = new Map<string, ScoutSession>()
+  const order: string[] = []
+  const drafts = new Map<string, DraftResponse>()
+  const saved = new Map<string, RecommendationItem>()
+  const creations = new Map<string, string>()
+  const draftRequests: SaveDraftRequest[] = []
+  const historyRequests: URL[] = []
+  const deleted: string[] = []
   let getCount = 0
   let createCount = 0
   const getTimes: number[] = []
@@ -38,32 +50,154 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
   let dropCreate = false
   let dropAnswer = false
   let conflict = false
+  let failDraft = false
+  let conflictDraft = false
   let runningPolls = 0
   let finish = snapshot
-  await page.route('**/api/v1/sessions**', async (route) => {
+  function store(session: ScoutSession) {
+    sessions.set(session.session_id, structuredClone(session))
+    const index = order.indexOf(session.session_id)
+    if (index >= 0) order.splice(index, 1)
+    order.unshift(session.session_id)
+  }
+  function summary(session: ScoutSession): SessionSummary {
+    return {
+      session_id: session.session_id,
+      title: session.profile?.target_directions.join(', ') || 'New search',
+      location: session.profile?.preferences.location || '',
+      outcome: session.outcome,
+      current_stage: session.current_stage,
+      revision: session.revision,
+      retryable: session.retryable,
+      mode: session.mode,
+      created_at: '2026-10-03T00:00:00Z',
+      updated_at: '2026-10-06T00:00:00Z',
+    }
+  }
+  await page.route('**/api/v1/**', async (route) => {
     const method = route.request().method()
+    const url = new URL(route.request().url())
+    const path = url.pathname.replace('/api/v1', '')
+    if (path === '/sessions' && method === 'GET') {
+      historyRequests.push(url)
+      const start = Number(url.searchParams.get('cursor') || 0)
+      const limit = Number(url.searchParams.get('limit') || 20)
+      const items = order.slice(start, start + limit).map((id) => summary(sessions.get(id)!))
+      await route.fulfill({
+        json: { items, next_cursor: start + limit < order.length ? String(start + limit) : null },
+      })
+      return
+    }
+    if (path === '/workspace/draft' || path.includes('/drafts/')) {
+      const draft = drafts.get(path) || { data: {}, revision: 0, updated_at: null }
+      if (method === 'GET') {
+        await route.fulfill({ json: draft })
+        return
+      }
+      const body = route.request().postDataJSON() as SaveDraftRequest
+      draftRequests.push(structuredClone(body))
+      if (failDraft) {
+        failDraft = false
+        await route.abort('failed')
+        return
+      }
+      if (conflictDraft || body.expected_revision !== draft.revision) {
+        conflictDraft = false
+        await route.fulfill({
+          status: 409,
+          json: { detail: { code: 'draft_changed', action: 'reload' } },
+        })
+        return
+      }
+      const next = {
+        data: structuredClone(body.data),
+        revision: draft.revision + 1,
+        updated_at: '2026-10-06T00:00:00Z',
+      }
+      drafts.set(path, next)
+      await route.fulfill({ json: next })
+      return
+    }
+    if (path.startsWith('/saved-jobs')) {
+      if (path === '/saved-jobs') {
+        await route.fulfill({ json: { items: [...saved.values()] } })
+        return
+      }
+      const id = decodeURIComponent(path.slice('/saved-jobs/'.length))
+      if (method === 'DELETE') {
+        saved.delete(id)
+        await route.fulfill({ status: 204 })
+        return
+      }
+      const body = route.request().postDataJSON() as {
+        session_id: string
+        expected_revision: number
+      }
+      const source = sessions.get(body.session_id)
+      const item = source?.recommendation?.jobs.find((entry) => entry.job.job_id === id)
+      if (!item || source?.revision !== body.expected_revision) {
+        await route.fulfill({
+          status: 409,
+          json: { detail: { code: 'search_changed', action: 'reload' } },
+        })
+        return
+      }
+      saved.set(id, structuredClone(item))
+      await route.fulfill({ json: item })
+      return
+    }
+    if (!path.startsWith('/sessions')) {
+      await route.fallback()
+      return
+    }
+    const id = path.split('/')[2]
     if (method === 'DELETE') {
+      deleted.push(id!)
+      sessions.delete(id!)
+      const index = order.indexOf(id!)
+      if (index >= 0) order.splice(index, 1)
+      for (const key of drafts.keys()) if (key.startsWith(`/sessions/${id}/`)) drafts.delete(key)
       await route.fulfill({ status: 204 })
       return
     }
     if (method === 'GET') {
       getCount += 1
       getTimes.push(Date.now())
-      if (runningPolls > 0 && --runningPolls === 0) snapshot = finish
-      await route.fulfill({ json: snapshot })
+      if (!sessions.has(id!)) {
+        await route.fulfill({
+          status: 404,
+          json: { detail: { code: 'search_not_found', action: 'start_new_search' } },
+        })
+        return
+      }
+      if (id === snapshot.session_id && runningPolls > 0 && --runningPolls === 0) {
+        snapshot = structuredClone(finish)
+        sessions.set(id, snapshot)
+      }
+      await route.fulfill({ json: sessions.get(id!) })
       return
     }
-    if (!route.request().url().endsWith('/resume')) {
+    if (path === '/sessions') {
       createCount += 1
-      createBodies.push(route.request().postDataJSON() as Record<string, unknown>)
+      const body = route.request().postDataJSON() as Record<string, unknown>
+      createBodies.push(body)
+      const requestId = String(body.request_id)
+      let sessionId = creations.get(requestId)
+      if (!sessionId) {
+        sessionId = creations.size === 0 ? initial.session_id : `session-${creations.size + 1}`
+        creations.set(requestId, sessionId)
+        snapshot = { ...structuredClone(snapshot), session_id: sessionId }
+        store(snapshot)
+      }
       if (dropCreate) {
         dropCreate = false
         await route.abort('failed')
         return
       }
-      await route.fulfill({ status: 202, json: snapshot })
+      await route.fulfill({ status: 202, json: sessions.get(sessionId) })
       return
     }
+    snapshot = structuredClone(sessions.get(id!) || snapshot)
     const body = route.request().postDataJSON() as ResumeSessionRequest
     requests.push(body)
     if (dropAnswer) {
@@ -80,6 +214,7 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
           ? { ...snapshot.search_summary, revision: snapshot.revision + 1 }
           : null,
       }
+      store(snapshot)
       await route.fulfill({
         status: 409,
         json: { detail: { code: 'search_changed', message: 'Search changed.', action: 'reload' } },
@@ -138,14 +273,36 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
         })),
       })
     }
+    store(snapshot)
+    for (const key of drafts.keys())
+      if (key.startsWith(`/sessions/${id}/drafts/${body.expected_revision}/`)) drafts.delete(key)
     await route.fulfill({ status: 202, json: snapshot })
   })
   return {
     requests,
     createBodies,
     getTimes,
+    draftRequests,
+    historyRequests,
+    deleted,
     getCount: () => getCount,
     createCount: () => createCount,
+    seedSession: store,
+    readDraft: (path: string) => drafts.get(path),
+    changeDraft: (path: string, data: Record<string, unknown>) => {
+      const previous = drafts.get(path)
+      drafts.set(path, {
+        data: structuredClone(data),
+        revision: (previous?.revision || 0) + 1,
+        updated_at: '2026-10-06T00:00:00Z',
+      })
+    },
+    failNextDraft: () => {
+      failDraft = true
+    },
+    conflictNextDraft: () => {
+      conflictDraft = true
+    },
     dropNextCreate: () => {
       dropCreate = true
     },
@@ -157,14 +314,38 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
     },
     runFor: (polls: number, final: ScoutSession) => {
       snapshot = { ...snapshot, outcome: 'running', current_stage: 'extract' }
+      if (sessions.has(snapshot.session_id)) sessions.set(snapshot.session_id, snapshot)
       runningPolls = polls
       finish = final
     },
   }
 }
 
+async function openHistory(page: Page) {
+  if (await page.getByRole('button', { name: 'Open sidebar', exact: true }).isVisible())
+    await page.getByRole('button', { name: 'Open sidebar', exact: true }).click()
+  const history = page.getByRole('button', { name: 'Search history', exact: true })
+  if (await history.isVisible()) await history.click()
+}
+async function returnToSearch(page: Page, id = 'session-1') {
+  await openHistory(page)
+  await page.locator(`[data-session-id="${id}"]`).click()
+}
+async function deleteSearch(page: Page, id = 'session-1') {
+  await openHistory(page)
+  await page
+    .locator(`[data-session-id="${id}"]`)
+    .locator('..')
+    .getByRole('button', { name: /^Delete search:/ })
+    .click()
+  await page
+    .getByRole('dialog', { name: 'Delete search?', exact: true })
+    .getByRole('button', { name: 'Delete search', exact: true })
+    .click()
+}
+
 async function introduce(page: Page) {
-  await page.goto('/')
+  await page.goto('/new')
   await page
     .getByLabel('About you', { exact: true })
     .fill('Synthetic test profile: React development experience.')
@@ -230,7 +411,7 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
   await page.getByRole('button', { name: 'Save job: React Engineer', exact: true }).click()
   await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
   await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
-  await page.getByRole('link', { name: 'Explore opportunities', exact: false }).first().click()
+  await returnToSearch(page)
   await page.getByRole('button', { name: 'Edit search criteria' }).click()
   await expect(
     page.getByRole('heading', { name: 'Review your profile and search criteria' }),
@@ -246,7 +427,11 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
       Object.keys(sessionStorage).map((key) => [key, sessionStorage.getItem(key)]),
     ),
   }))
-  expect(storage).toEqual({ local: {}, session: { 'jobscout.session_id': 'session-1' } })
+  expect(storage.session).toEqual({})
+  expect(storage.local).toEqual({
+    'jobscout.session_id': 'session-1',
+    'jobscout.sidebar-expanded': 'true',
+  })
 })
 
 test('network retry reuses create request ID; 409 refreshes instead of replaying stale changes', async ({
@@ -278,16 +463,12 @@ test('reload recovers by ID; running polls once a second and delete prevents res
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Reviewing your experience' })).toBeVisible()
   expect(state.createCount()).toBe(1)
-  await page.getByRole('button', { name: 'Start a new search', exact: true }).click()
-  await page
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Start a new search', exact: true })
-    .click()
+  await deleteSearch(page)
   await expect(page.getByRole('button', { name: 'Analyze and continue' })).toBeVisible()
   const count = state.getCount()
   await page.waitForTimeout(1300)
   expect(state.getCount()).toBe(count)
-  expect(await page.evaluate(() => sessionStorage.getItem('jobscout.session_id'))).toBeNull()
+  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBeNull()
 })
 
 test('workflow failure uses backend retry without creating a second session', async ({ page }) => {
@@ -324,7 +505,7 @@ test('resume-only input is valid; required text control accepts free text', asyn
       clarification_questions: [makeQuestion('text', 'text')],
     }),
   )
-  await page.goto('/')
+  await page.goto('/new')
   await page.getByRole('button', { name: 'Analyze and continue' }).click()
   await expect(page.getByText('Add an introduction or upload a resume.')).toBeVisible()
   await page.locator('input[type=file]').setInputFiles({
@@ -402,26 +583,14 @@ test('stale summary cannot be confirmed even when marked ready', async ({ page }
   expect(state.requests).toEqual([])
 })
 
-test('expired recovered session offers a fresh start without persisting private material', async ({
+test('a missing search route offers a fresh start without browser-stored private material', async ({
   page,
 }) => {
-  await page.addInitScript(() => sessionStorage.setItem('jobscout.session_id', 'expired'))
-  await page.route('**/api/v1/sessions/expired', (route) =>
-    route.fulfill({
-      status: 404,
-      json: {
-        detail: {
-          code: 'search_not_found',
-          message: 'Search unavailable.',
-          action: 'start_new_search',
-        },
-      },
-    }),
-  )
-  await page.goto('/')
-  await page.getByRole('button', { name: 'Start over', exact: true }).click()
+  await mockSessions(page)
+  await page.goto('/searches/expired')
+  await page.getByRole('main').getByRole('link', { name: 'New search', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Analyze and continue' })).toBeEnabled()
-  expect(await page.evaluate(() => sessionStorage.getItem('jobscout.session_id'))).toBeNull()
+  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBeNull()
 })
 
 test('conversation preserves supplied free text and structured answers', async ({ page }) => {
@@ -521,7 +690,8 @@ test('clarification drafts preserve choices, skips and text across workspace nav
     .fill('Shenzhen works for me too.')
   await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
   await expect(page).toHaveURL(/\/saved$/)
-  await page.getByRole('link', { name: 'Explore opportunities', exact: false }).first().click()
+  await returnToSearch(page)
+  await page.reload()
   await expect(page.getByRole('radio', { name: 'Option one' })).toBeChecked()
   await expect(page.getByRole('checkbox', { name: 'Option two', exact: true })).toBeChecked()
   await expect(page.getByRole('checkbox', { name: 'Skip this question' })).toBeChecked()
@@ -613,7 +783,8 @@ test('summary edits survive navigation, local overflow preserves entries and new
     .fill('I’d like mentorship.')
   await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
   await expect(page).toHaveURL(/\/saved$/)
-  await page.getByRole('link', { name: 'Explore opportunities', exact: false }).first().click()
+  await returnToSearch(page)
+  await page.reload()
   await expect(page.getByLabel('Skills', { exact: true })).toHaveValue('React\nSQL')
   await expect(page.getByLabel('Add or correct search criteria', { exact: true })).toHaveValue(
     'I’d like mentorship.',
@@ -622,7 +793,7 @@ test('summary edits survive navigation, local overflow preserves entries and new
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   await expect(page.getByLabel('Add or correct search criteria', { exact: true })).toHaveValue('')
   expect(state.requests[0]?.profile_updates).toEqual({ skills: ['React', 'SQL'] })
-  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual(['jobscout.session_id'])
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([])
 })
 
 function resultSession() {
@@ -708,7 +879,7 @@ test('result selection and filters retain job identity and saved removal chooses
     .getByRole('button', { name: 'Remove saved job: Full Stack Engineer', exact: true })
     .click()
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Explore opportunities', exact: true }).click()
+  await returnToSearch(page)
   await expect(
     page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
   ).toBeVisible()
@@ -851,9 +1022,9 @@ test('invalid selected deep links recover to the list and service failure allows
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 900 })
-  await page.addInitScript(() => sessionStorage.setItem('jobscout.session_id', 'session-1'))
-  await mockSessions(page, resultSession())
-  await page.goto('/?job=discarded-record&freshness=not-a-status')
+  const loaded = await mockSessions(page, resultSession())
+  loaded.seedSession(resultSession())
+  await page.goto('/searches/session-1?job=discarded-record&freshness=not-a-status')
   await expect(
     page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
   ).toBeVisible()
@@ -861,6 +1032,20 @@ test('invalid selected deep links recover to the list and service failure allows
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).not.toBeVisible()
   const state = await mockSessions(
     page,
+    createSessionFixture({
+      outcome: 'failed',
+      current_stage: 'failed',
+      retryable: false,
+      errors: [
+        {
+          code: 'service_unavailable',
+          message: 'SOURCE_CONFIG_MISSING private-api-key',
+          action: null,
+        },
+      ],
+    }),
+  )
+  state.seedSession(
     createSessionFixture({
       outcome: 'failed',
       current_stage: 'failed',
@@ -883,7 +1068,7 @@ test('invalid selected deep links recover to the list and service failure allows
   expect(state.requests.at(-1)?.action).toBe('edit_conditions')
 })
 
-test('starting over requires confirmation and a failed deletion preserves the search and private drafts', async ({
+test('deletion requires confirmation and a failed deletion preserves the search, saved jobs and workspace draft', async ({
   page,
 }) => {
   await mockSessions(page, resultSession())
@@ -902,9 +1087,9 @@ test('starting over requires confirmation and a failed deletion preserves the se
           },
         },
       })
-    else await route.fulfill({ status: 204 })
+    else await route.fallback()
   })
-  await page.goto('/')
+  await page.goto('/new')
   const introduction = 'Original introduction: React 项目 experience.'
   await page.getByLabel('About you', { exact: true }).fill(introduction)
   await page.locator('input[type=file]').setInputFiles({
@@ -914,30 +1099,31 @@ test('starting over requires confirmation and a failed deletion preserves the se
   })
   await page.getByRole('button', { name: 'Analyze and continue' }).click()
   await page.getByRole('button', { name: 'Save job: React Engineer', exact: true }).click()
-  const trigger = page.getByRole('button', { name: 'Start a new search', exact: true }).first()
+  await openHistory(page)
+  const trigger = page.getByRole('button', { name: /^Delete search:/ }).first()
   await trigger.click()
-  const dialog = page.getByRole('dialog')
-  await dialog.getByRole('button', { name: 'Keep this search', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Delete search?', exact: true })
+  await dialog.getByRole('button', { name: 'Keep search', exact: true }).click()
   await expect(trigger).toBeFocused()
   expect(deletions).toEqual([])
   await trigger.click()
-  await dialog.getByRole('button', { name: 'Start a new search', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Delete search', exact: true }).click()
   await expect(dialog.getByRole('alert')).toBeVisible()
   await expect(dialog).not.toContainText('private-deletion-diagnostic')
-  await dialog.getByRole('button', { name: 'Keep this search', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Keep search', exact: true }).click()
   await expect(trigger).toBeFocused()
   await expect(
     page.getByRole('button', { name: 'Remove saved job: React Engineer', exact: true }),
   ).toBeVisible()
-  expect(await page.evaluate(() => sessionStorage.getItem('jobscout.session_id'))).toBe('session-1')
+  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBe('session-1')
   await trigger.click()
-  await dialog.getByRole('button', { name: 'Start a new search', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Delete search', exact: true }).click()
   await expect(page.getByLabel('About you', { exact: true })).toHaveValue(introduction)
   await expect(
     page.getByRole('button', { name: 'Remove resume: original.txt', exact: true }),
   ).toBeVisible()
   expect(deletions).toEqual([deletions[0], deletions[0]])
-  expect(await page.evaluate(() => sessionStorage.getItem('jobscout.session_id'))).toBeNull()
+  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBeNull()
   await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
   await expect(
     page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
@@ -965,7 +1151,7 @@ test('resume upload failures preserve typed input, hide diagnostics and allow a 
             },
     })
   })
-  await page.goto('/')
+  await page.goto('/new')
   const introduction = 'Keep this introduction unchanged.'
   await page.getByLabel('About you', { exact: true }).fill(introduction)
   const upload = () =>
@@ -1027,11 +1213,7 @@ test('a delayed mutation response cannot restore a search after confirmed deleti
   await introduce(page)
   await page.getByRole('button', { name: 'Confirm and search', exact: true }).click()
   await expect.poll(() => started).toBe(true)
-  await page.getByRole('button', { name: 'Start a new search', exact: true }).click()
-  await page
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Start a new search', exact: true })
-    .click()
+  await deleteSearch(page)
   await expect(
     page.getByRole('button', { name: 'Analyze and continue', exact: true }),
   ).toBeVisible()
@@ -1044,5 +1226,347 @@ test('a delayed mutation response cannot restore a search after confirmed deleti
   await expect(
     page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
   ).toHaveCount(0)
-  expect(await page.evaluate(() => sessionStorage.getItem('jobscout.session_id'))).toBeNull()
+  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBeNull()
+})
+
+test('desktop drawer remembers expansion and focuses the current search', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const state = await mockSessions(page)
+  state.seedSession(createSessionFixture())
+  await page.goto('/searches/session-1')
+  const sidebar = page.locator('#workspace-sidebar')
+  await expect(sidebar).toHaveCSS('width', '56px')
+  await page.getByRole('button', { name: 'Search history', exact: true }).click()
+  await expect(sidebar).toHaveCSS('width', '256px')
+  await expect(page.locator('[data-session-id="session-1"]')).toBeFocused()
+  await page.reload()
+  await expect(sidebar).toHaveCSS('width', '256px')
+  await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click()
+  await expect(sidebar).toHaveCSS('width', '56px')
+  await page.reload()
+  await expect(sidebar).toHaveCSS('width', '56px')
+})
+
+test('mobile drawer isolates the page, traps focus and restores the trigger on Escape', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockSessions(page)
+  await page.goto('/new')
+  const trigger = page.getByRole('button', { name: 'Open sidebar', exact: true })
+  await trigger.click()
+  const sidebar = page.getByRole('dialog', { name: 'Workspace navigation', exact: true })
+  await expect(sidebar).toBeVisible()
+  await expect(page.locator('.drawer-content')).toHaveAttribute('inert', '')
+  await sidebar.getByRole('button', { name: 'Close sidebar', exact: true }).last().focus()
+  await page.keyboard.press('Tab')
+  await expect(
+    sidebar.getByRole('link', { name: 'JobScout — New search', exact: true }),
+  ).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(
+    sidebar.getByRole('button', { name: 'Close sidebar', exact: true }).last(),
+  ).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(sidebar).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  await expect(page.locator('.drawer-content')).not.toHaveAttribute('inert')
+  await trigger.click()
+  await sidebar.getByRole('link', { name: 'Saved jobs', exact: true }).click()
+  await expect(page).toHaveURL(/\/saved$/)
+  await expect(page.locator('.drawer-content')).not.toHaveAttribute('inert')
+})
+
+test('history loads twenty sessions per page and deleting another search preserves the current route', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const state = await mockSessions(page)
+  for (let index = 25; index >= 1; index -= 1)
+    state.seedSession(createSessionFixture({ session_id: `history-${index}` }))
+  await page.goto('/searches/history-1')
+  await openHistory(page)
+  await expect(page.locator('[data-session-id]')).toHaveCount(20)
+  expect(state.historyRequests.at(-1)?.searchParams.get('limit')).toBe('20')
+  await page.getByRole('button', { name: 'Load more', exact: true }).click()
+  await expect(page.locator('[data-session-id="history-25"]')).toBeVisible()
+  await expect(page.locator('[data-session-id]')).toHaveCount(25)
+  expect(state.historyRequests.some((url) => url.searchParams.get('cursor') === '20')).toBe(true)
+  await deleteSearch(page, 'history-2')
+  await expect(page.locator('[data-session-id="history-2"]')).toHaveCount(0)
+  await expect(page).toHaveURL(/\/searches\/history-1$/)
+  expect(state.deleted).toEqual(['history-2'])
+  await page.goto('/')
+  await expect(page).toHaveURL(/\/searches\/history-1$/)
+})
+
+test('new search preserves history, saved snapshots and the profile draft across reload', async ({
+  page,
+}) => {
+  const state = await mockSessions(page, resultSession())
+  await introduce(page)
+  await page.getByRole('button', { name: 'Save job: React Engineer', exact: true }).first().click()
+  await page.getByRole('link', { name: 'New search', exact: true }).click()
+  await expect(page).toHaveURL(/\/new$/)
+  await expect(page.getByLabel('About you', { exact: true })).toHaveValue(
+    'Synthetic test profile: React development experience.',
+  )
+  await page
+    .getByLabel('About you', { exact: true })
+    .fill('Draft preserved verbatim\n香港 React 项目')
+  await expect
+    .poll(() => state.readDraft('/workspace/draft')?.data.description)
+    .toBe('Draft preserved verbatim\n香港 React 项目')
+  await page.reload()
+  await expect(page.getByLabel('About you', { exact: true })).toHaveValue(
+    'Draft preserved verbatim\n香港 React 项目',
+  )
+  await returnToSearch(page)
+  await expect(
+    page.getByRole('button', { name: 'Remove saved job: React Engineer', exact: true }).first(),
+  ).toBeVisible()
+  await deleteSearch(page)
+  await expect(page).toHaveURL(/\/new$/)
+  await page.getByRole('link', { name: 'Saved jobs', exact: true }).click()
+  await page.reload()
+  await expect(
+    page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
+  ).toBeVisible()
+  expect(state.deleted).toEqual(['session-1'])
+  expect(state.readDraft('/workspace/draft')?.data.description).toBe(
+    'Draft preserved verbatim\n香港 React 项目',
+  )
+})
+
+test('draft save failure and conflict retain raw input until an explicit recovery', async ({
+  page,
+}) => {
+  const state = await mockSessions(page)
+  await page.goto('/new')
+  const input = page.getByLabel('About you', { exact: true })
+  await expect(input).toBeEnabled()
+  state.failNextDraft()
+  await input.fill('Original whitespace  \n香港 skills')
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'Could not save or load this draft' }),
+  ).toBeVisible()
+  await expect(input).toHaveValue('Original whitespace  \n香港 skills')
+  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await expect
+    .poll(() => state.readDraft('/workspace/draft')?.data.description)
+    .toBe('Original whitespace  \n香港 skills')
+  const previousRequest = state.draftRequests[0]!
+  expect(state.draftRequests[1]?.request_id).toBe(previousRequest.request_id)
+  state.changeDraft('/workspace/draft', {
+    ...state.readDraft('/workspace/draft')!.data,
+    description: 'Other workspace version',
+  })
+  await input.fill('My current version')
+  await expect(page.getByRole('button', { name: 'Save my version', exact: true })).toBeVisible()
+  await expect(input).toHaveValue('My current version')
+  expect(state.readDraft('/workspace/draft')?.data.description).toBe('Other workspace version')
+  await page.getByRole('button', { name: 'Save my version', exact: true }).click()
+  await expect
+    .poll(() => state.readDraft('/workspace/draft')?.data.description)
+    .toBe('My current version')
+  await page.reload()
+  await expect(input).toHaveValue('My current version')
+})
+
+test('a delayed accepted response updates its original search without changing the new page', async ({
+  page,
+}) => {
+  const state = await mockSessions(page)
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let started = false
+  await page.route('**/api/v1/sessions/*/resume', async (route) => {
+    started = true
+    await gate
+    const result = resultSession()
+    state.seedSession(result)
+    await route.fulfill({ status: 202, json: result })
+  })
+  await introduce(page)
+  await page.getByRole('button', { name: 'Confirm and search', exact: true }).click()
+  await expect.poll(() => started).toBe(true)
+  await page.getByRole('link', { name: 'New search', exact: true }).click()
+  await expect(page).toHaveURL(/\/new$/)
+  release()
+  await expect(page.getByLabel('About you', { exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/\/new$/)
+  await returnToSearch(page)
+  await expect(
+    page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
+  ).toBeVisible()
+  expect(state.deleted).toEqual([])
+})
+
+test('autosave waits for IME composition to finish and preserves supplied text', async ({
+  page,
+}) => {
+  const state = await mockSessions(page)
+  await page.goto('/new')
+  const input = page.getByLabel('About you', { exact: true })
+  await expect(input).toBeEnabled()
+  await input.dispatchEvent('compositionstart')
+  await input.fill('香港 React 项目  \n原始换行')
+  await page.waitForTimeout(650)
+  expect(state.draftRequests).toEqual([])
+  await input.dispatchEvent('compositionend')
+  await expect
+    .poll(() => state.readDraft('/workspace/draft')?.data.description)
+    .toBe('香港 React 项目  \n原始换行')
+  await page.reload()
+  await expect(input).toHaveValue('香港 React 项目  \n原始换行')
+})
+
+test('an older current search remains available and receives focus after loading', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const state = await mockSessions(page)
+  for (let index = 25; index >= 1; index -= 1)
+    state.seedSession(createSessionFixture({ session_id: `history-${index}` }))
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/v1/sessions/history-25', async (route) => {
+    await gate
+    await route.fallback()
+  })
+  await page.goto('/searches/history-25')
+  await openHistory(page)
+  await expect(page.getByRole('heading', { name: 'Recent searches', exact: true })).toBeFocused()
+  release()
+  const active = page.locator('[data-session-id="history-25"]')
+  await expect(active).toBeFocused()
+  await expect(page.getByRole('heading', { name: 'Current search', exact: true })).toBeVisible()
+  expect(state.historyRequests.every((url) => !url.searchParams.has('cursor'))).toBe(true)
+  await page.getByRole('button', { name: 'Load more', exact: true }).click()
+  await expect(active).toHaveCount(1)
+  await expect(page.getByRole('heading', { name: 'Current search', exact: true })).toHaveCount(0)
+})
+
+test('a delayed create cannot navigate after leaving and returning to the new form', async ({
+  page,
+}) => {
+  const state = await mockSessions(page)
+  let release!: () => void
+  let delivered!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const completed = new Promise<void>((resolve) => {
+    delivered = resolve
+  })
+  let started = false
+  await page.route('**/api/v1/sessions', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.fallback()
+      return
+    }
+    started = true
+    await gate
+    const session = createSessionFixture()
+    state.seedSession(session)
+    await route.fulfill({ status: 202, json: session })
+    delivered()
+  })
+  await introduce(page)
+  await expect.poll(() => started).toBe(true)
+  await page.getByRole('link', { name: 'Saved jobs', exact: true }).click()
+  await expect(page).toHaveURL(/\/saved$/)
+  await page.getByRole('link', { name: 'New search', exact: true }).click()
+  await expect(page).toHaveURL(/\/new$/)
+  const input = page.getByLabel('About you', { exact: true })
+  await expect(input).toBeEnabled()
+  await input.fill('New form information remains here.')
+  release()
+  await completed
+  await openHistory(page)
+  await expect(page.locator('[data-session-id="session-1"]')).toBeVisible()
+  await expect(page).toHaveURL(/\/new$/)
+  await expect(input).toHaveValue('New form information remains here.')
+  await expect(input).toBeEnabled()
+})
+
+test('submitting a clarification locks input while its final draft save completes', async ({
+  page,
+}) => {
+  const state = await mockSessions(
+    page,
+    createSessionFixture({
+      current_stage: 'clarify',
+      search_summary: null,
+      clarification_questions: [makeQuestion('text', 'text')],
+    }),
+  )
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  let saving = false
+  await page.route('**/api/v1/sessions/*/drafts/*/clarification', async (route) => {
+    if (route.request().method() !== 'PUT') {
+      await route.fallback()
+      return
+    }
+    saving = true
+    await gate
+    await route.fallback()
+  })
+  await introduce(page)
+  const input = page.getByLabel('text question', { exact: true })
+  await input.fill('Hong Kong')
+  await page.getByRole('button', { name: 'Send and continue', exact: true }).click()
+  await expect.poll(() => saving).toBe(true)
+  await expect(input).toBeDisabled()
+  expect(state.requests).toEqual([])
+  release()
+  await expect(page.getByRole('button', { name: 'Confirm and search', exact: true })).toBeEnabled()
+  expect(state.requests[0]?.answers).toEqual([{ question_id: 'text', value: 'Hong Kong' }])
+})
+
+test('a pending deletion cannot redirect away from a different search selected with browser history', async ({
+  page,
+}) => {
+  const state = await mockSessions(page)
+  state.seedSession(createSessionFixture({ session_id: 'session-2' }))
+  await introduce(page)
+  await returnToSearch(page, 'session-2')
+  await expect(page).toHaveURL(/\/searches\/session-2$/)
+  await page.goBack()
+  await expect(page).toHaveURL(/\/searches\/session-1$/)
+  let release!: () => void
+  let delivered!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const completed = new Promise<void>((resolve) => {
+    delivered = resolve
+  })
+  let deleting = false
+  await page.route('**/api/v1/sessions/session-1', async (route) => {
+    if (route.request().method() !== 'DELETE') {
+      await route.fallback()
+      return
+    }
+    deleting = true
+    await gate
+    await route.fallback()
+    delivered()
+  })
+  await deleteSearch(page)
+  await expect.poll(() => deleting).toBe(true)
+  await page.goForward()
+  await expect(page).toHaveURL(/\/searches\/session-2$/)
+  release()
+  await completed
+  await expect(page.locator('[data-session-id="session-1"]')).toHaveCount(0)
+  await expect(page).toHaveURL(/\/searches\/session-2$/)
+  expect(state.deleted).toEqual(['session-1'])
 })

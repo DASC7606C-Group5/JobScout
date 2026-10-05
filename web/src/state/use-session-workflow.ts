@@ -1,24 +1,45 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   CreateSessionRequest,
   ResumeSessionRequest,
   ResumeSubmission,
   ScoutInput,
+  ScoutSession,
   SessionClient,
 } from '../lib/contracts'
 import { SessionHttpError } from '../lib/session-client'
-import { sessionKey, sessionQueryOptions } from '../lib/session-query'
-import { readSessionId, rememberSessionId } from '../lib/session-storage'
-import type { ScoutStore } from './scout-store'
+import { latestSessionSnapshot, sessionKey, sessionQueryOptions } from '../lib/session-query'
+import { discardSessionDrafts, flushPendingDrafts } from './draft-navigation'
+import { historyKey } from './workspace-queries'
 
-type Command =
+type Command = (
   | { kind: 'start'; input: CreateSessionRequest }
   | { kind: 'answer'; sessionId: string; request: ResumeSessionRequest }
   | { kind: 'delete'; sessionId: string }
+) & { origin: object }
 
-type Operation = { command: Command; generation: number; controller: AbortController }
+const commandScope = (command: Command) => (command.kind === 'start' ? 'new' : command.sessionId)
+const operationScope = (command: Command) =>
+  command.kind === 'start' ? command.origin : command.sessionId
+
+function commandStatus(
+  command: Command | undefined,
+  sessionId: string | null,
+  isPending: boolean,
+  error: Error | null,
+  origin: object,
+) {
+  const current =
+    command !== undefined &&
+    command.origin === origin &&
+    commandScope(command) === (sessionId ?? 'new')
+  const pending = current && isPending
+  const deleting = pending && command?.kind === 'delete'
+  const deleteError = current && command?.kind === 'delete' ? error : null
+  return { pending, deleting, deleteError, error: current && !deleteError ? error : null }
+}
 
 function recoveryFor(error: unknown) {
   if (!(error instanceof SessionHttpError)) return 'retry'
@@ -34,112 +55,127 @@ function recoveryFor(error: unknown) {
   }
 }
 
-async function submitCommand(client: SessionClient, command: Command, signal: AbortSignal) {
+async function submitCommand(client: SessionClient, command: Command) {
   switch (command.kind) {
     case 'start':
-      return client.start(command.input, signal)
+      return client.start(command.input)
     case 'answer':
-      return client.answer(command.sessionId, command.request, signal)
+      return client.answer(command.sessionId, command.request)
     case 'delete':
-      try {
-        await client.delete(command.sessionId, signal)
-      } catch (error) {
-        // A lost DELETE response may be retried after the search was already removed.
-        if (!(error instanceof SessionHttpError && error.status === 404)) throw error
-      }
+      await client.delete(command.sessionId)
       return null
   }
 }
 
-export function useSessionWorkflow(store: ScoutStore, client: SessionClient) {
-  const queryClient = useQueryClient()
-  const [sessionId, setSessionId] = useState(readSessionId)
-  const generation = useRef(0)
-  const active = useRef<Operation | null>(null)
-  const lastCommand = useRef<Command | null>(null)
-
+export function useSessionWorkflow(
+  client: SessionClient,
+  sessionId: string | null,
+  viewKey: string,
+  onSessionCreated?: (id: string) => void,
+  onSessionDeleted?: (id: string) => void,
+) {
+  const cache = useQueryClient()
+  const origin = useMemo(() => ({ viewKey }), [viewKey])
+  const activeOrigin = useRef(origin)
+  useLayoutEffect(() => {
+    activeOrigin.current = origin
+  }, [origin])
+  const inFlight = useRef(new Set<string | object>())
+  const preparations = useRef(new Set<string | object>())
+  const [preparing, setPreparing] = useState<object | null>(null)
+  const previous = useRef(new Map<string, Command>())
+  const key = sessionId ?? 'new'
   const mutation = useMutation({
-    mutationKey: ['sessions', 'command'],
+    mutationKey: ['session-command'],
     retry: false,
     networkMode: 'always',
-    gcTime: 0,
-    mutationFn: ({ command, controller }: Operation) =>
-      submitCommand(client, command, controller.signal),
-    onSuccess: (session, operation) => {
-      // Abandoned operations cannot restore a deleted or replaced session.
-      if (operation.generation !== generation.current) return
-      store.getState().clearSessionDrafts()
-      rememberSessionId(session?.session_id ?? null)
-      setSessionId(session?.session_id ?? null)
-      if (session) queryClient.setQueryData(sessionKey(session.session_id), session)
-      else store.getState().saveAnswers({})
-      if (sessionId && sessionId !== session?.session_id)
-        queryClient.removeQueries({ queryKey: sessionKey(sessionId), exact: true })
+    mutationFn: (command: Command) => submitCommand(client, command),
+    onSuccess: (session, command) => {
+      if (session)
+        cache.setQueryData<ScoutSession>(sessionKey(session.session_id), (previous) =>
+          latestSessionSnapshot(previous, session),
+        )
+      if (command.kind === 'answer')
+        discardSessionDrafts(command.sessionId, command.request.expected_revision)
+      if (command.kind === 'start' && session && command.origin === activeOrigin.current)
+        onSessionCreated?.(session.session_id)
+      if (command.kind === 'delete') {
+        discardSessionDrafts(command.sessionId)
+        cache.removeQueries({ queryKey: sessionKey(command.sessionId), exact: true })
+        onSessionDeleted?.(command.sessionId)
+      }
+      void cache.invalidateQueries({ queryKey: historyKey })
     },
-    onError: (error, operation) => {
-      if (operation.generation !== generation.current) return
-      if (error instanceof SessionHttpError && error.status === 409 && sessionId) {
-        lastCommand.current = null
-        void queryClient.invalidateQueries({ queryKey: sessionKey(sessionId), exact: true })
+    onError: (error, command) => {
+      if (error instanceof SessionHttpError && error.status === 409 && command.kind !== 'start') {
+        previous.current.delete(commandScope(command))
+        void cache.invalidateQueries({ queryKey: sessionKey(command.sessionId), exact: true })
       }
     },
-    onSettled: (_data, _error, operation) => {
-      if (operation.generation === generation.current) active.current = null
+    onSettled: (_data, _error, command) => {
+      inFlight.current.delete(operationScope(command))
     },
   })
-
+  const command = commandStatus(
+    mutation.variables,
+    sessionId,
+    mutation.isPending,
+    mutation.error,
+    origin,
+  )
   const query = useQuery({
     ...sessionQueryOptions(client, sessionId),
-    enabled: sessionId !== null && !mutation.isPending,
+    enabled: sessionId !== null && !command.pending,
   })
   const session = query.data ?? null
-  const pending = mutation.isPending || query.isFetching
+  const pending = preparing === origin || command.pending || query.isFetching
   const busy = pending || session?.outcome === 'running'
-  const deleting = mutation.isPending && mutation.variables?.command.kind === 'delete'
-  const deleteError = mutation.variables?.command.kind === 'delete' ? mutation.error : null
-  const error = (deleteError ? null : mutation.error) ?? query.error
-  const profile = session?.profile
-
+  const error = command.error ?? query.error
+  const recovery = recoveryFor(error)
+  const outcome = session?.outcome
   useEffect(() => {
-    if (!busy) store.getState().applyProfile(profile ?? null)
-  }, [profile, busy, store])
-
-  useEffect(
-    () => () => {
-      generation.current += 1
-      active.current?.controller.abort()
-    },
-    [],
-  )
+    if (sessionId && outcome && outcome !== 'running')
+      void cache.invalidateQueries({ queryKey: historyKey })
+  }, [cache, sessionId, outcome])
 
   function execute(command: Command) {
-    if (active.current) return
-    const operation = {
-      command,
-      generation: ++generation.current,
-      controller: new AbortController(),
-    }
-    active.current = operation
-    lastCommand.current = command
-    mutation.reset()
-    void queryClient.cancelQueries({ queryKey: sessionKey(sessionId), exact: true })
-    mutation.mutate(operation)
+    const scope = operationScope(command)
+    if (inFlight.current.has(scope)) return
+    inFlight.current.add(scope)
+    previous.current.set(commandScope(command), command)
+    void cache
+      .cancelQueries({
+        queryKey: sessionKey(command.kind === 'start' ? null : command.sessionId),
+        exact: true,
+      })
+      .then(() => mutation.mutate(command))
   }
 
-  function start(input: ScoutInput) {
+  async function prepare(command: Command) {
+    const scope = operationScope(command)
+    if (preparations.current.has(scope) || inFlight.current.has(scope)) return
+    preparations.current.add(scope)
+    setPreparing(command.origin)
+    const saved = await flushPendingDrafts()
+    preparations.current.delete(scope)
+    setPreparing((current) => (current === command.origin ? null : current))
+    if (saved && command.origin === activeOrigin.current) execute(command)
+  }
+
+  async function start(input: ScoutInput) {
     if (busy) return
-    store.getState().clearSessionDrafts()
-    store.getState().saveAnswers({})
-    execute({
+    await prepare({
       kind: 'start',
+      origin,
       input: { ...structuredClone(input), request_id: crypto.randomUUID() },
     })
   }
 
-  function answer(submission: Partial<ResumeSubmission>) {
+  async function answer(submission: Partial<ResumeSubmission>) {
     if (!session || busy) return
-    execute({
+    await prepare({
       kind: 'answer',
+      origin,
       sessionId: session.session_id,
       request: {
         message: '',
@@ -154,51 +190,30 @@ export function useSessionWorkflow(store: ScoutStore, client: SessionClient) {
     })
   }
 
-  function reset() {
-    generation.current += 1
-    active.current?.controller.abort()
-    active.current = null
-    lastCommand.current = null
-    mutation.reset()
-    rememberSessionId(null)
-    setSessionId(null)
-    store.getState().clearSessionDrafts()
-    store.getState().saveAnswers({})
-    void queryClient.cancelQueries({ queryKey: sessionKey(sessionId), exact: true })
-    queryClient.removeQueries({ queryKey: sessionKey(sessionId), exact: true })
-  }
-
   function refresh() {
     if (!sessionId || pending) return
     mutation.reset()
     void query.refetch()
   }
 
-  const recovery = recoveryFor(error)
-
   function retry() {
     if (pending) return
-    if (recovery === 'edit') reset()
-    else if (recovery === 'refresh' || query.isError) refresh()
+    if (recovery === 'refresh' || query.isError) refresh()
     else if (recovery === 'correct') mutation.reset()
-    else if (mutation.isError && lastCommand.current) execute(lastCommand.current)
-    else if (session?.outcome === 'failed' && session.retryable) answer({ action: 'retry' })
+    else if (command.error && previous.current.has(key)) execute(previous.current.get(key)!)
+    else if (session?.outcome === 'failed' && session.retryable) void answer({ action: 'retry' })
   }
 
-  function deleteSession() {
-    if (!sessionId) return
-    generation.current += 1
-    active.current?.controller.abort()
-    active.current = null
-    execute({ kind: 'delete', sessionId })
+  function deleteSession(id = sessionId) {
+    if (id) execute({ kind: 'delete', sessionId: id, origin })
   }
 
   return {
     session,
     busy,
     pending,
-    deleting,
-    deleteError,
+    deleting: command.deleting,
+    deleteError: command.deleteError,
     error,
     recovery,
     start,
@@ -206,6 +221,8 @@ export function useSessionWorkflow(store: ScoutStore, client: SessionClient) {
     retry,
     refresh,
     deleteSession,
-    edit: () => (session ? answer({ action: 'edit_conditions' }) : reset()),
+    edit: () => {
+      if (session) void answer({ action: 'edit_conditions' })
+    },
   }
 }

@@ -1,5 +1,3 @@
-import { useNavigate } from '@tanstack/react-router'
-
 import type { UserProfile } from '../../lib/contracts'
 import { useScoutSession } from '../../state/session-context'
 import { Icon } from '../icon'
@@ -17,17 +15,12 @@ const headings = {
 const stageSteps = { initial: 0, paused: 1, running: 1, failed: 2 }
 
 function DiscoveryHeading() {
-  const { session, busy, edit } = useScoutSession()
-  const navigate = useNavigate()
+  const { session } = useScoutSession()
   const stage = session?.outcome ?? 'initial'
   const completed = stage === 'completed'
   const count = session?.recommendation?.jobs.length ?? 0
   const profile = session?.profile
   const criteria = criteriaLabel(profile)
-  function editSearch() {
-    void navigate({ to: '/', search: {}, replace: true })
-    edit()
-  }
   return (
     <PageHeading
       eyebrow={completed ? 'YOUR OPPORTUNITIES' : 'YOUR NEXT CHAPTER'}
@@ -37,27 +30,32 @@ function DiscoveryHeading() {
           ? criteria
           : 'Tell us about your experience and goals to find a role that fits you better.'
       }
-    >
-      {stage !== 'initial' && !busy && (
-        <button
-          className="btn rounded-lg border border-base-300 bg-base-100 font-normal shadow-none btn-sm"
-          onClick={editSearch}
-        >
-          <Icon name="compass" size={15} />
-          Edit search criteria
-        </button>
-      )}
-    </PageHeading>
+    />
   )
 }
 
 export function DiscoveryPage() {
-  const { session, busy } = useScoutSession()
+  const { session, busy, edit } = useScoutSession()
   const stage = session?.outcome ?? 'initial'
   const completed = stage === 'completed'
   return (
     <>
       <DiscoveryHeading />
+      {session?.profile && session.current_stage !== 'confirm' && (
+        <section
+          className="card mb-5 flex-row flex-wrap items-center justify-between gap-3 border border-base-300 bg-base-100 p-4"
+          aria-label="Search criteria"
+        >
+          <div>
+            <h2 className="text-sm font-semibold">Search criteria</h2>
+            <p className="mt-1 text-sm text-base-content/65">{criteriaLabel(session.profile)}</p>
+          </div>
+          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={edit}>
+            <Icon name="compass" size={15} />
+            Edit search criteria
+          </button>
+        </section>
+      )}
       {!completed && (
         <WorkflowSteps step={session?.search_summary?.confirmed ? 2 : stageSteps[stage]} />
       )}

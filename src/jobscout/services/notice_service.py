@@ -184,6 +184,15 @@ _ERRORS: dict[str, tuple[str, str | None]] = {
     "invalid_input": ("Check the information you entered and try again.", "edit_conditions"),
     "invalid_answer": ("Check your answer or update your search criteria.", "edit_conditions"),
     "search_changed": ("Your search has changed. Reload it before continuing.", "reload"),
+    "draft_conflict": ("The shared draft has changed. Reload it before saving.", "reload"),
+    "search_interrupted": (
+        "Your search was interrupted. Your input is saved; retry when ready.",
+        "retry",
+    ),
+    "saved_job_not_found": (
+        "This recommendation is no longer available. Reload the search.",
+        "reload",
+    ),
     "operation_in_progress": (
         "Your search is still working. Reload it to see the latest progress.",
         "reload",

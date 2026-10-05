@@ -201,3 +201,44 @@ export interface SessionClient {
   ) => Promise<ScoutSession>
   delete: (sessionId: string, signal?: AbortSignal) => Promise<void>
 }
+
+export interface SessionSummary {
+  session_id: string
+  title: string
+  location: string
+  created_at: string
+  updated_at: string
+  outcome: ScoutSession['outcome']
+  current_stage: string
+  revision: number
+  retryable: boolean
+  mode: ScoutSession['mode']
+}
+
+export interface SessionHistory {
+  items: SessionSummary[]
+  next_cursor: string | null
+}
+
+export interface DraftResponse<T = Record<string, unknown>> {
+  data: T
+  revision: number
+  updated_at: string | null
+}
+
+export interface SaveDraftRequest<T = Record<string, unknown>> {
+  data: T
+  request_id: string
+  expected_revision: number
+}
+
+export type DraftSection = 'clarification' | 'summary'
+
+export interface WorkspaceClient {
+  history: (cursor: string | null, signal?: AbortSignal) => Promise<SessionHistory>
+  getDraft: (path: string, signal?: AbortSignal) => Promise<DraftResponse>
+  saveDraft: (path: string, request: SaveDraftRequest) => Promise<DraftResponse>
+  savedJobs: (signal?: AbortSignal) => Promise<RecommendationItem[]>
+  saveJob: (jobId: string, sessionId: string, revision: number) => Promise<RecommendationItem>
+  removeJob: (jobId: string) => Promise<void>
+}

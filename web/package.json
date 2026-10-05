@@ -23,8 +23,7 @@
     "@tanstack/react-router": "^1.170.40",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-hook-form": "^7.89.0",
-    "zustand": "^5.0.15"
+    "react-hook-form": "^7.89.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

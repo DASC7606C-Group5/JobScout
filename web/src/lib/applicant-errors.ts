@@ -32,6 +32,14 @@ const errors = {
     message: 'Your search has changed. Reload it before continuing.',
     action: 'reload',
   },
+  draft_conflict: {
+    message: 'This draft was changed elsewhere. Reload it or save your current version.',
+    action: 'reload',
+  },
+  search_interrupted: {
+    message: 'This search was interrupted. Your information is saved; retry when you are ready.',
+    action: 'retry',
+  },
   operation_in_progress: {
     message: 'Your search is still being updated. Reload it to see the latest progress.',
     action: 'reload',

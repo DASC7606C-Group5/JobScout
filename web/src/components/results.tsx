@@ -22,7 +22,7 @@ export function Results({
 }: {
   result: RecommendationResult | null
   saved: RecommendationItem[]
-  onToggle: (item: RecommendationItem) => void
+  onToggle: (item: RecommendationItem) => boolean | Promise<boolean> | void
   onEdit: () => void
   savedOnly?: boolean
   notices?: ApplicantNotice[]
@@ -148,7 +148,9 @@ function ResultItems({
           notices={notices}
           headingRef={detailHeading}
           saved={saved.some((entry) => entry.job.job_id === selected.job.job_id)}
-          onToggle={() => toggle(selected)}
+          onToggle={() => {
+            void toggle(selected)
+          }}
           onBack={back}
           onEdit={onEdit}
         />

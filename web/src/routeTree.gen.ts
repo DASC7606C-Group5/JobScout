@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspaceRouteImport } from './routes/_workspace'
 import { Route as WorkspaceIndexRouteImport } from './routes/_workspace.index'
+import { Route as WorkspaceNewRouteImport } from './routes/_workspace.new'
 import { Route as WorkspaceSavedRouteImport } from './routes/_workspace.saved'
+import { Route as WorkspaceSearchesSessionIdRouteImport } from './routes/_workspace.searches.$sessionId'
 
 const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/_workspace',
@@ -22,32 +24,55 @@ const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
   path: '/',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceNewRoute = WorkspaceNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const WorkspaceSavedRoute = WorkspaceSavedRouteImport.update({
   id: '/saved',
   path: '/saved',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceSearchesSessionIdRoute =
+  WorkspaceSearchesSessionIdRouteImport.update({
+    id: '/searches/$sessionId',
+    path: '/searches/$sessionId',
+    getParentRoute: () => WorkspaceRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof WorkspaceIndexRoute
+  '/new': typeof WorkspaceNewRoute
   '/saved': typeof WorkspaceSavedRoute
+  '/searches/$sessionId': typeof WorkspaceSearchesSessionIdRoute
 }
 export interface FileRoutesByTo {
+  '/new': typeof WorkspaceNewRoute
   '/saved': typeof WorkspaceSavedRoute
   '/': typeof WorkspaceIndexRoute
+  '/searches/$sessionId': typeof WorkspaceSearchesSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_workspace': typeof WorkspaceRouteWithChildren
+  '/_workspace/new': typeof WorkspaceNewRoute
   '/_workspace/saved': typeof WorkspaceSavedRoute
   '/_workspace/': typeof WorkspaceIndexRoute
+  '/_workspace/searches/$sessionId': typeof WorkspaceSearchesSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/saved'
+  fullPaths: '/' | '/new' | '/saved' | '/searches/$sessionId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/saved' | '/'
-  id: '__root__' | '/_workspace' | '/_workspace/saved' | '/_workspace/'
+  to: '/new' | '/saved' | '/' | '/searches/$sessionId'
+  id:
+    | '__root__'
+    | '/_workspace'
+    | '/_workspace/new'
+    | '/_workspace/saved'
+    | '/_workspace/'
+    | '/_workspace/searches/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -70,6 +95,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceIndexRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/_workspace/new': {
+      id: '/_workspace/new'
+      path: '/new'
+      fullPath: '/new'
+      preLoaderRoute: typeof WorkspaceNewRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
     '/_workspace/saved': {
       id: '/_workspace/saved'
       path: '/saved'
@@ -77,17 +109,28 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceSavedRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/_workspace/searches/$sessionId': {
+      id: '/_workspace/searches/$sessionId'
+      path: '/searches/$sessionId'
+      fullPath: '/searches/$sessionId'
+      preLoaderRoute: typeof WorkspaceSearchesSessionIdRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
   }
 }
 
 interface WorkspaceRouteChildren {
+  WorkspaceNewRoute: typeof WorkspaceNewRoute
   WorkspaceSavedRoute: typeof WorkspaceSavedRoute
   WorkspaceIndexRoute: typeof WorkspaceIndexRoute
+  WorkspaceSearchesSessionIdRoute: typeof WorkspaceSearchesSessionIdRoute
 }
 
 const WorkspaceRouteChildren: WorkspaceRouteChildren = {
+  WorkspaceNewRoute: WorkspaceNewRoute,
   WorkspaceSavedRoute: WorkspaceSavedRoute,
   WorkspaceIndexRoute: WorkspaceIndexRoute,
+  WorkspaceSearchesSessionIdRoute: WorkspaceSearchesSessionIdRoute,
 }
 
 const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(

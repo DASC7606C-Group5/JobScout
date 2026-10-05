@@ -4,7 +4,9 @@ import asyncio
 from typing import Any
 
 import pytest
+from tortoise import Tortoise
 
+from jobscout.database import tortoise_config
 from jobscout.schemas.conversation import QuestionOption
 from jobscout.schemas.search import ClarificationMessage
 from jobscout.schemas.session import SessionCreateRequest, SessionResumeRequest
@@ -54,10 +56,21 @@ def create_payload(request_id: str = "create-1") -> SessionCreateRequest:
     return SessionCreateRequest(request_id=request_id, description="Synthetic SQL student")
 
 
+async def manager_for(graph: ControlledGraph, memory: Memory) -> SessionService:
+    await Tortoise.init(config=tortoise_config("sqlite://:memory:"))
+    await Tortoise.generate_schemas(safe=True)
+    return SessionService(graph, memory)
+
+
+async def close_manager(manager: SessionService) -> None:
+    await manager.close()
+    await Tortoise.close_connections()
+
+
 def test_create_is_accepted_and_idempotent() -> None:
     async def check() -> None:
         graph = ControlledGraph()
-        manager = SessionService(graph, Memory())
+        manager = await manager_for(graph, Memory())
         first = await manager.create(create_payload())
         assert first.outcome == "running"
         same = await manager.create(create_payload())
@@ -70,7 +83,7 @@ def test_create_is_accepted_and_idempotent() -> None:
         graph.release.set()
         await asyncio.sleep(0)
         assert (await manager.get(first.session_id)).outcome == "completed"
-        await manager.close()
+        await close_manager(manager)
 
     asyncio.run(check())
 
@@ -78,7 +91,7 @@ def test_create_is_accepted_and_idempotent() -> None:
 def test_stale_and_concurrent_operations_are_rejected() -> None:
     async def check() -> None:
         graph = ControlledGraph()
-        manager = SessionService(graph, Memory())
+        manager = await manager_for(graph, Memory())
         session = await manager.create(create_payload())
         try:
             with pytest.raises(SessionOperationError) as error:
@@ -107,7 +120,7 @@ def test_stale_and_concurrent_operations_are_rejected() -> None:
             assert error.value.status == 409
             assert (await manager.get(session.session_id)).revision == completed.revision
         finally:
-            await manager.close()
+            await close_manager(manager)
 
     asyncio.run(check())
 
@@ -116,7 +129,7 @@ def test_delete_cancels_and_never_restores_session() -> None:
     async def check() -> None:
         graph = ControlledGraph()
         memory = Memory()
-        manager = SessionService(graph, memory)
+        manager = await manager_for(graph, memory)
         session = await manager.create(create_payload())
         await graph.started.wait()
         await manager.delete(session.session_id)
@@ -130,7 +143,7 @@ def test_delete_cancels_and_never_restores_session() -> None:
         with pytest.raises(SessionOperationError) as repeated:
             await manager.create(create_payload())
         assert repeated.value.status == 404
-        await manager.close()
+        await close_manager(manager)
 
     asyncio.run(check())
 
@@ -139,7 +152,7 @@ def test_sessions_are_isolated_and_completed_edit_is_idempotent() -> None:
     async def check() -> None:
         graph = ControlledGraph()
         graph.release.set()
-        manager = SessionService(graph, Memory())
+        manager = await manager_for(graph, Memory())
         first = await manager.create(create_payload())
         second = await manager.create(create_payload("create-2"))
         await asyncio.sleep(0)
@@ -152,7 +165,7 @@ def test_sessions_are_isolated_and_completed_edit_is_idempotent() -> None:
         repeat = await manager.resume(first.session_id, payload)
         assert accepted.revision == repeat.revision == 2
         assert (await manager.get(second.session_id)).revision == 1
-        await manager.close()
+        await close_manager(manager)
 
     asyncio.run(check())
 
@@ -169,7 +182,7 @@ def test_late_result_after_cancellation_cannot_restore_deleted_state() -> None:
 
     async def check() -> None:
         graph = LateGraph()
-        manager = SessionService(graph, Memory())
+        manager = await manager_for(graph, Memory())
         session = await manager.create(create_payload())
         await graph.started.wait()
         await manager.delete(session.session_id)
@@ -177,7 +190,7 @@ def test_late_result_after_cancellation_cannot_restore_deleted_state() -> None:
             await manager.get(session.session_id)
         assert error.value.status == 404
         assert session.session_id not in manager.sessions
-        await manager.close()
+        await close_manager(manager)
 
     asyncio.run(check())
 
@@ -185,7 +198,7 @@ def test_late_result_after_cancellation_cannot_restore_deleted_state() -> None:
 def test_question_controls_and_confirmation_are_validated_before_acceptance() -> None:
     async def check() -> None:
         graph = ControlledGraph()
-        manager = SessionService(graph, Memory())
+        manager = await manager_for(graph, Memory())
         session = await manager.create(create_payload())
         await graph.started.wait()
         graph.release.set()
@@ -236,7 +249,7 @@ def test_question_controls_and_confirmation_are_validated_before_acceptance() ->
                 ),
             )
         assert error.value.status == 409
-        await manager.close()
+        await close_manager(manager)
 
     asyncio.run(check())
 
@@ -245,7 +258,7 @@ def test_get_does_not_restore_a_previous_revision_while_editing() -> None:
     async def check() -> None:
         graph = ControlledGraph()
         graph.release.set()
-        manager = SessionService(graph, Memory())
+        manager = await manager_for(graph, Memory())
         session = await manager.create(create_payload())
         await asyncio.sleep(0)
         record = manager.sessions[session.session_id]
@@ -269,7 +282,7 @@ def test_get_does_not_restore_a_previous_revision_while_editing() -> None:
         assert snapshot.revision == 2
         assert snapshot.recommendation is None
         assert not any(notice.source == "jobsdb" for notice in snapshot.notices)
-        await manager.close()
+        await close_manager(manager)
 
     asyncio.run(check())
 
@@ -278,7 +291,7 @@ def test_unknown_question_and_privileged_field_rejected() -> None:
     async def check() -> None:
         graph = ControlledGraph()
         graph.release.set()
-        manager = SessionService(graph, Memory())
+        manager = await manager_for(graph, Memory())
         session = await manager.create(create_payload())
         await asyncio.sleep(0)
         for changes in (
@@ -296,6 +309,6 @@ def test_unknown_question_and_privileged_field_rejected() -> None:
             with pytest.raises(SessionOperationError) as error:
                 await manager.resume(session.session_id, payload)
             assert error.value.status == 422
-        await manager.close()
+        await close_manager(manager)
 
     asyncio.run(check())

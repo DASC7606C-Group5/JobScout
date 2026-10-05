@@ -4,6 +4,7 @@ import type { ClarificationMessage } from '../lib/contracts'
 import { answerValidation, collectAnswers, pendingQuestions } from '../lib/conversation'
 import { useScoutSession } from '../state/session-context'
 import { useSessionDraft, type SessionDraftValues } from '../state/use-session-draft'
+import { DraftStatus } from './draft-status'
 import { Icon } from './icon'
 import { QuestionControl } from './question-control'
 
@@ -12,13 +13,19 @@ const emptyDraft: SessionDraftValues['clarification'] = { values: {}, skipped: [
 export function ClarificationForm({ questions }: { questions: ClarificationMessage[] }) {
   const { answer, busy } = useScoutSession()
   const pending = pendingQuestions(questions)
-  const [{ values, skipped, message }, setDraft] = useSessionDraft('clarification', emptyDraft)
+  const draft = useSessionDraft('clarification', emptyDraft)
+  const {
+    value: { values, skipped, message },
+    setValue: setDraft,
+  } = draft
   const [error, setError] = useState('')
   const skippedIds = new Set(skipped)
   return (
     <form
       noValidate
       className="card border border-base-300 bg-base-100 shadow-sm"
+      onCompositionStart={draft.onCompositionStart}
+      onCompositionEnd={draft.onCompositionEnd}
       onSubmit={(event) => {
         event.preventDefault()
         const validation = answerValidation(pending, values, skipped)
@@ -32,7 +39,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
           return
         }
         setError('')
-        answer({ answers, message: message.trim(), skipped_question_ids: skipped })
+        void answer({ answers, message: message.trim(), skipped_question_ids: skipped })
       }}
     >
       <div className="flex items-start gap-3 border-b border-base-300 px-5 py-5 sm:px-7">
@@ -46,7 +53,10 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
           </p>
         </div>
       </div>
-      <fieldset disabled={busy} className="min-w-0 space-y-6 p-5 sm:p-7">
+      <fieldset
+        disabled={busy || draft.status === 'loading'}
+        className="min-w-0 space-y-6 p-5 sm:p-7"
+      >
         {pending.map((question) => (
           <QuestionControl
             key={question.question_id}
@@ -75,7 +85,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
           </label>
           <textarea
             id="conversation-message"
-            className="textarea min-h-24 w-full resize-y rounded-xl border border-base-300 bg-base-200/25 p-3 text-sm leading-6"
+            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none rounded-xl border border-base-300 bg-base-200/25 p-3 text-sm leading-6"
             value={message}
             onChange={(event) =>
               setDraft((previous) => ({ ...previous, message: event.target.value }))
@@ -89,6 +99,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
             {error}
           </p>
         )}
+        <DraftStatus {...draft} />
         <div className="flex justify-end border-t border-base-300 pt-5">
           <button className="btn min-w-40 rounded-xl border-0 btn-primary" type="submit">
             Send and continue

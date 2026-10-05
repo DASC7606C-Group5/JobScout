@@ -4,6 +4,7 @@ import { rejects } from 'node:assert/strict'
 import { QueryClient, QueryObserver } from '@tanstack/react-query'
 
 import { createSessionFixture } from '../../tests/fixtures'
+import type { ScoutSession } from './contracts'
 import { createSessionClient } from './session-client'
 import { sessionKey, sessionQueryOptions } from './session-query'
 
@@ -80,5 +81,27 @@ describe('session query lifecycle', () => {
     expect(cache.getQueryData(sessionKey(session.session_id))).toBeUndefined()
     unsubscribe()
     cache.clear()
+  })
+
+  test('late GET snapshots cannot regress accepted revisions or restore a running outcome after completion', async () => {
+    for (const old of [
+      createSessionFixture({ revision: 4, outcome: 'paused' }),
+      createSessionFixture({ revision: 5, outcome: 'running' }),
+    ]) {
+      const cache = new QueryClient()
+      const response = Promise.withResolvers<Response>()
+      const client = createSessionClient('/api/v1', () => response.promise)
+      const reading = cache.fetchQuery(sessionQueryOptions(client, old.session_id))
+      const confirmed = createSessionFixture({
+        session_id: old.session_id,
+        revision: 5,
+        outcome: 'completed',
+      })
+      cache.setQueryData(sessionKey(old.session_id), confirmed)
+      response.resolve(Response.json(old))
+      expect(await reading).toEqual(confirmed)
+      expect(cache.getQueryData<ScoutSession>(sessionKey(old.session_id))).toEqual(confirmed)
+      cache.clear()
+    }
   })
 })

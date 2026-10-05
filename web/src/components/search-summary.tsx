@@ -10,6 +10,7 @@ import {
 } from '../lib/search-summary'
 import { useScoutSession } from '../state/session-context'
 import { useSessionDraft } from '../state/use-session-draft'
+import { DraftStatus } from './draft-status'
 
 const employmentOptions = [
   ['full-time', 'Full-time'],
@@ -64,7 +65,7 @@ function SummaryFields({
             {kind === 'array' ? (
               <textarea
                 id={id}
-                className="textarea w-full resize-y rounded-xl border border-base-300 bg-base-200/25 text-sm leading-6"
+                className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none rounded-xl border border-base-300 bg-base-200/25 text-sm leading-6"
                 rows={key === 'target_directions' ? 2 : 3}
                 value={value}
                 readOnly={!editable}
@@ -139,7 +140,8 @@ function SummaryFields({
 export function SearchSummary({ summary }: { summary: Summary }) {
   const { answer, busy, session, refresh } = useScoutSession()
   const original = summaryDraft(summary.profile)
-  const [formDraft, setFormDraft] = useSessionDraft('summary', { fields: original, message: '' })
+  const persisted = useSessionDraft('summary', { fields: original, message: '' })
+  const { value: formDraft, setValue: setFormDraft } = persisted
   const { fields: draft, message } = formDraft
   const updates = summaryUpdates(original, draft, summary.editable_fields)
   const changed = Object.keys(updates).length > 0 || Boolean(message.trim())
@@ -152,10 +154,16 @@ export function SearchSummary({ summary }: { summary: Summary }) {
     <form
       noValidate
       className="card border border-base-300 bg-base-100 p-5 sm:p-7"
+      onCompositionStart={persisted.onCompositionStart}
+      onCompositionEnd={persisted.onCompositionEnd}
       onSubmit={(event) => {
         event.preventDefault()
         if (changed && current && !busy && !directionError)
-          answer({ action: 'edit_conditions', profile_updates: updates, message: message.trim() })
+          void answer({
+            action: 'edit_conditions',
+            profile_updates: updates,
+            message: message.trim(),
+          })
       }}
     >
       <h2 className="text-lg font-semibold">Review your profile and search criteria</h2>
@@ -167,7 +175,10 @@ export function SearchSummary({ summary }: { summary: Summary }) {
         Enter one item per line or separate items with commas. After saving changes, review and
         confirm them. We won’t search for jobs until you confirm.
       </p>
-      <fieldset disabled={busy} className="mt-6 min-w-0 space-y-6">
+      <fieldset
+        disabled={busy || persisted.status === 'loading'}
+        className="mt-6 min-w-0 space-y-6"
+      >
         <fieldset className="fieldset min-w-0 p-0">
           <legend className="fieldset-legend pb-3 text-sm">Your experience</legend>
           <SummaryFields
@@ -206,7 +217,7 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           </label>
           <textarea
             id="summary-message"
-            className="textarea min-h-24 w-full resize-y rounded-xl border border-base-300 bg-base-200/25 text-sm leading-6"
+            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none rounded-xl border border-base-300 bg-base-200/25 text-sm leading-6"
             value={message}
             onChange={(event) => setFormDraft({ ...formDraft, message: event.target.value })}
             maxLength={10000}
@@ -226,11 +237,14 @@ export function SearchSummary({ summary }: { summary: Summary }) {
               changed || !summary.ready || summary.confirmed || !current || Boolean(directionError)
             }
             className="btn rounded-xl btn-primary"
-            onClick={() => answer({ action: 'confirm_search' })}
+            onClick={() => {
+              void answer({ action: 'confirm_search' })
+            }}
           >
             Confirm and search
           </button>
         </div>
+        <DraftStatus {...persisted} />
         {!current && (
           <div className="text-xs text-base-content/65">
             <p>Your search has changed. Reload it before confirming these criteria.</p>

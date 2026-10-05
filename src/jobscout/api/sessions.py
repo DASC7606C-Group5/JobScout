@@ -2,9 +2,10 @@
 
 from typing import cast
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
 from jobscout.schemas.session import SessionCreateRequest, SessionResponse, SessionResumeRequest
+from jobscout.schemas.workspace import SessionHistoryResponse
 from jobscout.services.notice_service import public_error
 from jobscout.services.session_service import SessionOperationError, SessionService
 
@@ -24,6 +25,16 @@ async def health_check() -> dict[str, str]:
 async def create_session(request: Request, payload: SessionCreateRequest) -> SessionResponse:
     try:
         return await _service(request).create(payload)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
+
+
+@router.get("/sessions", response_model=SessionHistoryResponse)
+async def get_history(
+    request: Request, cursor: str | None = None, limit: int = Query(default=20, ge=1, le=100)
+) -> SessionHistoryResponse:
+    try:
+        return await _service(request).history(cursor=cursor, limit=limit)
     except SessionOperationError as error:
         raise HTTPException(error.status, public_error(error.code).model_dump()) from error
 
