@@ -554,6 +554,7 @@ async def evaluate(
         "src/jobscout/services/search_agent.py",
         "src/jobscout/services/tool_registry.py",
         "src/jobscout/services/job_assessment_service.py",
+        "src/jobscout/services/prompts.py",
         "src/jobscout/services/job_processing_service.py",
         "src/jobscout/services/recommendation_service.py",
         "src/jobscout/services/llm_service.py",

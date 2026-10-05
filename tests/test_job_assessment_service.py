@@ -496,6 +496,36 @@ def test_cache_reuses_only_jd_revalidates_sources_and_recomputes_user_match() ->
     asyncio.run(scenario())
 
 
+def test_changed_source_instructions_recompute_cached_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from jobscout.services import job_assessment_service as assessment_module
+    from jobscout.services.prompts import JOB_ANALYSIS_PROMPT
+
+    async def scenario() -> None:
+        provider = ReplayProvider()
+        service = JobAssessmentService(provider)
+        await service.begin_search("before")
+        await service.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s")
+        snapshot = service.export_cache()
+        monkeypatch.setattr(
+            assessment_module,
+            "JOB_ANALYSIS_PROMPT",
+            JOB_ANALYSIS_PROMPT + "\nPreserve explicit seniority distinctions.",
+        )
+        restored = JobAssessmentService(provider)
+        restored.import_cache(snapshot, "s")
+        await restored.begin_search("after")
+        result = await restored.assess(profile(), [job("a")], PROFILE_DOCUMENTS, "s")
+        assert [item.job.job_id for item in result.jobs] == ["a"]
+        assert Counter(call["task"] for call in provider.calls) == {
+            "jd_analysis": 2,
+            "matching": 2,
+        }
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("damage", ["version", "session_id", "entries"])
 def test_cache_import_rejects_invalid_checkpoint_atomically(damage: str) -> None:
     async def scenario() -> None:
