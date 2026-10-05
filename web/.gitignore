@@ -7,3 +7,6 @@ dist/
 !.env.example
 *.tsbuildinfo
 coverage/
+.tools/
+test-results/
+playwright-report/

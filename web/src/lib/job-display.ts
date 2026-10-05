@@ -1,10 +1,10 @@
-const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
+const dateFormatter = new Intl.DateTimeFormat('en-HK', {
   year: 'numeric',
   month: '2-digit',
   day: '2-digit',
   timeZone: 'Asia/Hong_Kong',
 })
-const generatedFormatter = new Intl.DateTimeFormat('zh-CN', {
+const generatedFormatter = new Intl.DateTimeFormat('en-HK', {
   month: 'long',
   day: 'numeric',
   hour: '2-digit',
@@ -13,12 +13,12 @@ const generatedFormatter = new Intl.DateTimeFormat('zh-CN', {
 })
 export function generatedLabel(value: string) {
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '未提供' : generatedFormatter.format(date)
+  return Number.isNaN(date.getTime()) ? 'Not provided' : generatedFormatter.format(date)
 }
 export function dateLabel(value: string | null) {
-  if (!value) return '未提供'
+  if (!value) return 'Not provided'
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '未提供' : dateFormatter.format(date)
+  return Number.isNaN(date.getTime()) ? 'Not provided' : dateFormatter.format(date)
 }
 
 export function safeSourceUrl(value: string): string | null {

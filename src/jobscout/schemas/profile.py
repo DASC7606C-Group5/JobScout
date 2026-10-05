@@ -16,6 +16,7 @@ class ProfilePreferences(BaseModel):
     location: str | None = None
     location_unrestricted: bool = False
     employment_type: str | None = None
+    employment_type_unrestricted: bool = False
     salary_range: str | None = None
     work_mode: str | None = None
     industry: str | None = None

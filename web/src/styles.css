@@ -21,6 +21,41 @@
     scrollbar-gutter: stable;
   }
 
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--color-base-content) 30%, var(--color-base-100))
+      var(--color-base-100);
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: var(--color-base-100);
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border: 2px solid var(--color-base-100);
+    border-radius: var(--radius-box);
+    background: color-mix(in oklch, var(--color-base-content) 30%, var(--color-base-100));
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--color-base-content) 45%, var(--color-base-100));
+  }
+
+  *::-webkit-scrollbar-thumb:active {
+    background: color-mix(in oklch, var(--color-base-content) 60%, var(--color-base-100));
+  }
+
+  @media (forced-colors: active) {
+    * {
+      scrollbar-color: auto;
+    }
+  }
+
   button:not(:disabled),
   summary,
   select:not(:disabled) {

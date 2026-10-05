@@ -14,6 +14,18 @@ const paths = {
     </>
   ),
   bookmark: <path d="M6 4h12v17l-6-4-6 4V4Z" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  panel: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16m5-11 3 3-3 3" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7" />
+    </>
+  ),
   arrow: <path d="M4 12h16m-6-6 6 6-6 6" />,
   upload: (
     <>

@@ -1,9 +1,11 @@
 """Geographic routing, native API filters and credential handling; offline."""
 
+import asyncio
 from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
 
 from jobscout.schemas.search import SearchRequest
@@ -67,7 +69,6 @@ def test_native_mainland_fulltime_filters_preserve_keywords() -> None:
     "updates, code",
     [
         ({"location": "Shanghai"}, "SEARCH_REGION_UNSUPPORTED"),
-        ({"work_mode": "remote"}, "SEARCH_FILTER_UNSUPPORTED"),
         ({"employment_type": "freelance"}, "SEARCH_FILTER_UNSUPPORTED"),
     ],
 )
@@ -80,12 +81,12 @@ def test_do_not_silently_broaden_filters(updates: dict[str, object], code: str) 
 def test_missing_config_is_not_empty_or_foreign_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     for key in ("CAREERJET_API_KEY", "CAREERJET_USER_IP", "CAREERJET_USER_AGENT"):
         monkeypatch.delenv(key, raising=False)
-    with patch("jobscout.services.job_retrieval.transport.urlopen") as network:
-        result = JobSearchService().search(req(sources=["careerjet_hk"]))
+    with patch("httpx.AsyncHTTPTransport.handle_async_request") as network:
+        result = asyncio.run(JobSearchService().search_many_async([req(sources=["careerjet_hk"])]))
     network.assert_not_called()
     assert result.errors[0].code == "SEARCH_CONFIG"
     assert [o.source for o in result.outcomes] == ["careerjet_hk"]
-    assert result.outcomes[0].status == "error"
+    assert result.outcomes[0].status == "unavailable"
 
 
 class Client:
@@ -93,7 +94,7 @@ class Client:
         self.page = page
         self.url = ""
 
-    def get(self, url: str) -> Page:
+    async def get(self, url: str) -> Page:
         self.url = url
         return self.page
 
@@ -118,7 +119,7 @@ def test_mapping_uses_native_filtered_results_and_preserves_raw() -> None:
             fetched_at=datetime.now(UTC),
         )
     )
-    result = CareerjetAdapter("hk", client=client).search(req())
+    result = asyncio.run(CareerjetAdapter("hk", client=client).search_async(req()))
     assert len(result.jobs) == 1 and not result.errors
     assert result.jobs[0].source == "careerjet_hk" and result.jobs[0].expiry_at is None
     assert result.jobs[0].description == "Original excerpt"
@@ -131,17 +132,25 @@ def test_location_ambiguity_is_an_error() -> None:
         Page(payload={"type": "LOCATIONS", "locations": []}, fetched_at=datetime.now(UTC))
     )
     with pytest.raises(RetrievalFailure) as exc:
-        CareerjetAdapter("hk", client=client).search(req())
+        asyncio.run(CareerjetAdapter("hk", client=client).search_async(req()))
     assert exc.value.code == "SEARCH_LOCATION_AMBIGUOUS"
 
 
 def test_authorization_not_in_url_or_redirect_headers() -> None:
-    response = MagicMock()
-    response.__enter__.return_value.read.return_value = b'{"type":"JOBS","jobs":[]}'
-    with patch(
-        "jobscout.services.job_retrieval.transport.urlopen", return_value=response
-    ) as network:
-        HttpJsonClient(authorization="Basic SYNTHETIC").get("https://example.invalid")
-    outgoing = network.call_args.args[0]
-    assert outgoing.unredirected_hdrs["Authorization"] == "Basic SYNTHETIC"
-    assert "Authorization" not in outgoing.headers and "SYNTHETIC" not in outgoing.full_url
+    requests: list[httpx.Request] = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.host == "example.invalid":
+            return httpx.Response(302, headers={"Location": "https://redirect.invalid/feed"})
+        return httpx.Response(200, json={"type": "JOBS", "jobs": []})
+
+    asyncio.run(
+        HttpJsonClient(authorization="Basic SYNTHETIC", transport=httpx.MockTransport(respond)).get(
+            "https://example.invalid"
+        )
+    )
+    assert len(requests) == 2
+    assert requests[0].headers["Authorization"] == "Basic SYNTHETIC"
+    assert "Authorization" not in requests[1].headers
+    assert all("SYNTHETIC" not in str(request.url) for request in requests)

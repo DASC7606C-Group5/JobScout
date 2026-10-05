@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "baseline": {
+    "commit": "fefbd692cba49c9f7a1b2a72c04c68c06bda12df",
+    "files": {
+      "profile_service.py": "68c3d501a885343df98bba75e92765210700284ada59a792c292a26c4e9533ad",
+      "recommendation_service.py": "ac12a2f6b403d41d8a8c378c8487dad4405201f552ff96c1eae5cdaa2550e7ce"
+    }
+  },
+  "dataset_sha256": "1285dacbe9030c7e978bbe663bb90cd33c436493ef078122fd3c1e967a192efd",
+  "annotation_provenance": "AI-authored synthetic annotations; not independently human verified"
+}

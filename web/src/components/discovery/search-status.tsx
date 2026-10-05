@@ -1,6 +1,22 @@
-import type { WorkflowError } from '../../lib/contracts'
+import { applicantErrorMessage } from '../../lib/applicant-errors'
+import type { ApplicantError } from '../../lib/contracts'
 import { Icon } from '../icon'
-export function SearchLoading() {
+const stages: Record<string, string> = {
+  ingest: 'Reading your information',
+  extract: 'Reviewing your experience',
+  validate: 'Checking your profile and preferences',
+  clarify: 'Preparing details for you to confirm',
+  confirm: 'Updating your search summary',
+  plan: 'Preparing your search',
+  search: 'Searching supported job sources',
+  retrieve: 'Searching supported job sources',
+  normalize: 'Organizing job listings',
+  understand: 'Reviewing job requirements',
+  check_result_count: 'Checking the number of matching jobs',
+  recommend: 'Assessing job matches',
+  present: 'Preparing your recommendations',
+}
+export function SearchLoading({ stage }: { stage: string }) {
   return (
     <section
       className="card min-h-96 items-center justify-center border border-base-300 bg-base-100 p-8 text-center"
@@ -9,41 +25,53 @@ export function SearchLoading() {
       <span className="mb-6 flex size-20 items-center justify-center rounded-full bg-primary/20 text-primary-content">
         <span className="loading loading-lg loading-spinner" />
       </span>
-      <h2 className="text-xl font-semibold">正在为你探索机会</h2>
+      <h2 className="text-xl font-semibold">{stages[stage] ?? 'Working on this step'}</h2>
       <p className="mt-3 max-w-sm text-sm leading-7 text-base-content/60">
-        整理你的求职条件，准备岗位和申请建议。
+        We’re organizing your search criteria and preparing job matches and application tips.
         <br />
-        这段旅程，马上继续。
+        We’ll be ready to continue in a moment.
       </p>
-      <p className="mt-6 text-xs text-base-content/40">搜索可能需要一些时间，请稍候。</p>
+      <p className="mt-6 text-xs text-base-content/40">
+        This search may take a little while. Please wait.
+      </p>
     </section>
   )
 }
 export function SearchFailure({
   errors,
   onRetry,
+  onEdit,
+  retryable,
 }: {
-  errors: WorkflowError[]
+  errors: ApplicantError[]
   onRetry: () => void
+  onEdit: () => void
+  retryable: boolean
 }) {
   return (
     <section className="card border border-base-300 bg-base-100 p-6 sm:p-8">
       <span className="mb-5 flex size-12 items-center justify-center rounded-full bg-accent/50 text-accent-content">
         <Icon name="info" size={24} />
       </span>
-      <h2 className="text-xl font-semibold">这次搜索遇到了一点问题</h2>
-      {errors.map((error) => (
-        <div key={`${error.code}-${error.stage}`} role="alert">
-          <p className="mt-3 text-sm leading-7 text-base-content/65">{error.message}</p>
-          <p className="mt-2 text-xs text-base-content/45">
-            {error.code} · {error.stage}
-          </p>
-        </div>
-      ))}
-      <div className="mt-7">
-        <button className="btn rounded-xl border-0 btn-primary" onClick={onRetry}>
-          重新尝试
-          <Icon name="arrow" size={17} />
+      <h2 className="text-xl font-semibold">Something went wrong at this step</h2>
+      {[...new Set(errors.length ? errors.map((error) => error.code) : ['request_failed'])].map(
+        (code) => (
+          <div key={code} role="alert">
+            <p className="mt-3 text-sm leading-7 text-base-content/65">
+              {applicantErrorMessage(code)}
+            </p>
+          </div>
+        ),
+      )}
+      <div className="mt-7 flex flex-wrap gap-3">
+        {retryable && (
+          <button className="btn border-0 btn-primary" onClick={onRetry}>
+            Try again
+            <Icon name="arrow" size={17} />
+          </button>
+        )}
+        <button className="btn" onClick={onEdit}>
+          Edit search criteria
         </button>
       </div>
     </section>

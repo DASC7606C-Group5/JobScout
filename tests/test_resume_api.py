@@ -48,6 +48,7 @@ def test_upload_errors_include_machine_code_and_user_message(
     assert response.status_code == status
     assert response.json()["detail"]["code"] == code
     assert response.json()["detail"]["message"]
+    assert response.json()["detail"]["action"] == "edit_conditions"
 
 
 def test_upload_requires_file_field() -> None:
@@ -64,11 +65,17 @@ def test_upload_requires_file_field() -> None:
 def test_parsed_resume_enters_profile_flow_without_contract_changes(
     name: str, content: bytes
 ) -> None:
-    with TestClient(create_app()) as client:
+    from tests.test_conversation_service import ExtractionProvider
+    from tests.test_web_scaffold import settled
+
+    with TestClient(
+        create_app(provider=ExtractionProvider({"skills": ["Python", "SQL"]}))
+    ) as client:
         parsed = client.post("/api/v1/resumes/parse", files={"file": (name, content)})
         response = client.post(
             "/api/v1/sessions",
             json={
+                "request_id": "parsed-resume",
                 "description": "",
                 "resume": parsed.json(),
                 "target_directions": ["backend engineer"],
@@ -82,8 +89,9 @@ def test_parsed_resume_enters_profile_flow_without_contract_changes(
                 },
             },
         )
-    assert response.status_code == 201
-    assert response.json()["outcome"] == "paused"
-    assert response.json()["profile"]["source"]["resume"] is True
-    assert set(response.json()["profile"]["skills"]) >= {"Python", "SQL"}
-    assert "input_data" not in response.json()
+        assert response.status_code == 202
+        snapshot = settled(client, response.json()["session_id"])
+    assert snapshot["outcome"] == "paused"
+    assert snapshot["profile"]["source"]["resume"] is True
+    assert set(snapshot["profile"]["skills"]) >= {"Python", "SQL"}
+    assert "input_data" not in snapshot

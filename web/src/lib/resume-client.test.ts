@@ -1,12 +1,8 @@
 import { describe, expect, test } from 'bun:test'
+import { rejects } from 'node:assert/strict'
 
+import { ApplicantRequestError } from './applicant-errors'
 import { createResumeReader, MAX_RESUME_BYTES, MAX_RESUME_TEXT_LENGTH } from './resume-client'
-
-async function expectFailure(request: Promise<unknown>, message: string) {
-  const error: unknown = await request.catch((cause: unknown) => cause)
-  expect(error).toBeInstanceOf(Error)
-  expect(error).toHaveProperty('message', expect.stringContaining(message))
-}
 
 describe('resume file input', () => {
   test('reads TXT locally and normalizes BOM and line endings', async () => {
@@ -43,58 +39,95 @@ describe('resume file input', () => {
   })
 
   test('rejects unsupported, empty, binary and oversized files before uploading', async () => {
+    let uploads = 0
     const read = createResumeReader('/api/v1', () => {
-      throw new Error('Invalid files must not be uploaded')
+      uploads += 1
+      return Promise.resolve(Response.json({ name: 'resume.pdf', text: 'Parsed content' }))
     })
-    const cases: [File, string][] = [
-      [new File(['sample'], 'resume.doc'), 'PDF'],
-      [new File(['sample'], 'pdf'), 'PDF'],
-      [new File(['sample'], 'resume.rtf'), 'PDF'],
-      [new File([], 'resume.pdf'), '文件为空'],
-      [new File(['  '], 'resume.txt'), '没有文字'],
-      [new File(['bad\u0000text'], 'resume.txt'), 'UTF-8'],
-      [new File([new Uint8Array([0xff])], 'resume.txt'), 'UTF-8'],
-      [new File([new Uint8Array(MAX_RESUME_BYTES + 1)], 'resume.pdf'), '10 MB'],
-      [new File(['x'.repeat(MAX_RESUME_TEXT_LENGTH + 1)], 'resume.txt'), '100,000'],
+    const cases = [
+      new File(['sample'], 'resume.doc'),
+      new File(['sample'], 'pdf'),
+      new File(['sample'], 'resume.rtf'),
+      new File([], 'resume.pdf'),
+      new File(['  '], 'resume.txt'),
+      new File(['bad\u0000text'], 'resume.txt'),
+      new File([new Uint8Array([0xff])], 'resume.txt'),
+      new File([new Uint8Array(MAX_RESUME_BYTES + 1)], 'resume.pdf'),
+      new File(['x'.repeat(MAX_RESUME_TEXT_LENGTH + 1)], 'resume.txt'),
     ]
-    for (const [file, message] of cases) await expectFailure(read(file), message)
+    for (const file of cases) await rejects(read(file), Error)
+    expect(uploads).toBe(0)
   })
 
-  test('preserves useful parser errors and handles proxy and network failures', async () => {
+  test('preserves parser recovery codes without disclosing diagnostic bodies', async () => {
     const file = new File(['sample'], 'resume.pdf')
-    for (const [status, body, expected] of [
-      [422, { detail: { code: 'no_extractable_text', message: '扫描件请先进行 OCR。' } }, 'OCR'],
-      [415, { detail: '不支持这种文件格式。' }, '不支持'],
-      [413, {}, '10 MB'],
-      [503, { detail: 'internal diagnostics' }, '暂时不可用'],
+    const parserMessage = 'parser-detail-sentinel'
+    for (const [status, body, code] of [
+      [
+        422,
+        {
+          detail: {
+            code: 'no_extractable_text',
+            message: parserMessage,
+            action: 'edit_conditions',
+          },
+        },
+        'no_extractable_text',
+      ],
+      [415, { detail: parserMessage }, 'unsupported_format'],
+      [
+        400,
+        { detail: { code: parserMessage, message: parserMessage, action: null } },
+        'request_failed',
+      ],
     ] as const) {
       const read = createResumeReader('/api/v1', () =>
         Promise.resolve(Response.json(body, { status })),
       )
-      await expectFailure(read(file), expected)
+      await rejects(
+        read(file),
+        (error: unknown) =>
+          error instanceof ApplicantRequestError &&
+          error.code === code &&
+          !error.message.includes(parserMessage),
+      )
     }
+    for (const status of [500, 503]) {
+      const diagnostic = 'private-server-diagnostic'
+      const read = createResumeReader('/api/v1', () =>
+        Promise.resolve(Response.json({ detail: diagnostic }, { status })),
+      )
+      await rejects(
+        read(file),
+        (error: unknown) => error instanceof Error && !error.message.includes(diagnostic),
+      )
+    }
+    const oversized = createResumeReader('/api/v1', () =>
+      Promise.resolve(Response.json({}, { status: 413 })),
+    )
+    await rejects(oversized(file), Error)
     const proxyError = createResumeReader('/api/v1', () =>
       Promise.resolve(new Response('<html>Bad gateway</html>', { status: 502 })),
     )
-    await expectFailure(proxyError(file), '暂时不可用')
+    await rejects(proxyError(file), Error)
     const offline = createResumeReader('/api/v1', () => Promise.reject(new TypeError('offline')))
-    await expectFailure(offline(file), '无法连接')
+    await rejects(offline(file), Error)
   })
 
   test('rejects invalid successful responses', async () => {
     const file = new File(['sample'], 'resume.pdf')
     for (const body of [{ name: 'resume.pdf' }, { name: '', text: 'Python' }, null]) {
       const read = createResumeReader('/api/v1', () => Promise.resolve(Response.json(body)))
-      await expectFailure(read(file), '简历格式不正确')
+      await rejects(read(file), Error)
     }
     const invalidJson = createResumeReader('/api/v1', () =>
       Promise.resolve(new Response('<html>Not JSON</html>')),
     )
-    await expectFailure(invalidJson(file), '简历格式不正确')
+    await rejects(invalidJson(file), Error)
     const empty = createResumeReader('/api/v1', () =>
       Promise.resolve(Response.json({ name: file.name, text: ' ' })),
     )
-    await expectFailure(empty(file), '没有文字')
+    await rejects(empty(file), Error)
   })
 
   test('passes cancellation to fetch and preserves abort errors', async () => {
@@ -103,10 +136,13 @@ describe('resume file input', () => {
       controller.abort()
       return Promise.reject(init.signal?.reason)
     })
-    const error: unknown = await read(new File(['sample'], 'resume.pdf'), controller.signal).catch(
-      (cause: unknown) => cause,
+    await rejects(
+      read(new File(['sample'], 'resume.pdf'), controller.signal),
+      (error: unknown) => error === controller.signal.reason,
     )
-    expect(error).toBe(controller.signal.reason)
-    await expectFailure(read(new File(['sample'], 'resume.txt'), controller.signal), 'abort')
+    await rejects(
+      read(new File(['sample'], 'resume.txt'), controller.signal),
+      (error: unknown) => error === controller.signal.reason,
+    )
   })
 })

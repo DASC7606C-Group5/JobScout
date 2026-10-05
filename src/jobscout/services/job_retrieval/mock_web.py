@@ -19,7 +19,7 @@ class FixtureWebClient:
             path.read_text(encoding="utf-8")
         )
 
-    def request(
+    async def request_async(
         self,
         url: str,
         *,

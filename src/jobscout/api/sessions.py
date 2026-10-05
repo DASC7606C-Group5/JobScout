@@ -1,34 +1,19 @@
-"""HTTP routes for service health and workflow sessions."""
+"""HTTP routes expose accepted snapshots; operations run outside request lifetimes."""
 
-from typing import Any, Literal, cast
-from uuid import uuid4
+from typing import cast
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 
-from jobscout.graph.runner import run_workflow
-from jobscout.schemas.session import (
-    SessionCreateRequest,
-    SessionResponse,
-    SessionResumeRequest,
-)
+from jobscout.schemas.session import SessionCreateRequest, SessionResponse, SessionResumeRequest
+from jobscout.schemas.workspace import SessionHistoryResponse
+from jobscout.services.notice_service import public_error
+from jobscout.services.session_service import SessionOperationError, SessionService
 
 router = APIRouter(prefix="/api/v1", tags=["session"])
 
 
-def _session_response(
-    session_id: str,
-    outcome: Literal["paused", "completed", "failed"],
-    state: Any,
-) -> SessionResponse:
-    return SessionResponse(
-        session_id=session_id,
-        outcome=outcome,
-        profile=state.get("profile"),
-        clarification_questions=state.get("clarification_questions", []),
-        recommendation=state.get("recommendation"),
-        errors=state.get("errors", []),
-        warnings=state.get("warnings", []),
-    )
+def _service(request: Request) -> SessionService:
+    return cast(SessionService, request.app.state.sessions)
 
 
 @router.get("/health")
@@ -36,75 +21,52 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def _session_snapshot(request: Request, session_id: str) -> Any:
-    graph = request.app.state.graph
-    config = {"configurable": {"thread_id": session_id}}
-    snapshot = graph.get_state(config)
-    if snapshot.values.get("session_id") != session_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    return snapshot
-
-
-@router.post(
-    "/sessions",
-    response_model=SessionResponse,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("/sessions", response_model=SessionResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_session(request: Request, payload: SessionCreateRequest) -> SessionResponse:
-    session_id = str(uuid4())
-    result = run_workflow(
-        graph=request.app.state.graph,
-        session_id=session_id,
-        input_data=payload.model_dump(),
-    )
-    return _session_response(
-        session_id=session_id,
-        outcome=result["outcome"],
-        state=result["state"],
-    )
+    try:
+        return await _service(request).create(payload)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
+
+
+@router.get("/sessions", response_model=SessionHistoryResponse)
+async def get_history(
+    request: Request, cursor: str | None = None, limit: int = Query(default=20, ge=1, le=100)
+) -> SessionHistoryResponse:
+    try:
+        return await _service(request).history(cursor=cursor, limit=limit)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
 
 
 @router.get("/sessions/{session_id}", response_model=SessionResponse)
 async def get_session(request: Request, session_id: str) -> SessionResponse:
-    snapshot = _session_snapshot(request, session_id)
-    state = snapshot.values
-    outcome: Literal["paused", "completed", "failed"]
-    if state.get("current_stage") == "failed":
-        outcome = "failed"
-    elif state.get("current_stage") == "completed":
-        outcome = "completed"
-    else:
-        outcome = "paused"
-    return _session_response(session_id=session_id, outcome=outcome, state=state)
+    try:
+        return await _service(request).get(session_id)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
 
 
-@router.post("/sessions/{session_id}/resume", response_model=SessionResponse)
+@router.post(
+    "/sessions/{session_id}/resume",
+    response_model=SessionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def resume_session(
     request: Request,
     session_id: str,
     payload: SessionResumeRequest,
 ) -> SessionResponse:
-    snapshot = _session_snapshot(request, session_id)
-    if snapshot.next != ("clarify",):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Session is not waiting for clarification",
-        )
-
-    result = run_workflow(
-        graph=request.app.state.graph,
-        session_id=session_id,
-        answers=cast(dict[str, object], payload.answers),
-    )
-    return _session_response(
-        session_id=session_id,
-        outcome=result["outcome"],
-        state=result["state"],
-    )
+    try:
+        return await _service(request).resume(session_id, payload)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_session(request: Request, session_id: str) -> Response:
-    _session_snapshot(request, session_id)
-    request.app.state.checkpointer.delete_thread(session_id)
+    try:
+        await _service(request).delete(session_id)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)

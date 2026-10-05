@@ -6,22 +6,22 @@ export function DescriptionField() {
     name: 'description',
     rules: {
       validate: (value, values) =>
-        Boolean(value.trim() || values.resume) || '请填写个人介绍，或添加一份简历。',
+        Boolean(value.trim() || values.resume) || 'Add an introduction or upload a resume.',
     },
   })
   return (
     <div>
       <div className="mb-2.5 flex items-center justify-between">
         <label htmlFor="description" className="text-sm font-semibold">
-          个人介绍
+          About you
         </label>
-        <span className="text-xs text-base-content/55">与简历至少填写一项</span>
+        <span className="text-xs text-base-content/55">Provide an introduction or a resume</span>
       </div>
       <textarea
         {...field}
         id="description"
-        className="textarea min-h-36 w-full resize-y rounded-xl border border-base-300 bg-base-200/25 p-4 text-sm leading-7"
-        placeholder="聊聊你的教育背景、擅长的技能、项目或实习经历，以及你对下一份工作的期待……"
+        className="textarea field-sizing-content max-h-96 min-h-36 w-full resize-none border border-base-300 bg-base-200/25 p-4 text-sm leading-7"
+        placeholder="Tell us about your education, skills, projects or internships, and what you’re looking for in your next role…"
         maxLength={10000}
         aria-describedby="description-hint profile-error"
         aria-invalid={fieldState.invalid}
@@ -30,7 +30,7 @@ export function DescriptionField() {
         id="description-hint"
         className="mt-2 flex justify-between gap-3 text-xs text-base-content/55"
       >
-        <span>不必写得完美，稍后还可以补充。</span>
+        <span>It doesn’t have to be perfect. You can add more later.</span>
         <span className="shrink-0 tabular-nums">
           {field.value.length.toLocaleString()} / 10,000
         </span>

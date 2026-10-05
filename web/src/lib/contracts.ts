@@ -1,8 +1,9 @@
-// Mirrors src/jobscout/schemas (Schema v1). Keep wire-format field names intact.
+// Mirrors src/jobscout/schemas. Keep wire-format field names intact.
 export interface ProfilePreferences {
   location: string | null
   location_unrestricted: boolean
   employment_type: string | null
+  employment_type_unrestricted: boolean
   salary_range: string | null
   work_mode: string | null
   industry: string | null
@@ -27,8 +28,62 @@ export interface ClarificationMessage {
   field: string
   reason: string
   required: boolean
-  status: 'pending' | 'answered'
+  status: 'pending' | 'answered' | 'skipped'
   answer: string | null
+  question_id: string
+  control_type: 'single_choice' | 'multiple_choice' | 'text'
+  options: { id: string; label: string }[]
+}
+
+export interface ConversationMessage {
+  message_id: string
+  role: 'user' | 'assistant'
+  text: string
+  question_ids: string[]
+  created_at: string
+  responses: ConversationResponse[]
+}
+
+export interface ConversationResponse {
+  label: string
+  value: string | string[]
+  status: 'answered' | 'skipped'
+}
+
+export interface SearchSummary {
+  profile: UserProfile
+  revision: number
+  ready: boolean
+  confirmed: boolean
+  editable_fields: string[]
+  missing_fields: string[]
+  coverage_notice: string
+}
+
+export interface SourceQuoteReference {
+  document_id: string
+  excerpt: string
+  source_url: string | null
+}
+
+export interface MatchingReason {
+  requirement: string
+  level: 'strong' | 'partial' | 'related_experience' | 'not_documented'
+  explanation: string
+  job_source_quotes: SourceQuoteReference[]
+  profile_source_quotes: SourceQuoteReference[]
+}
+
+export interface SourceOutcome {
+  request_index: number
+  target_direction: string
+  source: string
+  candidate_count: number
+  returned_count: number
+  incomplete_count: number
+  excerpt_count: number
+  elapsed_seconds: number
+  status: string
 }
 
 export interface JobPosting {
@@ -47,26 +102,52 @@ export interface JobPosting {
   expiry_at: string | null
   fetched_at: string
   freshness_status: 'active' | 'expired' | 'unknown'
+  source_documents: {
+    document_id: string
+    source: string
+    source_url: string
+    text: string
+    fetched_at: string
+    is_excerpt: boolean
+  }[]
+  description: string
+  description_is_excerpt: boolean
+  employment_type: string | null
+  target_directions: string[]
 }
 
 export interface RecommendationItem {
   job: JobPosting
-  missing_skills: string[]
   preparation_suggestions: string[]
+  matching_reasons: MatchingReason[]
+  notices: ApplicantNotice[]
+  analysis_status: 'complete' | 'partial' | 'unavailable'
 }
 
 export interface RecommendationResult {
   session_id: string
   generated_at: string
   jobs: RecommendationItem[]
-  warnings: string[]
+  introduction: string
+  notices: ApplicantNotice[]
 }
 
-export interface WorkflowError {
+export interface ApplicantNotice {
+  code: string
+  scope: 'session' | 'source' | 'job'
+  message: string
+  action: 'retry' | 'edit_conditions' | 'open_listing' | null
+  job_id: string | null
+  source: string | null
+  preference: string | null
+}
+
+export type ApplicantRecovery = 'retry' | 'edit_conditions' | 'reload' | 'start_new_search' | null
+
+export interface ApplicantError {
   code: string
   message: string
-  stage: string
-  details: Record<string, string | number | boolean | null> | null
+  action: ApplicantRecovery
 }
 
 // Mirrors src/jobscout/schemas/session.py.
@@ -77,23 +158,87 @@ export interface ScoutInput {
   preferences: ProfilePreferences
 }
 
+export type CreateSessionRequest = ScoutInput & { request_id: string }
+export interface QuestionAnswer {
+  question_id: string
+  value: string | string[]
+}
+export interface ResumeSessionRequest {
+  request_id: string
+  expected_revision: number
+  message: string
+  answers: QuestionAnswer[]
+  skipped_question_ids: string[]
+  action: 'answer' | 'confirm_search' | 'edit_conditions' | 'retry'
+  profile_updates: Record<string, string | string[] | boolean | null>
+}
+export type ResumeSubmission = Omit<ResumeSessionRequest, 'request_id' | 'expected_revision'>
+
 export interface ScoutSession {
   session_id: string
   profile: UserProfile | null
-  outcome: 'paused' | 'completed' | 'failed'
+  outcome: 'running' | 'paused' | 'completed' | 'failed'
+  current_stage: string
+  revision: number
   clarification_questions: ClarificationMessage[]
+  conversation: ConversationMessage[]
+  search_summary: SearchSummary | null
+  source_outcomes: SourceOutcome[]
   recommendation: RecommendationResult | null
-  errors: WorkflowError[]
-  warnings: string[]
+  errors: ApplicantError[]
+  notices: ApplicantNotice[]
+  retryable: boolean
+  mode: 'live' | 'replay'
 }
 
 export interface SessionClient {
-  start: (input: ScoutInput, signal?: AbortSignal) => Promise<ScoutSession>
+  start: (input: CreateSessionRequest, signal?: AbortSignal) => Promise<ScoutSession>
   get: (sessionId: string, signal?: AbortSignal) => Promise<ScoutSession>
   answer: (
     sessionId: string,
-    answers: Record<string, string>,
+    request: ResumeSessionRequest,
     signal?: AbortSignal,
   ) => Promise<ScoutSession>
   delete: (sessionId: string, signal?: AbortSignal) => Promise<void>
+}
+
+export interface SessionSummary {
+  session_id: string
+  title: string
+  location: string
+  created_at: string
+  updated_at: string
+  outcome: ScoutSession['outcome']
+  current_stage: string
+  revision: number
+  retryable: boolean
+  mode: ScoutSession['mode']
+}
+
+export interface SessionHistory {
+  items: SessionSummary[]
+  next_cursor: string | null
+}
+
+export interface DraftResponse<T = Record<string, unknown>> {
+  data: T
+  revision: number
+  updated_at: string | null
+}
+
+export interface SaveDraftRequest<T = Record<string, unknown>> {
+  data: T
+  request_id: string
+  expected_revision: number
+}
+
+export type DraftSection = 'clarification' | 'summary'
+
+export interface WorkspaceClient {
+  history: (cursor: string | null, signal?: AbortSignal) => Promise<SessionHistory>
+  getDraft: (path: string, signal?: AbortSignal) => Promise<DraftResponse>
+  saveDraft: (path: string, request: SaveDraftRequest) => Promise<DraftResponse>
+  savedJobs: (signal?: AbortSignal) => Promise<RecommendationItem[]>
+  saveJob: (jobId: string, sessionId: string, revision: number) => Promise<RecommendationItem>
+  removeJob: (jobId: string) => Promise<void>
 }

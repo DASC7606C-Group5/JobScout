@@ -3,6 +3,7 @@
 from pydantic import AwareDatetime, BaseModel, Field, JsonValue
 
 from jobscout.schemas.errors import WorkflowError
+from jobscout.schemas.notices import ApplicantNotice
 
 
 class RawJob(BaseModel):
@@ -16,6 +17,8 @@ class RawJob(BaseModel):
     location: str | None = None
     salary: str | None = None
     description: str | None = None
+    description_is_excerpt: bool = False
+    employment_type: str | None = None
     posted_at: str | int | float | None = None
     expiry_at: str | int | float | None = None
     raw_payload: dict[str, JsonValue]
@@ -37,6 +40,7 @@ class SearchResult(BaseModel):
     raw_jobs: list[RawJob] = Field(default_factory=list)
     errors: list[WorkflowError] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    notices: list[ApplicantNotice] = Field(default_factory=list)
     outcomes: list[SourceOutcome] = Field(default_factory=list)
 
 

@@ -1,0 +1,225 @@
+"""Build applicant notices and recovery actions from search and job results."""
+
+from collections.abc import Iterable, Sequence
+from typing import Literal
+
+from jobscout.schemas.errors import ApplicantError
+from jobscout.schemas.job import FreshnessStatus
+from jobscout.schemas.notices import ApplicantNotice, NoticeCode
+from jobscout.schemas.profile import UserProfile
+from jobscout.schemas.recommendation import RecommendationResult
+from jobscout.services.job_retrieval.models import SourceOutcome
+
+_PREFERENCES = {
+    "salary_range": "salary",
+    "work_mode": "work arrangement",
+    "industry": "industry",
+    "location": "work location",
+    "employment_type": "employment type",
+}
+_SOURCES = {
+    "jobsdb": "JobsDB",
+    "liepin": "Liepin",
+    "zhaopin": "Zhaopin",
+    "shixiseng": "Shixiseng",
+    "remotive": "Remotive",
+    "arbeitnow": "Arbeitnow",
+    "careerjet": "Careerjet",
+}
+
+
+def make_notice(
+    code: NoticeCode,
+    *,
+    job_id: str | None = None,
+    source: str | None = None,
+    preference: str | None = None,
+    job_title: str | None = None,
+) -> ApplicantNotice:
+    """Only trusted templates supply copy; references never become diagnostic prose."""
+    title = f"“{job_title}”" if job_title else "This role"
+    source_name = _SOURCES.get(source or "", "A job source")
+    messages: dict[NoticeCode, str] = {
+        "source_unavailable": f"{source_name} could not be searched. These results may miss some openings; try again later.",
+        "source_partial": f"Some listings from {source_name} could not be checked. You can still explore the available roles.",
+        "coverage_limited": "These results cover a selection of openings. Change your search criteria to explore other roles.",
+        "listing_incomplete": f"{title} has a limited job description. Open the original listing for the full responsibilities and requirements.",
+        "listing_status_unverified": f"Check the original listing for {title} to confirm that applications are still open.",
+        "preference_unverified": f"The available listings do not confirm your {_PREFERENCES.get(preference or '', 'search')} preference. Check this before applying.",
+        "analysis_partial": f"Some requirements for {title} could not be assessed. The available matches are shown below; review the full listing before applying.",
+        "analysis_unavailable": f"Personal matching for {title} is temporarily limited. You can still read the job details and open the original listing.",
+    }
+    action: Literal["retry", "edit_conditions", "open_listing"] | None
+    action = "open_listing" if job_id else "edit_conditions" if code == "coverage_limited" else None
+    return ApplicantNotice(
+        code=code,
+        scope="job" if job_id else "source" if source else "session",
+        message=messages[code],
+        action=action,
+        job_id=job_id,
+        source=source,
+        preference=preference,
+    )
+
+
+def dedupe_notices(notices: Iterable[ApplicantNotice]) -> list[ApplicantNotice]:
+    unique: dict[tuple[str, str, str | None, str | None, str | None], ApplicantNotice] = {}
+    for notice in notices:
+        key = (notice.code, notice.scope, notice.job_id, notice.source, notice.preference)
+        unique.setdefault(key, notice)
+    return list(unique.values())
+
+
+def source_notices(outcomes: Iterable[SourceOutcome]) -> list[ApplicantNotice]:
+    statuses: dict[str, set[str]] = {}
+    for outcome in outcomes:
+        statuses.setdefault(outcome.source, set()).add(outcome.status)
+    notices: list[ApplicantNotice] = []
+    for source, seen in statuses.items():
+        if seen & {"partial", "blocked", "unavailable"}:
+            code: NoticeCode = (
+                "source_partial" if seen & {"ok", "partial", "empty"} else "source_unavailable"
+            )
+            notices.append(make_notice(code, source=source))
+    return notices
+
+
+def finalize_recommendation(
+    result: RecommendationResult,
+    *,
+    profile: UserProfile | None = None,
+    notices: Sequence[ApplicantNotice] = (),
+) -> RecommendationResult:
+    """Attach notices only to final selected, merged jobs, without changing ordering."""
+    # Import locally to avoid a cycle with the deterministic recommendation producer.
+    from jobscout.services.recommendation_service import _employment_type, _job_employment_type
+
+    incoming = dedupe_notices([*result.notices, *notices])
+    global_notices = [notice for notice in incoming if not notice.job_id]
+    if profile is not None:
+        for field in ("salary_range", "work_mode", "industry"):
+            if f"preferences.{field}" in profile.confirmed_fields and getattr(
+                profile.preferences, field
+            ):
+                global_notices.append(make_notice("preference_unverified", preference=field))
+    items = []
+    for item in result.jobs:
+        job = item.job
+        values = dedupe_notices(
+            [*item.notices, *(notice for notice in incoming if notice.job_id == job.job_id)]
+        )
+        values = [notice for notice in values if notice.job_id == job.job_id]
+        # A complete mirror takes precedence over an excerpt from another source.
+        complete_description = bool(job.description.strip() and not job.description_is_excerpt)
+        complete_description |= any(
+            document.text.strip() and not document.is_excerpt for document in job.source_documents
+        )
+        derived_codes = {
+            "listing_incomplete",
+            "listing_status_unverified",
+            "analysis_partial",
+            "analysis_unavailable",
+        }
+        values = [notice for notice in values if notice.code not in derived_codes]
+        if not complete_description:
+            values.append(make_notice("listing_incomplete", job_id=job.job_id))
+        if job.freshness_status == FreshnessStatus.UNKNOWN:
+            values.append(make_notice("listing_status_unverified", job_id=job.job_id))
+        if item.analysis_status != "complete":
+            values.append(
+                make_notice(
+                    "analysis_partial"
+                    if item.analysis_status == "partial"
+                    else "analysis_unavailable",
+                    job_id=job.job_id,
+                )
+            )
+        if profile is not None:
+            preferences = profile.preferences
+            for field, unknown in (
+                ("location", not job.location.strip() or job.location.casefold() == "unknown"),
+                (
+                    "employment_type",
+                    _job_employment_type(job) is None
+                    or _employment_type(preferences.employment_type or "") is None,
+                ),
+            ):
+                if (
+                    unknown
+                    and f"preferences.{field}" in profile.confirmed_fields
+                    and getattr(preferences, field)
+                    and not getattr(preferences, field + "_unrestricted")
+                ):
+                    values.append(
+                        make_notice("preference_unverified", job_id=job.job_id, preference=field)
+                    )
+        values = dedupe_notices(
+            make_notice(
+                notice.code,
+                job_id=job.job_id,
+                source=notice.source,
+                preference=notice.preference,
+                job_title=job.title,
+            )
+            for notice in values
+        )
+        items.append(item.model_copy(update={"notices": values}))
+    return result.model_copy(update={"jobs": items, "notices": dedupe_notices(global_notices)})
+
+
+_ERRORS: dict[str, tuple[str, str | None]] = {
+    "search_unavailable": (
+        "Job sources are temporarily unavailable. Your input is saved; try again later.",
+        "retry",
+    ),
+    "service_unavailable": (
+        "JobScout is temporarily unavailable. Your input is saved; try again later.",
+        "retry",
+    ),
+    "search_timeout": ("The search took too long. Your input is saved; try again.", "retry"),
+    "analysis_unavailable": (
+        "Your search could not finish. Your input is saved; try again.",
+        "retry",
+    ),
+    "invalid_input": ("Check the information you entered and try again.", "edit_conditions"),
+    "invalid_answer": ("Check your answer or update your search criteria.", "edit_conditions"),
+    "search_changed": ("Your search has changed. Reload it before continuing.", "reload"),
+    "draft_conflict": ("The shared draft has changed. Reload it before saving.", "reload"),
+    "search_interrupted": (
+        "Your search was interrupted. Your input is saved; retry when ready.",
+        "retry",
+    ),
+    "saved_job_not_found": (
+        "This recommendation is no longer available. Reload the search.",
+        "reload",
+    ),
+    "operation_in_progress": (
+        "Your search is still working. Reload it to see the latest progress.",
+        "reload",
+    ),
+    "request_conflict": (
+        "This update could not be applied. Reload your search and try again.",
+        "reload",
+    ),
+    "search_completed": ("Update your criteria to start another search.", "edit_conditions"),
+    "search_not_found": (
+        "This search is no longer available. Start a new search.",
+        "start_new_search",
+    ),
+    "search_not_retryable": ("Update your criteria or start a new search.", "edit_conditions"),
+}
+
+
+def public_error(code: str, *, retryable: bool = True) -> ApplicantError:
+    code = {
+        "model_auth": "service_unavailable",
+        "model_configuration": "service_unavailable",
+        "operation_timeout": "search_timeout",
+        "profile_input": "invalid_input",
+    }.get(code, code)
+    if code not in _ERRORS:
+        code = "analysis_unavailable"
+    message, action = _ERRORS[code]
+    if action == "retry" and not retryable:
+        action = "edit_conditions"
+    return ApplicantError.model_validate({"code": code, "message": message, "action": action})

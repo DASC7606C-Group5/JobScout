@@ -160,7 +160,7 @@ def test_pdf_without_text_prompts_for_ocr() -> None:
 
 
 def test_encrypted_pdf_prompts_for_password_removal() -> None:
-    with pytest.raises(ResumeParseError, match="密码") as raised:
+    with pytest.raises(ResumeParseError, match="password") as raised:
         parse_resume("encrypted.pdf", make_pdf("Skills: Python", encrypted=True))
     assert raised.value.code == "encrypted_file"
 

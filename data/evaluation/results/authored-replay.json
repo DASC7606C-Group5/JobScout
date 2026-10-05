@@ -1,0 +1,2938 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-04T21:33:18.871009+00:00",
+  "mode": "authored-replay",
+  "data_mode": "synthetic",
+  "annotation_provenance": {
+    "dataset_id": "jobscout-synthetic-v1",
+    "schema_version": 1,
+    "seed": 9,
+    "data_mode": "synthetic",
+    "annotation_author": "GitHub Copilot",
+    "annotation_method": "machine-authored synthetic scenarios and explicit rubric, not independently adjudicated",
+    "human_verified": false,
+    "contains_private_resumes": false,
+    "reference_time": "2026-10-04T00:00:00+00:00",
+    "limitations": [
+      "Small deliberately structured set; not representative of real applicants or sources.",
+      "Relevance and semantic annotations are machine-authored hypotheses, not human ground truth.",
+      "The authored replay copies expected extraction facts; its accuracy is a fixture check, not model quality."
+    ]
+  },
+  "baseline_commit": "fefbd692cba49c9f7a1b2a72c04c68c06bda12df",
+  "baseline_hashes": {
+    "profile_service.py": "68c3d501a885343df98bba75e92765210700284ada59a792c292a26c4e9533ad",
+    "recommendation_service.py": "ac12a2f6b403d41d8a8c378c8487dad4405201f552ff96c1eae5cdaa2550e7ce"
+  },
+  "dataset_sha256": "1285dacbe9030c7e978bbe663bb90cd33c436493ef078122fd3c1e967a192efd",
+  "profile_schema_sha256": "274b61760f5a56a513d03cf74d604828bb149f34f97812745025806d1a511bf5",
+  "provider": "replay",
+  "model": "authored-fixture-not-a-model",
+  "quality_evidence": false,
+  "quality_caveat": "Synthetic machine annotations are unreviewed; no real-world quality claim.",
+  "ranking_protocol": "Fixed candidate pool and annotation-confirmed profile for both arms; not end-to-end.",
+  "profile_protocol": "Direct schema extraction prompt; not the production graph conversation prompt.",
+  "latency": {
+    "elapsed_seconds": 0.16541860000870656,
+    "kind": "local_execution_only",
+    "model_service_seconds": null,
+    "includes_retrieval": false
+  },
+  "usage": {
+    "provider_structured_calls": 46,
+    "model_usage": null,
+    "actual_network_requests": 0,
+    "tokens": null
+  },
+  "aggregate": {
+    "successful_cases": 12,
+    "failed_cases": 0,
+    "extraction_true_positive": 55,
+    "extraction_false_positive": 0,
+    "extraction_false_negative": 0,
+    "extraction_precision_micro": 1.0,
+    "extraction_recall_micro": 1.0,
+    "clarification_cases": 4,
+    "clarification_completion_rate": 0.75,
+    "ranking_cases": 11,
+    "precision_at_5_macro": 0.2545454545454546,
+    "returned_recommendations": 17,
+    "constraint_violation_rate": 0.0,
+    "evidence_claims": 49,
+    "evidence_support_rate": 1.0,
+    "semantic_entailment_rate": null
+  },
+  "cases": [
+    {
+      "profile_id": "p01",
+      "scenario": "complete-English",
+      "candidate_ids": [
+        "j01",
+        "j02",
+        "j03",
+        "j04",
+        "j05",
+        "j06",
+        "j07",
+        "j08",
+        "j09",
+        "j10",
+        "j11",
+        "j12",
+        "j13",
+        "j14",
+        "j15",
+        "j16",
+        "j17",
+        "j18",
+        "j19",
+        "j20"
+      ],
+      "candidate_sha256": "d9507b584dc593fe63cf7f98a4de48213bbc9edb1ddd796e24538c16f0e20b0d",
+      "extraction": {
+        "true_positive": 5,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": false,
+        "completed": null,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [],
+        "required_fields_detected": [],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": {
+        "returned": 1,
+        "relevant": 1,
+        "precision_at_5": 0.2,
+        "precision_returned": 1.0,
+        "violating_recommendations": 0,
+        "constraint_violation_rate": 0.0,
+        "claim_count": 3,
+        "supported_claim_count": 3,
+        "evidence_support_rate": 1.0,
+        "reference_count": 8,
+        "valid_reference_count": 8,
+        "semantic_entailment_rate": null
+      },
+      "recommended_ids": [
+        "j01"
+      ],
+      "recommendation": {
+        "session_id": "p01",
+        "generated_at": "2026-10-04T21:33:18.826853Z",
+        "jobs": [
+          {
+            "job": {
+              "job_id": "j01",
+              "source": "jobsdb",
+              "source_url": "https://jobs.example.invalid/j01",
+              "title": "Data Analyst internship",
+              "company": "Synthetic Organisation 1",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "data analyst",
+              "responsibilities": [
+                "Employment type: internship",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Excel"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j01"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j01",
+                  "source": "jobsdb",
+                  "source_url": "https://jobs.example.invalid/j01",
+                  "text": "SYNTHETIC VACANCY j01: Data Analyst internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j01: Data Analyst internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "internship",
+              "target_directions": [
+                "data analyst"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Python」，整理作品、个人贡献与可核实成果。",
+              "针对「SQL」，整理作品、个人贡献与可核实成果。",
+              "针对「Excel」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j01",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j01"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL reporting dashboard",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "SQL",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j01",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j01"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "SQL",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL reporting dashboard",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "Excel",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j01",
+                    "excerpt": "Requires Excel.",
+                    "source_url": "https://jobs.example.invalid/j01"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Excel",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          }
+        ],
+        "warnings": [],
+        "introduction": "以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。"
+      },
+      "status": "completed",
+      "elapsed_seconds": 0.12134949999745004,
+      "structured_calls": 4
+    },
+    {
+      "profile_id": "p02",
+      "scenario": "resume-only",
+      "candidate_ids": [
+        "j02",
+        "j03",
+        "j04",
+        "j05",
+        "j06",
+        "j07",
+        "j08",
+        "j09",
+        "j10",
+        "j11",
+        "j12",
+        "j13",
+        "j14",
+        "j15",
+        "j16",
+        "j17",
+        "j18",
+        "j19",
+        "j20",
+        "j21"
+      ],
+      "candidate_sha256": "02464946110bd01946274c286e6abbf05aa0b7be4ca9a32bd5c940fd8debeb26",
+      "extraction": {
+        "true_positive": 5,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": false,
+        "completed": null,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [],
+        "required_fields_detected": [],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": {
+        "returned": 1,
+        "relevant": 1,
+        "precision_at_5": 0.2,
+        "precision_returned": 1.0,
+        "violating_recommendations": 0,
+        "constraint_violation_rate": 0.0,
+        "claim_count": 3,
+        "supported_claim_count": 3,
+        "evidence_support_rate": 1.0,
+        "reference_count": 9,
+        "valid_reference_count": 9,
+        "semantic_entailment_rate": null
+      },
+      "recommended_ids": [
+        "j08"
+      ],
+      "recommendation": {
+        "session_id": "p02",
+        "generated_at": "2026-10-04T21:33:18.830307Z",
+        "jobs": [
+          {
+            "job": {
+              "job_id": "j08",
+              "source": "zhaopin",
+              "source_url": "https://jobs.example.invalid/j08",
+              "title": "Backend Engineer full-time",
+              "company": "Synthetic Organisation 2",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "backend engineer",
+              "responsibilities": [
+                "Employment type: full-time",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Docker"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j08"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j08",
+                  "source": "zhaopin",
+                  "source_url": "https://jobs.example.invalid/j08",
+                  "text": "SYNTHETIC VACANCY j08: Backend Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a backend engineer student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j08: Backend Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a backend engineer student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "full-time",
+              "target_directions": [
+                "backend engineer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Python」，整理作品、个人贡献与可核实成果。",
+              "针对「SQL」，整理作品、个人贡献与可核实成果。",
+              "针对「Docker」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j08",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j08"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "resume",
+                    "excerpt": "Python",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "resume",
+                    "excerpt": "Python SQL service packaged with Docker",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "SQL",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j08",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j08"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "resume",
+                    "excerpt": "SQL",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "resume",
+                    "excerpt": "Python SQL service packaged with Docker",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "Docker",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j08",
+                    "excerpt": "Requires Docker.",
+                    "source_url": "https://jobs.example.invalid/j08"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "resume",
+                    "excerpt": "Docker",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "resume",
+                    "excerpt": "Python SQL service packaged with Docker",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          }
+        ],
+        "warnings": [],
+        "introduction": "以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。"
+      },
+      "status": "completed",
+      "elapsed_seconds": 0.003426499999477528,
+      "structured_calls": 4
+    },
+    {
+      "profile_id": "p03",
+      "scenario": "bilingual",
+      "candidate_ids": [
+        "j01",
+        "j02",
+        "j03",
+        "j04",
+        "j05",
+        "j06",
+        "j09",
+        "j10",
+        "j11",
+        "j12",
+        "j13",
+        "j14",
+        "j15",
+        "j16",
+        "j17",
+        "j18",
+        "j19",
+        "j20",
+        "j21",
+        "j22"
+      ],
+      "candidate_sha256": "46d78cc24e2cd2dc29a1623366bd2862649f5e14a0d3fda079ab69554e78b0bf",
+      "extraction": {
+        "true_positive": 3,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": false,
+        "completed": null,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [],
+        "required_fields_detected": [],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": {
+        "returned": 1,
+        "relevant": 0,
+        "precision_at_5": 0.0,
+        "precision_returned": 0.0,
+        "violating_recommendations": 0,
+        "constraint_violation_rate": 0.0,
+        "claim_count": 3,
+        "supported_claim_count": 3,
+        "evidence_support_rate": 1.0,
+        "reference_count": 3,
+        "valid_reference_count": 3,
+        "semantic_entailment_rate": null
+      },
+      "recommended_ids": [
+        "j03"
+      ],
+      "recommendation": {
+        "session_id": "p03",
+        "generated_at": "2026-10-04T21:33:18.833222Z",
+        "jobs": [
+          {
+            "job": {
+              "job_id": "j03",
+              "source": "jobsdb",
+              "source_url": "https://jobs.example.invalid/j03",
+              "title": "Data Analyst internship",
+              "company": "Synthetic Organisation 1",
+              "location": "Shenzhen",
+              "salary": null,
+              "target_direction": "data analyst",
+              "responsibilities": [
+                "Employment type: internship",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Excel"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j03"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j03",
+                  "source": "jobsdb",
+                  "source_url": "https://jobs.example.invalid/j03",
+                  "text": "SYNTHETIC VACANCY j03: Data Analyst internship\nLocation: Shenzhen\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j03: Data Analyst internship\nLocation: Shenzhen\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "internship",
+              "target_directions": [
+                "data analyst"
+              ]
+            },
+            "missing_skills": [
+              "Python",
+              "SQL",
+              "Excel"
+            ],
+            "preparation_suggestions": [
+              "针对「Python」准备可核实的学习、项目或经历材料。",
+              "针对「SQL」准备可核实的学习、项目或经历材料。",
+              "针对「Excel」准备可核实的学习、项目或经历材料。",
+              "针对「Python」，完成有可展示成果的练习。",
+              "针对「SQL」，完成有可展示成果的练习。",
+              "针对「Excel」，完成有可展示成果的练习。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "not_evidenced",
+                "explanation": "提供的材料中未见此项要求的证据，不代表不具备该能力。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j03",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j03"
+                  }
+                ],
+                "profile_evidence": []
+              },
+              {
+                "requirement": "SQL",
+                "level": "not_evidenced",
+                "explanation": "提供的材料中未见此项要求的证据，不代表不具备该能力。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j03",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j03"
+                  }
+                ],
+                "profile_evidence": []
+              },
+              {
+                "requirement": "Excel",
+                "level": "not_evidenced",
+                "explanation": "提供的材料中未见此项要求的证据，不代表不具备该能力。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j03",
+                    "excerpt": "Requires Excel.",
+                    "source_url": "https://jobs.example.invalid/j03"
+                  }
+                ],
+                "profile_evidence": []
+              }
+            ],
+            "uncertainty_notices": []
+          }
+        ],
+        "warnings": [],
+        "introduction": "以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。"
+      },
+      "status": "completed",
+      "elapsed_seconds": 0.0029002000082982704,
+      "structured_calls": 4
+    },
+    {
+      "profile_id": "p04",
+      "scenario": "complementary-not-conflicting",
+      "candidate_ids": [
+        "j04",
+        "j05",
+        "j06",
+        "j07",
+        "j08",
+        "j09",
+        "j10",
+        "j11",
+        "j12",
+        "j13",
+        "j14",
+        "j15",
+        "j16",
+        "j17",
+        "j18",
+        "j19",
+        "j20",
+        "j21",
+        "j22",
+        "j23"
+      ],
+      "candidate_sha256": "19f5c567579d2fa2a41bc225752745e17c6617d6015afeb6ff0e87bd86a75ac5",
+      "extraction": {
+        "true_positive": 5,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": false,
+        "completed": null,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [],
+        "required_fields_detected": [],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": {
+        "returned": 1,
+        "relevant": 1,
+        "precision_at_5": 0.2,
+        "precision_returned": 1.0,
+        "violating_recommendations": 0,
+        "constraint_violation_rate": 0.0,
+        "claim_count": 3,
+        "supported_claim_count": 3,
+        "evidence_support_rate": 1.0,
+        "reference_count": 7,
+        "valid_reference_count": 7,
+        "semantic_entailment_rate": null
+      },
+      "recommended_ids": [
+        "j08"
+      ],
+      "recommendation": {
+        "session_id": "p04",
+        "generated_at": "2026-10-04T21:33:18.836664Z",
+        "jobs": [
+          {
+            "job": {
+              "job_id": "j08",
+              "source": "zhaopin",
+              "source_url": "https://jobs.example.invalid/j08",
+              "title": "Backend Engineer full-time",
+              "company": "Synthetic Organisation 2",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "backend engineer",
+              "responsibilities": [
+                "Employment type: full-time",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Docker"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j08"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j08",
+                  "source": "zhaopin",
+                  "source_url": "https://jobs.example.invalid/j08",
+                  "text": "SYNTHETIC VACANCY j08: Backend Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a backend engineer student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j08: Backend Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a backend engineer student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "full-time",
+              "target_directions": [
+                "backend engineer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Python」，整理作品、个人贡献与可核实成果。",
+              "针对「SQL」，整理作品、个人贡献与可核实成果。",
+              "针对「Docker」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j08",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j08"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "resume",
+                    "excerpt": "Python",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "SQL",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j08",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j08"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "resume",
+                    "excerpt": "SQL",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "Docker",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j08",
+                    "excerpt": "Requires Docker.",
+                    "source_url": "https://jobs.example.invalid/j08"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Docker",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Docker deployment of a student service",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          }
+        ],
+        "warnings": [],
+        "introduction": "以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。"
+      },
+      "status": "completed",
+      "elapsed_seconds": 0.003445900001679547,
+      "structured_calls": 4
+    },
+    {
+      "profile_id": "p05",
+      "scenario": "contradiction-explicit-correction",
+      "candidate_ids": [
+        "j01",
+        "j02",
+        "j03",
+        "j04",
+        "j05",
+        "j06",
+        "j11",
+        "j12",
+        "j13",
+        "j14",
+        "j15",
+        "j16",
+        "j17",
+        "j18",
+        "j19",
+        "j20",
+        "j21",
+        "j22",
+        "j23",
+        "j24"
+      ],
+      "candidate_sha256": "3b8c68c760ab2f765f204d3e725977be21c0b32ca5e7d9bc31820fcb009f4744",
+      "extraction": {
+        "true_positive": 4,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": true,
+        "completed": true,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [
+          "skills"
+        ],
+        "required_fields_detected": [
+          "skills"
+        ],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": {
+        "returned": 1,
+        "relevant": 1,
+        "precision_at_5": 0.2,
+        "precision_returned": 1.0,
+        "violating_recommendations": 0,
+        "constraint_violation_rate": 0.0,
+        "claim_count": 3,
+        "supported_claim_count": 3,
+        "evidence_support_rate": 1.0,
+        "reference_count": 7,
+        "valid_reference_count": 7,
+        "semantic_entailment_rate": null
+      },
+      "recommended_ids": [
+        "j01"
+      ],
+      "recommendation": {
+        "session_id": "p05",
+        "generated_at": "2026-10-04T21:33:18.840109Z",
+        "jobs": [
+          {
+            "job": {
+              "job_id": "j01",
+              "source": "jobsdb",
+              "source_url": "https://jobs.example.invalid/j01",
+              "title": "Data Analyst internship",
+              "company": "Synthetic Organisation 1",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "data analyst",
+              "responsibilities": [
+                "Employment type: internship",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Excel"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j01"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j01",
+                  "source": "jobsdb",
+                  "source_url": "https://jobs.example.invalid/j01",
+                  "text": "SYNTHETIC VACANCY j01: Data Analyst internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j01: Data Analyst internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "internship",
+              "target_directions": [
+                "data analyst"
+              ]
+            },
+            "missing_skills": [
+              "Python"
+            ],
+            "preparation_suggestions": [
+              "针对「Python」准备可核实的学习、项目或经历材料。",
+              "针对「Python」，完成有可展示成果的练习。",
+              "针对「SQL」，整理作品、个人贡献与可核实成果。",
+              "针对「Excel」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "not_evidenced",
+                "explanation": "提供的材料中未见此项要求的证据，不代表不具备该能力。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j01",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j01"
+                  }
+                ],
+                "profile_evidence": []
+              },
+              {
+                "requirement": "SQL",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j01",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j01"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "SQL",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "SQL Excel sales report",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "Excel",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j01",
+                    "excerpt": "Requires Excel.",
+                    "source_url": "https://jobs.example.invalid/j01"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Excel",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "SQL Excel sales report",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          }
+        ],
+        "warnings": [],
+        "introduction": "以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。"
+      },
+      "status": "completed",
+      "elapsed_seconds": 0.003446200003963895,
+      "structured_calls": 4
+    },
+    {
+      "profile_id": "p06",
+      "scenario": "missing-required",
+      "candidate_ids": [
+        "j06",
+        "j07",
+        "j08",
+        "j09",
+        "j10",
+        "j11",
+        "j12",
+        "j13",
+        "j14",
+        "j15",
+        "j16",
+        "j17",
+        "j18",
+        "j19",
+        "j20",
+        "j21",
+        "j22",
+        "j23",
+        "j24",
+        "j25"
+      ],
+      "candidate_sha256": "bc04389b002c8d6f19944b8533018fbc6e843f3296e2e77496f64d17e24f8441",
+      "extraction": {
+        "true_positive": 5,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": true,
+        "completed": true,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [
+          "preferences.employment_type",
+          "preferences.location",
+          "target_directions"
+        ],
+        "required_fields_detected": [
+          "preferences.employment_type",
+          "preferences.location",
+          "target_directions"
+        ],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": {
+        "returned": 1,
+        "relevant": 1,
+        "precision_at_5": 0.2,
+        "precision_returned": 1.0,
+        "violating_recommendations": 0,
+        "constraint_violation_rate": 0.0,
+        "claim_count": 3,
+        "supported_claim_count": 3,
+        "evidence_support_rate": 1.0,
+        "reference_count": 8,
+        "valid_reference_count": 8,
+        "semantic_entailment_rate": null
+      },
+      "recommended_ids": [
+        "j13"
+      ],
+      "recommendation": {
+        "session_id": "p06",
+        "generated_at": "2026-10-04T21:33:18.843360Z",
+        "jobs": [
+          {
+            "job": {
+              "job_id": "j13",
+              "source": "liepin",
+              "source_url": "https://jobs.example.invalid/j13",
+              "title": "Frontend Engineer internship",
+              "company": "Synthetic Organisation 3",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "frontend engineer",
+              "responsibilities": [
+                "Employment type: internship",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "JavaScript",
+                "TypeScript",
+                "React"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j13"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j13",
+                  "source": "liepin",
+                  "source_url": "https://jobs.example.invalid/j13",
+                  "text": "SYNTHETIC VACANCY j13: Frontend Engineer internship\nLocation: Hong Kong\nEmployment type: internship\nRequires JavaScript.\nRequires TypeScript.\nRequires React.\nBachelor degree required.\nBuild a frontend engineer student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j13: Frontend Engineer internship\nLocation: Hong Kong\nEmployment type: internship\nRequires JavaScript.\nRequires TypeScript.\nRequires React.\nBachelor degree required.\nBuild a frontend engineer student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "internship",
+              "target_directions": [
+                "frontend engineer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「JavaScript」，整理作品、个人贡献与可核实成果。",
+              "针对「TypeScript」，整理作品、个人贡献与可核实成果。",
+              "针对「React」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "JavaScript",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j13",
+                    "excerpt": "Requires JavaScript.",
+                    "source_url": "https://jobs.example.invalid/j13"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "JavaScript",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "TypeScript",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j13",
+                    "excerpt": "Requires TypeScript.",
+                    "source_url": "https://jobs.example.invalid/j13"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "TypeScript",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "React TypeScript student portal",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "React",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j13",
+                    "excerpt": "Requires React.",
+                    "source_url": "https://jobs.example.invalid/j13"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "React",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "React TypeScript student portal",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          }
+        ],
+        "warnings": [],
+        "introduction": "以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。"
+      },
+      "status": "completed",
+      "elapsed_seconds": 0.0032481999951414764,
+      "structured_calls": 4
+    },
+    {
+      "profile_id": "p07",
+      "scenario": "insufficient-answer",
+      "candidate_ids": [
+        "j07",
+        "j08",
+        "j09",
+        "j10",
+        "j11",
+        "j12",
+        "j13",
+        "j14",
+        "j15",
+        "j16",
+        "j17",
+        "j18",
+        "j19",
+        "j20",
+        "j21",
+        "j22",
+        "j23",
+        "j24",
+        "j25",
+        "j26"
+      ],
+      "candidate_sha256": "841622a5ace3f1661eaf67a3ac36b6c0bf0e9060434853643058377103d8e0a2",
+      "extraction": {
+        "true_positive": 3,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": true,
+        "completed": false,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [
+          "preferences.location"
+        ],
+        "required_fields_detected": [
+          "preferences.location"
+        ],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": null,
+      "recommended_ids": [],
+      "ranking_skip": "unresolved_required_input",
+      "status": "completed",
+      "elapsed_seconds": 0.0003515999997034669,
+      "structured_calls": 2
+    },
+    {
+      "profile_id": "p08",
+      "scenario": "optional-skip",
+      "candidate_ids": [
+        "j08",
+        "j09",
+        "j10",
+        "j11",
+        "j12",
+        "j13",
+        "j14",
+        "j15",
+        "j16",
+        "j17",
+        "j18",
+        "j19",
+        "j20",
+        "j21",
+        "j25",
+        "j26",
+        "j27",
+        "j28",
+        "j29",
+        "j30"
+      ],
+      "candidate_sha256": "71f073245b5da4985d1e1dd4809e7f224e4efa5ac6f4d6acca60bae482ae5414",
+      "extraction": {
+        "true_positive": 5,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": false,
+        "completed": null,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [],
+        "required_fields_detected": [],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": {
+        "returned": 1,
+        "relevant": 1,
+        "precision_at_5": 0.2,
+        "precision_returned": 1.0,
+        "violating_recommendations": 0,
+        "constraint_violation_rate": 0.0,
+        "claim_count": 3,
+        "supported_claim_count": 3,
+        "evidence_support_rate": 1.0,
+        "reference_count": 9,
+        "valid_reference_count": 9,
+        "semantic_entailment_rate": null
+      },
+      "recommended_ids": [
+        "j25"
+      ],
+      "recommendation": {
+        "session_id": "p08",
+        "generated_at": "2026-10-04T21:33:18.846870Z",
+        "jobs": [
+          {
+            "job": {
+              "job_id": "j25",
+              "source": "jobsdb",
+              "source_url": "https://jobs.example.invalid/j25",
+              "title": "Ux Designer internship",
+              "company": "Synthetic Organisation 5",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "ux designer",
+              "responsibilities": [
+                "Employment type: internship",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Figma",
+                "prototyping",
+                "user research"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j25"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j25",
+                  "source": "jobsdb",
+                  "source_url": "https://jobs.example.invalid/j25",
+                  "text": "SYNTHETIC VACANCY j25: Ux Designer internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Figma.\nRequires prototyping.\nRequires user research.\nBachelor degree required.\nBuild a ux designer student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j25: Ux Designer internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Figma.\nRequires prototyping.\nRequires user research.\nBachelor degree required.\nBuild a ux designer student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "internship",
+              "target_directions": [
+                "ux designer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Figma」，整理作品、个人贡献与可核实成果。",
+              "针对「prototyping」，整理作品、个人贡献与可核实成果。",
+              "针对「user research」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Figma",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j25",
+                    "excerpt": "Requires Figma.",
+                    "source_url": "https://jobs.example.invalid/j25"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Figma",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Figma prototyping after user research",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "prototyping",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j25",
+                    "excerpt": "Requires prototyping.",
+                    "source_url": "https://jobs.example.invalid/j25"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "prototyping",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Figma prototyping after user research",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "user research",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j25",
+                    "excerpt": "Requires user research.",
+                    "source_url": "https://jobs.example.invalid/j25"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "user research",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Figma prototyping after user research",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          }
+        ],
+        "warnings": [],
+        "introduction": "以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。"
+      },
+      "status": "completed",
+      "elapsed_seconds": 0.0031577000045217574,
+      "structured_calls": 4
+    },
+    {
+      "profile_id": "p09",
+      "scenario": "explicit-unrestricted",
+      "candidate_ids": [
+        "j09",
+        "j10",
+        "j11",
+        "j12",
+        "j13",
+        "j14",
+        "j15",
+        "j16",
+        "j17",
+        "j18",
+        "j19",
+        "j20",
+        "j21",
+        "j22",
+        "j23",
+        "j24",
+        "j25",
+        "j26",
+        "j27",
+        "j28"
+      ],
+      "candidate_sha256": "bcc2a06cc5e2daeb4c41d985346761f9175c45cef83b13e35fbd0c7e1dde112f",
+      "extraction": {
+        "true_positive": 5,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": false,
+        "completed": null,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [],
+        "required_fields_detected": [],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": {
+        "returned": 5,
+        "relevant": 4,
+        "precision_at_5": 0.8,
+        "precision_returned": 0.8,
+        "violating_recommendations": 0,
+        "constraint_violation_rate": 0.0,
+        "claim_count": 13,
+        "supported_claim_count": 13,
+        "evidence_support_rate": 1.0,
+        "reference_count": 39,
+        "valid_reference_count": 39,
+        "semantic_entailment_rate": null
+      },
+      "recommended_ids": [
+        "j19",
+        "j20",
+        "j21",
+        "j22",
+        "j23"
+      ],
+      "recommendation": {
+        "session_id": "p09",
+        "generated_at": "2026-10-04T21:33:18.857370Z",
+        "jobs": [
+          {
+            "job": {
+              "job_id": "j19",
+              "source": "shixiseng",
+              "source_url": "https://jobs.example.invalid/j19",
+              "title": "Data Engineer internship",
+              "company": "Synthetic Organisation 4",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "data engineer",
+              "responsibilities": [
+                "Employment type: internship",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Docker"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j19"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j19",
+                  "source": "shixiseng",
+                  "source_url": "https://jobs.example.invalid/j19",
+                  "text": "SYNTHETIC VACANCY j19: Data Engineer internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j19: Data Engineer internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "internship",
+              "target_directions": [
+                "data engineer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Python」，整理作品、个人贡献与可核实成果。",
+              "针对「SQL」，整理作品、个人贡献与可核实成果。",
+              "针对「Docker」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j19",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j19"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "SQL",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j19",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j19"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "SQL",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "Docker",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j19",
+                    "excerpt": "Requires Docker.",
+                    "source_url": "https://jobs.example.invalid/j19"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Docker",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          },
+          {
+            "job": {
+              "job_id": "j20",
+              "source": "shixiseng",
+              "source_url": "https://jobs.example.invalid/j20",
+              "title": "Data Engineer full-time",
+              "company": "Synthetic Organisation 4",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "data engineer",
+              "responsibilities": [
+                "Employment type: full-time",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Docker"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j20"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j20",
+                  "source": "shixiseng",
+                  "source_url": "https://jobs.example.invalid/j20",
+                  "text": "SYNTHETIC VACANCY j20: Data Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j20: Data Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "full-time",
+              "target_directions": [
+                "data engineer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Python」，整理作品、个人贡献与可核实成果。",
+              "针对「SQL」，整理作品、个人贡献与可核实成果。",
+              "针对「Docker」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j20",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j20"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "SQL",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j20",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j20"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "SQL",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "Docker",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j20",
+                    "excerpt": "Requires Docker.",
+                    "source_url": "https://jobs.example.invalid/j20"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Docker",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          },
+          {
+            "job": {
+              "job_id": "j21",
+              "source": "shixiseng",
+              "source_url": "https://jobs.example.invalid/j21",
+              "title": "Data Engineer internship",
+              "company": "Synthetic Organisation 4",
+              "location": "Shenzhen",
+              "salary": null,
+              "target_direction": "data engineer",
+              "responsibilities": [
+                "Employment type: internship",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Docker"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j21"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j21",
+                  "source": "shixiseng",
+                  "source_url": "https://jobs.example.invalid/j21",
+                  "text": "SYNTHETIC VACANCY j21: Data Engineer internship\nLocation: Shenzhen\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j21: Data Engineer internship\nLocation: Shenzhen\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "internship",
+              "target_directions": [
+                "data engineer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Python」，整理作品、个人贡献与可核实成果。",
+              "针对「SQL」，整理作品、个人贡献与可核实成果。",
+              "针对「Docker」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j21",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j21"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "SQL",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j21",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j21"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "SQL",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "Docker",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j21",
+                    "excerpt": "Requires Docker.",
+                    "source_url": "https://jobs.example.invalid/j21"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Docker",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          },
+          {
+            "job": {
+              "job_id": "j22",
+              "source": "shixiseng",
+              "source_url": "https://jobs.example.invalid/j22",
+              "title": "Data Engineer full-time",
+              "company": "Synthetic Organisation 4",
+              "location": "Shanghai",
+              "salary": null,
+              "target_direction": "data engineer",
+              "responsibilities": [
+                "Employment type: full-time",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Docker"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j22"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j22",
+                  "source": "shixiseng",
+                  "source_url": "https://jobs.example.invalid/j22",
+                  "text": "SYNTHETIC VACANCY j22: Data Engineer full-time\nLocation: Shanghai\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j22: Data Engineer full-time\nLocation: Shanghai\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "full-time",
+              "target_directions": [
+                "data engineer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Python」，整理作品、个人贡献与可核实成果。",
+              "针对「SQL」，整理作品、个人贡献与可核实成果。",
+              "针对「Docker」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j22",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j22"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "SQL",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j22",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j22"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "SQL",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "Docker",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j22",
+                    "excerpt": "Requires Docker.",
+                    "source_url": "https://jobs.example.invalid/j22"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Docker",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          },
+          {
+            "job": {
+              "job_id": "j23",
+              "source": "shixiseng",
+              "source_url": "https://jobs.example.invalid/j23",
+              "title": "Data Engineer part-time",
+              "company": "Synthetic Organisation 4",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "data engineer",
+              "responsibilities": [
+                "Employment type: part-time"
+              ],
+              "required_skills": [
+                "Python"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "unknown",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j23"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j23",
+                  "source": "shixiseng",
+                  "source_url": "https://jobs.example.invalid/j23",
+                  "text": "SYNTHETIC VACANCY j23: Data Engineer part-time\nLocation: Hong Kong\nEmployment type: part-time\nRequires Python.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": true
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j23: Data Engineer part-time\nLocation: Hong Kong\nEmployment type: part-time\nRequires Python.",
+              "description_is_excerpt": true,
+              "employment_type": "part-time",
+              "target_directions": [
+                "data engineer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Python」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j23",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j23"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker ingestion project",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": [
+              "岗位 j23 的有效状态为 unknown，申请前请访问来源确认。",
+              "岗位 j23 的来源包含摘要，要求可能不完整，请查看原始链接。"
+            ]
+          }
+        ],
+        "warnings": [
+          "岗位 j23 的有效状态为 unknown，申请前请访问来源确认。",
+          "岗位 j23 的来源包含摘要，要求可能不完整，请查看原始链接。"
+        ],
+        "introduction": "以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。"
+      },
+      "status": "completed",
+      "elapsed_seconds": 0.010594199993647635,
+      "structured_calls": 4
+    },
+    {
+      "profile_id": "p10",
+      "scenario": "three-directions",
+      "candidate_ids": [
+        "j01",
+        "j02",
+        "j03",
+        "j04",
+        "j05",
+        "j06",
+        "j07",
+        "j08",
+        "j09",
+        "j10",
+        "j11",
+        "j12",
+        "j19",
+        "j20",
+        "j21",
+        "j22",
+        "j23",
+        "j24",
+        "j28",
+        "j29"
+      ],
+      "candidate_sha256": "be6fece701ad7bf5f7fbf0a5f7316ff2e9719d7e5405fe87f0f3e4a3b9c7b323",
+      "extraction": {
+        "true_positive": 6,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": false,
+        "completed": null,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [],
+        "required_fields_detected": [],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": {
+        "returned": 3,
+        "relevant": 3,
+        "precision_at_5": 0.6,
+        "precision_returned": 1.0,
+        "violating_recommendations": 0,
+        "constraint_violation_rate": 0.0,
+        "claim_count": 9,
+        "supported_claim_count": 9,
+        "evidence_support_rate": 1.0,
+        "reference_count": 27,
+        "valid_reference_count": 27,
+        "semantic_entailment_rate": null
+      },
+      "recommended_ids": [
+        "j02",
+        "j08",
+        "j20"
+      ],
+      "recommendation": {
+        "session_id": "p10",
+        "generated_at": "2026-10-04T21:33:18.864377Z",
+        "jobs": [
+          {
+            "job": {
+              "job_id": "j02",
+              "source": "jobsdb",
+              "source_url": "https://jobs.example.invalid/j02",
+              "title": "Data Analyst full-time",
+              "company": "Synthetic Organisation 1",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "data analyst",
+              "responsibilities": [
+                "Employment type: full-time",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Excel"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j02"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j02",
+                  "source": "jobsdb",
+                  "source_url": "https://jobs.example.invalid/j02",
+                  "text": "SYNTHETIC VACANCY j02: Data Analyst full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j02: Data Analyst full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "full-time",
+              "target_directions": [
+                "data analyst"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Python」，整理作品、个人贡献与可核实成果。",
+              "针对「SQL」，整理作品、个人贡献与可核实成果。",
+              "针对「Excel」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j02",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j02"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker reporting service with Excel",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "SQL",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j02",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j02"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "SQL",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker reporting service with Excel",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "Excel",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j02",
+                    "excerpt": "Requires Excel.",
+                    "source_url": "https://jobs.example.invalid/j02"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Excel",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker reporting service with Excel",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          },
+          {
+            "job": {
+              "job_id": "j08",
+              "source": "zhaopin",
+              "source_url": "https://jobs.example.invalid/j08",
+              "title": "Backend Engineer full-time",
+              "company": "Synthetic Organisation 2",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "backend engineer",
+              "responsibilities": [
+                "Employment type: full-time",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Docker"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j08"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j08",
+                  "source": "zhaopin",
+                  "source_url": "https://jobs.example.invalid/j08",
+                  "text": "SYNTHETIC VACANCY j08: Backend Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a backend engineer student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j08: Backend Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a backend engineer student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "full-time",
+              "target_directions": [
+                "backend engineer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Python」，整理作品、个人贡献与可核实成果。",
+              "针对「SQL」，整理作品、个人贡献与可核实成果。",
+              "针对「Docker」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j08",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j08"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker reporting service with Excel",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "SQL",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j08",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j08"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "SQL",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker reporting service with Excel",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "Docker",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j08",
+                    "excerpt": "Requires Docker.",
+                    "source_url": "https://jobs.example.invalid/j08"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Docker",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker reporting service with Excel",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          },
+          {
+            "job": {
+              "job_id": "j20",
+              "source": "shixiseng",
+              "source_url": "https://jobs.example.invalid/j20",
+              "title": "Data Engineer full-time",
+              "company": "Synthetic Organisation 4",
+              "location": "Hong Kong",
+              "salary": null,
+              "target_direction": "data engineer",
+              "responsibilities": [
+                "Employment type: full-time",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Docker"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j20"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j20",
+                  "source": "shixiseng",
+                  "source_url": "https://jobs.example.invalid/j20",
+                  "text": "SYNTHETIC VACANCY j20: Data Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j20: Data Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "full-time",
+              "target_directions": [
+                "data engineer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「Python」，整理作品、个人贡献与可核实成果。",
+              "针对「SQL」，整理作品、个人贡献与可核实成果。",
+              "针对「Docker」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j20",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j20"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker reporting service with Excel",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "SQL",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j20",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j20"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "SQL",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker reporting service with Excel",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "Docker",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j20",
+                    "excerpt": "Requires Docker.",
+                    "source_url": "https://jobs.example.invalid/j20"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Docker",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Python SQL Docker reporting service with Excel",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          }
+        ],
+        "warnings": [],
+        "introduction": "以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。"
+      },
+      "status": "completed",
+      "elapsed_seconds": 0.00697760000184644,
+      "structured_calls": 4
+    },
+    {
+      "profile_id": "p11",
+      "scenario": "post-confirmation-correction",
+      "candidate_ids": [
+        "j11",
+        "j12",
+        "j13",
+        "j14",
+        "j15",
+        "j16",
+        "j17",
+        "j18",
+        "j19",
+        "j20",
+        "j21",
+        "j22",
+        "j23",
+        "j24",
+        "j25",
+        "j26",
+        "j27",
+        "j28",
+        "j29",
+        "j30"
+      ],
+      "candidate_sha256": "452f7df52bbb773f76c868ac8a6ecf3cb031959d569380f4e2772b0e07e083c1",
+      "extraction": {
+        "true_positive": 5,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": true,
+        "completed": true,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [],
+        "required_fields_detected": [],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": {
+        "returned": 1,
+        "relevant": 1,
+        "precision_at_5": 0.2,
+        "precision_returned": 1.0,
+        "violating_recommendations": 0,
+        "constraint_violation_rate": 0.0,
+        "claim_count": 3,
+        "supported_claim_count": 3,
+        "evidence_support_rate": 1.0,
+        "reference_count": 8,
+        "valid_reference_count": 8,
+        "semantic_entailment_rate": null
+      },
+      "recommended_ids": [
+        "j15"
+      ],
+      "recommendation": {
+        "session_id": "p11",
+        "generated_at": "2026-10-04T21:33:18.867851Z",
+        "jobs": [
+          {
+            "job": {
+              "job_id": "j15",
+              "source": "liepin",
+              "source_url": "https://jobs.example.invalid/j15",
+              "title": "Frontend Engineer internship",
+              "company": "Synthetic Organisation 3",
+              "location": "Shenzhen",
+              "salary": null,
+              "target_direction": "frontend engineer",
+              "responsibilities": [
+                "Employment type: internship",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "JavaScript",
+                "TypeScript",
+                "React"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j15"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j15",
+                  "source": "liepin",
+                  "source_url": "https://jobs.example.invalid/j15",
+                  "text": "SYNTHETIC VACANCY j15: Frontend Engineer internship\nLocation: Shenzhen\nEmployment type: internship\nRequires JavaScript.\nRequires TypeScript.\nRequires React.\nBachelor degree required.\nBuild a frontend engineer student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j15: Frontend Engineer internship\nLocation: Shenzhen\nEmployment type: internship\nRequires JavaScript.\nRequires TypeScript.\nRequires React.\nBachelor degree required.\nBuild a frontend engineer student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "internship",
+              "target_directions": [
+                "frontend engineer"
+              ]
+            },
+            "missing_skills": [],
+            "preparation_suggestions": [
+              "针对「JavaScript」，整理作品、个人贡献与可核实成果。",
+              "针对「TypeScript」，整理作品、个人贡献与可核实成果。",
+              "针对「React」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "JavaScript",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j15",
+                    "excerpt": "Requires JavaScript.",
+                    "source_url": "https://jobs.example.invalid/j15"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "JavaScript",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "TypeScript",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j15",
+                    "excerpt": "Requires TypeScript.",
+                    "source_url": "https://jobs.example.invalid/j15"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "TypeScript",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "React TypeScript application",
+                    "source_url": null
+                  }
+                ]
+              },
+              {
+                "requirement": "React",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j15",
+                    "excerpt": "Requires React.",
+                    "source_url": "https://jobs.example.invalid/j15"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "React",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "React TypeScript application",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          }
+        ],
+        "warnings": [],
+        "introduction": "以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。"
+      },
+      "status": "completed",
+      "elapsed_seconds": 0.0034125000092899427,
+      "structured_calls": 4
+    },
+    {
+      "profile_id": "p12",
+      "scenario": "related-experience-no-claim-of-mastery",
+      "candidate_ids": [
+        "j01",
+        "j02",
+        "j03",
+        "j04",
+        "j05",
+        "j06",
+        "j07",
+        "j18",
+        "j19",
+        "j20",
+        "j21",
+        "j22",
+        "j23",
+        "j24",
+        "j25",
+        "j26",
+        "j27",
+        "j28",
+        "j29",
+        "j30"
+      ],
+      "candidate_sha256": "b5275b52e69b644910917c6866a5db6e66cf7bf7f9f835eebc7d13c0e1253a3c",
+      "extraction": {
+        "true_positive": 4,
+        "false_positive": 0,
+        "false_negative": 0,
+        "precision": 1.0,
+        "recall": 1.0
+      },
+      "clarification": {
+        "needs_action": false,
+        "completed": null,
+        "expected_outcome_correct": true,
+        "required_fields_expected": [],
+        "required_fields_detected": [],
+        "detection_exact": true,
+        "optional_skip_behavior": "not_measured_by_component_benchmark"
+      },
+      "ranking": {
+        "returned": 1,
+        "relevant": 0,
+        "precision_at_5": 0.0,
+        "precision_returned": 0.0,
+        "violating_recommendations": 0,
+        "constraint_violation_rate": 0.0,
+        "claim_count": 3,
+        "supported_claim_count": 3,
+        "evidence_support_rate": 1.0,
+        "reference_count": 5,
+        "valid_reference_count": 5,
+        "semantic_entailment_rate": null
+      },
+      "recommended_ids": [
+        "j04"
+      ],
+      "recommendation": {
+        "session_id": "p12",
+        "generated_at": "2026-10-04T21:33:18.870948Z",
+        "jobs": [
+          {
+            "job": {
+              "job_id": "j04",
+              "source": "jobsdb",
+              "source_url": "https://jobs.example.invalid/j04",
+              "title": "Data Analyst full-time",
+              "company": "Synthetic Organisation 1",
+              "location": "Shanghai",
+              "salary": null,
+              "target_direction": "data analyst",
+              "responsibilities": [
+                "Employment type: full-time",
+                "Bachelor degree required."
+              ],
+              "required_skills": [
+                "Python",
+                "SQL",
+                "Excel"
+              ],
+              "posted_at": "2026-10-01T00:00:00Z",
+              "expiry_at": null,
+              "freshness_status": "active",
+              "fetched_at": "2026-10-04T00:00:00Z",
+              "source_links": [
+                "https://jobs.example.invalid/j04"
+              ],
+              "source_documents": [
+                {
+                  "document_id": "jd-j04",
+                  "source": "jobsdb",
+                  "source_url": "https://jobs.example.invalid/j04",
+                  "text": "SYNTHETIC VACANCY j04: Data Analyst full-time\nLocation: Shanghai\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+                  "fetched_at": "2026-10-04T00:00:00Z",
+                  "is_excerpt": false
+                }
+              ],
+              "description": "SYNTHETIC VACANCY j04: Data Analyst full-time\nLocation: Shanghai\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+              "description_is_excerpt": false,
+              "employment_type": "full-time",
+              "target_directions": [
+                "data analyst"
+              ]
+            },
+            "missing_skills": [
+              "Python",
+              "SQL"
+            ],
+            "preparation_suggestions": [
+              "针对「Python」准备可核实的学习、项目或经历材料。",
+              "针对「SQL」准备可核实的学习、项目或经历材料。",
+              "针对「Python」，完成有可展示成果的练习。",
+              "针对「SQL」，完成有可展示成果的练习。",
+              "针对「Excel」，整理作品、个人贡献与可核实成果。",
+              "通过来源链接核实岗位状态、完整要求和申请方式。"
+            ],
+            "matching_reasons": [
+              {
+                "requirement": "Python",
+                "level": "not_evidenced",
+                "explanation": "提供的材料中未见此项要求的证据，不代表不具备该能力。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j04",
+                    "excerpt": "Requires Python.",
+                    "source_url": "https://jobs.example.invalid/j04"
+                  }
+                ],
+                "profile_evidence": []
+              },
+              {
+                "requirement": "SQL",
+                "level": "not_evidenced",
+                "explanation": "提供的材料中未见此项要求的证据，不代表不具备该能力。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j04",
+                    "excerpt": "Requires SQL.",
+                    "source_url": "https://jobs.example.invalid/j04"
+                  }
+                ],
+                "profile_evidence": []
+              },
+              {
+                "requirement": "Excel",
+                "level": "strong",
+                "explanation": "提供的材料对该要求有直接支持；请结合所附原文核实。",
+                "job_evidence": [
+                  {
+                    "document_id": "jd-j04",
+                    "excerpt": "Requires Excel.",
+                    "source_url": "https://jobs.example.invalid/j04"
+                  }
+                ],
+                "profile_evidence": [
+                  {
+                    "document_id": "description",
+                    "excerpt": "Excel",
+                    "source_url": null
+                  },
+                  {
+                    "document_id": "description",
+                    "excerpt": "Used Excel for weekly operations reports",
+                    "source_url": null
+                  }
+                ]
+              }
+            ],
+            "uncertainty_notices": []
+          }
+        ],
+        "warnings": [],
+        "introduction": "以下岗位按已确认条件筛选并结合可核实证据排序；未见证据不代表缺乏能力。"
+      },
+      "status": "completed",
+      "elapsed_seconds": 0.003083499992499128,
+      "structured_calls": 4
+    }
+  ]
+}

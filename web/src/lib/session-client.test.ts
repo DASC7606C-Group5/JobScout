@@ -1,12 +1,17 @@
 import { describe, expect, test } from 'bun:test'
+import { rejects } from 'node:assert/strict'
 
-import { createProfileFixture } from '../../tests/fixtures'
-import type { ScoutSession } from './contracts'
+import {
+  createProfileFixture,
+  createRecommendationFixture,
+  createSessionFixture,
+} from '../../tests/fixtures'
+import type { ResumeSessionRequest } from './contracts'
 import { toScoutInput } from './profile-form'
 import { createSessionClient, SessionHttpError } from './session-client'
 
-const input = toScoutInput(createProfileFixture())
-const completed: ScoutSession = {
+const input = { ...toScoutInput(createProfileFixture()), request_id: 'create-1' }
+const completed = createSessionFixture({
   session_id: 'session-1',
   outcome: 'completed',
   profile: null,
@@ -15,22 +20,17 @@ const completed: ScoutSession = {
     session_id: 'session-1',
     generated_at: '2026-10-03T00:00:00Z',
     jobs: [],
-    warnings: [],
+    notices: [],
+    introduction: '',
   },
   errors: [],
-  warnings: [],
-}
+  notices: [],
+})
 
 function createTransport(
   handler: (url: string, init: RequestInit) => Response | Promise<Response>,
 ) {
   return (url: string, init: RequestInit) => Promise.resolve(handler(url, init))
-}
-
-async function expectFailure(request: Promise<unknown>, message: string) {
-  const error: unknown = await request.catch((cause: unknown) => cause)
-  expect(error).toBeInstanceOf(Error)
-  expect(error).toHaveProperty('message', expect.stringContaining(message))
 }
 
 describe('Session HTTP API', () => {
@@ -42,14 +42,25 @@ describe('Session HTTP API', () => {
         requests.push({ url, init })
         return init.method === 'DELETE'
           ? new Response(null, { status: 204 })
-          : Response.json(completed, { status: init.method === 'POST' ? 201 : 200 })
+          : Response.json(completed, { status: init.method === 'POST' ? 202 : 200 })
       }),
     )
     const signal = new AbortController().signal
     expect(await client.start(input, signal)).toEqual(completed)
     expect(await client.get('session/1', signal)).toEqual(completed)
-    const answers = { 'preferences.location': '香港', target_directions: '前端开发' }
-    expect(await client.answer('session/1', answers, signal)).toEqual(completed)
+    const request: ResumeSessionRequest = {
+      request_id: 'resume-1',
+      expected_revision: 1,
+      action: 'answer',
+      message: 'Additional notes',
+      answers: [
+        { question_id: 'location-1', value: 'hk' },
+        { question_id: 'directions-1', value: ['frontend', 'data'] },
+      ],
+      skipped_question_ids: ['optional-1'],
+      profile_updates: { 'preferences.location': '香港' },
+    }
+    expect(await client.answer('session/1', request, signal)).toEqual(completed)
     await client.delete('session/1', signal)
 
     expect(requests.map(({ url, init }) => [url, init.method])).toEqual([
@@ -63,7 +74,7 @@ describe('Session HTTP API', () => {
     if (typeof startBody !== 'string' || typeof answerBody !== 'string')
       throw new Error('Expected JSON request bodies')
     expect(JSON.parse(startBody)).toEqual(input)
-    expect(JSON.parse(answerBody)).toEqual({ answers })
+    expect(JSON.parse(answerBody)).toEqual(request)
     expect(requests.every(({ init }) => init.signal === signal)).toBe(true)
     expect(requests[0]?.init.headers).toHaveProperty('Content-Type', 'application/json')
     expect(requests[1]?.init.body).toBeUndefined()
@@ -71,8 +82,13 @@ describe('Session HTTP API', () => {
   })
 
   test('paused and failed workflow outcomes remain successful HTTP responses', async () => {
-    for (const outcome of ['paused', 'failed'] as const) {
-      const response = { ...completed, outcome, recommendation: null, warnings: ['检索来源提示'] }
+    for (const outcome of ['running', 'paused', 'failed'] as const) {
+      const response = {
+        ...completed,
+        outcome,
+        recommendation: null,
+        notices: [],
+      }
       const client = createSessionClient(
         '/api/v1',
         createTransport(() => Response.json(response)),
@@ -81,47 +97,146 @@ describe('Session HTTP API', () => {
     }
   })
 
-  test('HTTP errors preserve status for recovery and show useful messages', async () => {
-    for (const [status, message] of [
-      [404, '会话已不存在'],
-      [409, '刷新会话'],
-      [422, '格式不正确'],
-      [503, '服务暂时不可用'],
-    ] as const) {
+  test('HTTP errors reject with status for recovery', async () => {
+    for (const status of [404, 409, 422, 503]) {
       const client = createSessionClient(
         '/api/v1',
         createTransport(() => Response.json({ detail: 'Backend error' }, { status })),
       )
-      const error: unknown = await client.get('session-1').catch((cause: unknown) => cause)
-      expect(error).toBeInstanceOf(SessionHttpError)
-      expect(error).toHaveProperty('status', status)
-      expect(error).toHaveProperty('message', expect.stringContaining(message))
+      await rejects(
+        client.get('session-1'),
+        (error: unknown) => error instanceof SessionHttpError && error.status === status,
+      )
     }
     const client = createSessionClient(
       '/api/v1',
       createTransport(() => new Response('Bad gateway', { status: 502 })),
     )
-    await expectFailure(client.get('session-1'), '服务暂时不可用')
+    await rejects(client.get('session-1'), { status: 502 })
   })
 
-  test('network failures and invalid JSON produce readable errors', async () => {
+  test('public error codes preserve recovery without displaying private response details', async () => {
+    const diagnostic =
+      'private-detail: Record index 0 gen-private kept as None detail_limit Group 6'
+    for (const [status, body, code] of [
+      [
+        409,
+        { detail: { code: 'request_conflict', message: diagnostic, action: 'reload' } },
+        'request_conflict',
+      ],
+      [400, { detail: diagnostic }, 'request_failed'],
+      [422, { detail: { code: diagnostic, message: diagnostic, action: null } }, 'invalid_input'],
+      [
+        503,
+        { detail: { code: 'service_unavailable', message: diagnostic, action: 'retry' } },
+        'service_unavailable',
+      ],
+    ] as const) {
+      const client = createSessionClient(
+        '/api/v1',
+        createTransport(() => Response.json(body, { status })),
+      )
+      await rejects(
+        client.get('session-1'),
+        (error: unknown) =>
+          error instanceof SessionHttpError &&
+          error.status === status &&
+          error.code === code &&
+          !error.message.includes(diagnostic),
+      )
+    }
+  })
+
+  test('network failures and invalid responses reject', async () => {
     const offline = createSessionClient(
       '/api/v1',
       createTransport(() => {
         throw new TypeError('Failed to fetch')
       }),
     )
-    await expectFailure(offline.start(input), '无法连接服务')
+    await rejects(offline.start(input), { code: 'connection_unavailable' })
     const invalidJson = createSessionClient(
       '/api/v1',
       createTransport(() => new Response('<html>Proxy misconfigured</html>')),
     )
-    await expectFailure(invalidJson.get('session-1'), '无法读取的数据')
+    await rejects(invalidJson.get('session-1'), { code: 'invalid_response' })
     const invalidSession = createSessionClient(
       '/api/v1',
       createTransport(() => Response.json({ session_id: 'session-1', outcome: 'running' })),
     )
-    await expectFailure(invalidSession.get('session-1'), '会话格式不正确')
+    await rejects(invalidSession.get('session-1'), { code: 'invalid_response' })
+  })
+
+  test('requires the current notice, analysis, conversation and error contract before rendering', async () => {
+    const item = createRecommendationFixture()
+    const recommendation = { ...completed.recommendation!, jobs: [item] }
+    const current = { ...completed, recommendation }
+    const message = current.conversation[0]!
+    const reason = item.matching_reasons[0]!
+    const quote = reason.job_source_quotes[0]!
+    const invalidReplies = [
+      { ...current, notices: undefined },
+      { ...current, conversation: [{ ...message, responses: undefined }] },
+      { ...current, recommendation: { ...recommendation, notices: undefined } },
+      {
+        ...current,
+        recommendation: { ...recommendation, jobs: [{ ...item, notices: undefined }] },
+      },
+      {
+        ...current,
+        recommendation: { ...recommendation, jobs: [{ ...item, analysis_status: undefined }] },
+      },
+      {
+        ...current,
+        recommendation: { ...recommendation, jobs: [{ ...item, analysis_status: 'fallback' }] },
+      },
+      ...[
+        { ...reason, job_source_quotes: undefined },
+        { ...reason, profile_source_quotes: undefined },
+        { ...reason, level: 'unsupported' },
+        { ...reason, job_source_quotes: [{ ...quote, document_id: undefined }] },
+        { ...reason, job_source_quotes: [{ ...quote, excerpt: 42 }] },
+        { ...reason, job_source_quotes: [{ ...quote, source_url: 42 }] },
+      ].map((matchingReason) => ({
+        ...current,
+        recommendation: {
+          ...recommendation,
+          jobs: [{ ...item, matching_reasons: [matchingReason] }],
+        },
+      })),
+      { ...current, errors: [{ code: 'service_unavailable', message: 'Private failure' }] },
+      {
+        ...current,
+        notices: [
+          {
+            code: 'listing_incomplete',
+            scope: 'job',
+            message: 'Listing notice',
+            action: 'open_listing',
+          },
+        ],
+      },
+    ]
+    for (const reply of invalidReplies) {
+      const client = createSessionClient(
+        '/api/v1',
+        createTransport(() => Response.json(reply)),
+      )
+      await rejects(client.get('session-1'), { code: 'invalid_response' })
+    }
+
+    current.conversation = [
+      {
+        ...message,
+        text: "User text: target_directions: ['React']; preferences.location: None",
+        responses: [{ label: 'Supplied label', value: ['Original value'], status: 'answered' }],
+      },
+    ]
+    const client = createSessionClient(
+      '/api/v1',
+      createTransport(() => Response.json(current)),
+    )
+    expect(await client.get('session-1')).toEqual(current)
   })
 
   test('aborted requests preserve the abort error', async () => {
@@ -134,9 +249,9 @@ describe('Session HTTP API', () => {
         return Response.json(completed)
       }),
     )
-    const error: unknown = await client
-      .get('session-1', controller.signal)
-      .catch((cause: unknown) => cause)
-    expect(error).toBe(controller.signal.reason)
+    await rejects(
+      client.get('session-1', controller.signal),
+      (error: unknown) => error === controller.signal.reason,
+    )
   })
 })

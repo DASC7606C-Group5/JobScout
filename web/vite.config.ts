@@ -10,7 +10,10 @@ export default defineConfig(({ mode }) => {
     '/api': { target: env.API_PROXY_TARGET || 'http://127.0.0.1:8000', changeOrigin: true },
   }
   return {
-    server: { proxy },
+    server: {
+      proxy,
+      watch: { ignored: ['**/.tools/**', '**/test-results/**', '**/playwright-report/**'] },
+    },
     preview: { proxy },
     resolve: { tsconfigPaths: true },
     plugins: [

@@ -11,5 +11,13 @@
     "typescript/no-misused-promises": "error",
     "import/no-duplicates": "error"
   },
-  "ignorePatterns": ["src/routeTree.gen.ts", "dist/**", ".tanstack/**", ".agents/**"]
+  "ignorePatterns": [
+    "src/routeTree.gen.ts",
+    "dist/**",
+    ".tanstack/**",
+    ".agents/**",
+    ".tools/**",
+    "test-results/**",
+    "playwright-report/**"
+  ]
 }

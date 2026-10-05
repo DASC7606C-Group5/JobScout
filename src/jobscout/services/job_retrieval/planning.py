@@ -8,7 +8,7 @@ from jobscout.schemas.search import SearchRequest
 from .models import RetrievalFailure
 
 DEFAULT_SOURCES = ("zhaopin", "liepin", "shixiseng", "jobsdb")
-LEGACY_SOURCES = ("remotive", "arbeitnow")
+FEED_SOURCES = ("remotive", "arbeitnow")
 REGIONAL_SOURCES = {"hk": ("jobsdb",), "cn": ("zhaopin", "liepin", "shixiseng")}
 
 
@@ -124,7 +124,13 @@ def validate_request(request: SearchRequest) -> None:
         raise RetrievalFailure("SEARCH_INPUT", "keywords must not contain blank entries.")
     if bool(request.location and request.location.strip()) == request.location_unrestricted:
         raise RetrievalFailure("SEARCH_INPUT", "Specify a location OR location_unrestricted=true.")
-    if normalized(request.employment_type) not in {normalized(k) for k in EMPLOYMENT_ALIASES}:
+    if bool(request.employment_type.strip()) == request.employment_type_unrestricted:
+        raise RetrievalFailure(
+            "SEARCH_INPUT", "Specify employment_type OR employment_type_unrestricted=true."
+        )
+    if not request.employment_type_unrestricted and normalized(request.employment_type) not in {
+        normalized(k) for k in EMPLOYMENT_ALIASES
+    }:
         raise RetrievalFailure("SEARCH_INPUT", "Unsupported employment_type; see retrieval guide.")
     if request.work_mode and normalized(request.work_mode) not in {
         "remote",
@@ -148,14 +154,18 @@ def select_sources(request: SearchRequest) -> list[str]:
         return [
             s
             for s in DEFAULT_SOURCES
-            if s != "shixiseng" or normalized(request.employment_type) == "internship"
+            if s != "shixiseng"
+            or request.employment_type_unrestricted
+            or normalized(request.employment_type) == "internship"
         ]
     region = location_region(request.location)
     if region in REGIONAL_SOURCES:
         return [
             s
             for s in REGIONAL_SOURCES[region]
-            if s != "shixiseng" or normalized(request.employment_type) == "internship"
+            if s != "shixiseng"
+            or request.employment_type_unrestricted
+            or normalized(request.employment_type) == "internship"
         ]
     return []
 
@@ -174,7 +184,7 @@ def plan_source_query(
     request: SearchRequest, source: str, *, page: int = 1, candidate_limit: int = 1000
 ) -> SourceQuery:
     validate_request(request)
-    if source not in LEGACY_SOURCES:
+    if source not in FEED_SOURCES:
         raise RetrievalFailure("SEARCH_UNKNOWN_SOURCE", "Unknown job source.")
     # One bounded snapshot serves all directions. Neither feed documents native
     # location/employment filters. Do not send invented query parameters.
