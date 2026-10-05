@@ -287,7 +287,14 @@ class SessionService:
                     "The session has been updated. Refresh and try again.",
                     code="search_changed",
                 )
-            if record.task is not None and not record.task.done():
+            editing_run = (
+                payload.action == "edit_conditions"
+                and record.outcome == "running"
+                and record.state.get("run_id") is not None
+                and record.state.get("profile") is not None
+            )
+            previous_task = record.task if editing_run else None
+            if record.task is not None and not record.task.done() and not editing_run:
                 raise SessionOperationError(
                     409,
                     "An operation is already in progress for this session.",
@@ -319,7 +326,17 @@ class SessionService:
             previous_updated_at = record.updated_at
             record.revision += 1
             record.state["revision"] = record.revision
-            if record.outcome in {"completed", "failed"}:
+            if payload.action == "edit_conditions":
+                record.state.update(
+                    recommendation=None,
+                    search_summary=None,
+                    run_id=None,
+                    progress=SearchProgress(),
+                    progress_seq=0,
+                    stop_reason=None,
+                    source_outcomes=[],
+                )
+            if record.outcome in {"completed", "failed"} or editing_run:
                 record.thread_id = f"{session_id}:{record.revision}"
                 record.thread_ids.append(record.thread_id)
                 next_input: Any = {
@@ -335,9 +352,6 @@ class SessionService:
             record.state["current_stage"] = (
                 "search" if payload.action == "confirm_search" else "validate"
             )
-            if payload.action == "edit_conditions":
-                record.state["recommendation"] = None
-                record.state["search_summary"] = None
             record.state["errors"] = []
             record.state["notices"] = []
             record.state["accepted_resume"] = data
@@ -362,7 +376,9 @@ class SessionService:
                 record.updated_at = previous_updated_at
                 raise
             record.requests[payload.request_id] = fingerprint
-            self._start(record, next_input)
+            if previous_task is not None:
+                previous_task.cancel()
+            self._start(record, next_input, previous_task=previous_task)
             return self._response(record)
 
     @staticmethod
@@ -715,28 +731,46 @@ class SessionService:
     def _config(session_id: str) -> dict[str, Any]:
         return {"configurable": {"thread_id": session_id}, "recursion_limit": 100}
 
-    def _start(self, record: _Session, graph_input: Any) -> None:
+    def _start(
+        self,
+        record: _Session,
+        graph_input: Any,
+        *,
+        previous_task: asyncio.Task[None] | None = None,
+    ) -> None:
         run_id = uuid4().hex
         record.active_run_id = run_id
         record.stop_event = asyncio.Event()
         record.state.update(
             run_id=None, progress=SearchProgress(), progress_seq=0, stop_reason=None
         )
-        record.task = asyncio.create_task(self._operate(record, graph_input, run_id))
+        record.task = asyncio.create_task(
+            self._operate(record, graph_input, run_id, previous_task=previous_task)
+        )
 
-    async def _operate(self, record: _Session, graph_input: Any, run_id: str) -> None:
+    async def _operate(
+        self,
+        record: _Session,
+        graph_input: Any,
+        run_id: str,
+        *,
+        previous_task: asyncio.Task[None] | None = None,
+    ) -> None:
         revision = record.revision
+        thread_id = record.thread_id
 
         async def on_progress(update: dict[str, Any]) -> None:
             await self._progress(record, run_id, revision, update)
 
-        config = self._config(record.thread_id)
+        config = self._config(thread_id)
         config["configurable"].update(
             run_id=run_id, stop_event=record.stop_event, on_progress=on_progress
         )
         try:
+            if previous_task is not None:
+                await asyncio.gather(previous_task, return_exceptions=True)
             state = await self.graph.ainvoke(graph_input, config)
-            snapshot = await self.graph.aget_state(self._config(record.thread_id))
+            snapshot = await self.graph.aget_state(self._config(thread_id))
             async with self.lock:
                 if (
                     record.deleted
@@ -759,7 +793,7 @@ class SessionService:
         except Exception:
             recovered: dict[str, Any] = {}
             try:
-                snapshot = await self.graph.aget_state(self._config(record.thread_id))
+                snapshot = await self.graph.aget_state(self._config(thread_id))
                 recovered = snapshot.values
             except Exception:
                 pass

@@ -286,6 +286,8 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
         outcome: 'paused',
         current_stage: 'confirm',
         recommendation: null,
+        run_id: null,
+        progress: createSessionFixture().progress,
         search_summary: { ...createSessionFixture().search_summary!, profile, revision },
         conversation: [
           ...snapshot.conversation,
@@ -653,6 +655,41 @@ test('partially analyzed jobs stay useful without inventing an unknown search co
   await expect(page.locator('body')).not.toContainText('some search conditions')
   await expect(page.locator('body')).not.toContainText('0 jobs to explore')
 })
+
+for (const stage of ['search', 'review'] as const) {
+  test(`edit criteria interrupts ${stage} and preserves the same session`, async ({ page }) => {
+    if (stage === 'review') await page.setViewportSize({ width: 390, height: 844 })
+    const running = createSessionFixture({
+      outcome: 'running',
+      current_stage: stage,
+      revision: 4,
+      run_id: 'active-run',
+      recommendation: resultSession().recommendation,
+    })
+    const state = await mockSessions(page, running)
+    state.seedSession(running)
+    await page.goto('/searches/session-1')
+    const edit = page.getByRole('button', { name: 'Edit search criteria', exact: true })
+    await expect(edit).toBeEnabled()
+    if (stage === 'review') await edit.press('Enter')
+    else await edit.click()
+    await expect(page.getByLabel('Job directions', { exact: true })).toHaveValue(
+      running.profile!.target_directions.join('\n'),
+    )
+    await expect(page.getByLabel('Work location', { exact: true })).toHaveValue(
+      running.profile!.preferences.location!,
+    )
+    await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toHaveCount(0)
+    await expect(page).toHaveURL('/searches/session-1')
+    expect(state.requests).toHaveLength(1)
+    expect(state.requests[0]).toMatchObject({ action: 'edit_conditions', expected_revision: 4 })
+    expect(state.createCount()).toBe(0)
+    const pollCount = state.getCount()
+    await page.waitForTimeout(1300)
+    expect(state.getCount()).toBe(pollCount)
+  })
+}
 
 test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jobs and same-session edits', async ({
   page,

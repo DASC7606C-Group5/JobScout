@@ -134,6 +134,11 @@ export function useSessionWorkflow(
   const session = query.data ?? null
   const pending = preparing === origin || command.pending || query.isFetching
   const busy = pending || session?.outcome === 'running'
+  const canEdit =
+    session !== null &&
+    preparing !== origin &&
+    !command.pending &&
+    (session?.outcome !== 'running' || Boolean(session.run_id))
   const error = command.error ?? query.error
   const recovery = recoveryFor(error)
   const outcome = session?.outcome
@@ -176,7 +181,7 @@ export function useSessionWorkflow(
   }
 
   async function answer(submission: Partial<ResumeSubmission>) {
-    if (!session || busy) return
+    if (!session || (submission.action === 'edit_conditions' ? !canEdit : busy)) return
     await prepare({
       kind: 'answer',
       origin,
@@ -229,6 +234,7 @@ export function useSessionWorkflow(
   return {
     session,
     busy,
+    canEdit,
     pending,
     deleting: command.deleting,
     deleteError: command.deleteError,

@@ -42,7 +42,7 @@ function DiscoveryHeading() {
 }
 
 export function DiscoveryPage() {
-  const { session, busy, edit } = useScoutSession()
+  const { session, busy, canEdit, edit } = useScoutSession()
   const stage = session?.outcome ?? 'initial'
   const completed = stage === 'completed'
   const focused = completed || Boolean(session?.run_id)
@@ -58,7 +58,7 @@ export function DiscoveryPage() {
             <h2 className="text-sm font-semibold">Search criteria</h2>
             <p className="mt-1 text-sm text-base-content/65">{criteriaLabel(session.profile)}</p>
           </div>
-          <button className="btn btn-ghost btn-sm" disabled={busy} onClick={edit}>
+          <button className="btn btn-ghost btn-sm" disabled={!canEdit} onClick={edit}>
             <Icon name="compass" size={15} />
             Edit search criteria
           </button>

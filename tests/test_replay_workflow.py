@@ -1,17 +1,134 @@
 """Full HTTP workflow with explicitly synthetic replay services."""
 
+import asyncio
+import json
+from threading import Event
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from jobscout.main import create_app
+from jobscout.services.llm_service import ToolTurn
+from jobscout.services.replay_service import ReplayProvider
 from tests.test_web_scaffold import settled
 
 DESCRIPTION = (
     "Education\nBachelor Computer Science\nSkills\nPython, SQL, Excel\n"
     "Projects\nPython SQL reporting dashboard"
 )
+
+
+@pytest.mark.parametrize("stage", ["search", "review"])
+def test_edit_interrupts_active_run_and_requires_reconfirmation(stage: str) -> None:
+    class BlockingProvider(ReplayProvider):
+        def __init__(self) -> None:
+            self.started = Event()
+            self.cancelled = Event()
+
+        async def block_once(self) -> None:
+            if self.started.is_set():
+                return
+            self.started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                self.cancelled.set()
+                raise
+
+        async def tool_turn(
+            self,
+            messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]],
+            *,
+            deadline: float | None = None,
+        ) -> ToolTurn:
+            if stage == "search":
+                await self.block_once()
+            return await super().tool_turn(messages, tools, deadline=deadline)
+
+        async def structured[T: BaseModel](
+            self,
+            schema: type[T],
+            messages: list[dict[str, str]],
+            *,
+            deadline: float | None = None,
+        ) -> T:
+            if (
+                stage == "review"
+                and json.loads(messages[-1]["content"]).get("task") == "jd_analysis"
+            ):
+                await self.block_once()
+            return await super().structured(schema, messages, deadline=deadline)
+
+    provider = BlockingProvider()
+    with TestClient(create_app(mode="replay", provider=provider)) as client:
+        session_id = client.post(
+            "/api/v1/sessions",
+            json={
+                "request_id": "active-create",
+                "description": DESCRIPTION,
+                "target_directions": ["Data Analyst"],
+                "preferences": {"location": "Hong Kong", "employment_type": "internship"},
+            },
+        ).json()["session_id"]
+        summary = settled(client, session_id)
+        confirmed = client.post(
+            f"/api/v1/sessions/{session_id}/resume",
+            json={
+                "request_id": "active-confirm",
+                "expected_revision": summary["revision"],
+                "action": "confirm_search",
+            },
+        )
+        assert confirmed.status_code == 202, confirmed.json()
+        assert provider.started.wait(timeout=5)
+        running = client.get(f"/api/v1/sessions/{session_id}").json()
+        assert running["outcome"] == "running"
+        assert running["run_id"] is not None
+        stale = client.post(
+            f"/api/v1/sessions/{session_id}/resume",
+            json={
+                "request_id": "stale-active-edit",
+                "expected_revision": running["revision"] - 1,
+                "action": "edit_conditions",
+            },
+        )
+        assert stale.status_code == 409
+        assert stale.json()["detail"]["code"] == "search_changed"
+        assert not provider.cancelled.is_set()
+        payload = {
+            "request_id": "active-edit",
+            "expected_revision": running["revision"],
+            "action": "edit_conditions",
+        }
+        edited = client.post(f"/api/v1/sessions/{session_id}/resume", json=payload)
+        assert edited.status_code == 202, edited.json()
+        assert provider.cancelled.wait(timeout=5)
+        new_summary = settled(client, session_id)
+        assert new_summary["session_id"] == session_id
+        assert new_summary["revision"] == running["revision"] + 1
+        assert new_summary["outcome"] == "paused"
+        assert new_summary["current_stage"] == "confirm"
+        assert new_summary["search_summary"]["confirmed"] is False
+        assert new_summary["profile"] == running["profile"]
+        assert new_summary["recommendation"] is None
+        assert new_summary["run_id"] is None
+        assert new_summary["progress"]["sequence"] == 0
+        repeat = client.post(f"/api/v1/sessions/{session_id}/resume", json=payload)
+        assert repeat.status_code == 202
+        assert repeat.json()["revision"] == new_summary["revision"]
+        reconfirmed = client.post(
+            f"/api/v1/sessions/{session_id}/resume",
+            json={
+                "request_id": "active-reconfirm",
+                "expected_revision": new_summary["revision"],
+                "action": "confirm_search",
+            },
+        )
+        assert reconfirmed.status_code == 202, reconfirmed.json()
+        assert settled(client, session_id)["outcome"] == "completed"
 
 
 def test_failed_profile_retry_uses_clean_checkpoint_and_retains_materials() -> None:
