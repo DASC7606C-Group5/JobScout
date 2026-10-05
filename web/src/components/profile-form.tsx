@@ -61,9 +61,6 @@ export function ProfileForm() {
           <ResumeField reading={reading} onReadingChange={setReading} />
           <DirectionField />
           <PreferenceFields />
-          <p className="rounded-xl bg-base-200/60 p-4 text-xs leading-6 text-base-content/70">
-            提交后，个人介绍和简历文本将发送给后端配置的模型服务商用于理解与匹配。请勿上传敏感资料；密钥仅保存在服务器。方向和偏好可暂不填写，稍后对话确认后才会搜索。
-          </p>
           <div id="profile-error" hidden={!error}>
             {error && (
               <div className="alert rounded-xl alert-soft text-sm alert-error" role="alert">
