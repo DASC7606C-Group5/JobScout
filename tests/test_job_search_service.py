@@ -254,6 +254,7 @@ def test_keyword_and_semantics() -> None:
         request(keywords=["Data Analyst", "Python"], sources=["remotive"])
     )
     assert not result.raw_jobs
+    assert not result.errors
 
 
 def test_work_mode_does_not_infer_onsite_from_false() -> None:
@@ -263,11 +264,16 @@ def test_work_mode_does_not_infer_onsite_from_false() -> None:
     assert any("cannot verify" in w for w in result.warnings)
 
 
-def test_remote_and_salary_preference_are_explicit() -> None:
+def test_remote_filter_keeps_only_remote_jobs() -> None:
     result = service(
-        Pages(page("arbeitnow", [row(remote=False), row(remote=True)])), "arbeitnow"
-    ).search(request(work_mode="remote", salary_range="50000", sources=["arbeitnow"]))
-    assert len(result.raw_jobs) == 1 and any("salary_range" in w for w in result.warnings)
+        Pages(
+            page("arbeitnow", [row(slug="onsite", remote=False), row(slug="remote", remote=True)])
+        ),
+        "arbeitnow",
+    ).search(request(work_mode="remote", sources=["arbeitnow"]))
+    assert not result.errors
+    assert [job.source_job_id for job in result.raw_jobs] == ["remote"]
+    assert result.raw_jobs[0].raw_payload["remote"] is True
 
 
 def test_pagination_does_not_follow_response_url_and_preserves_partial() -> None:

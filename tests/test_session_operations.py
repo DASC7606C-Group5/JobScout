@@ -74,19 +74,37 @@ def test_create_is_accepted_and_idempotent() -> None:
 
 def test_stale_and_concurrent_operations_are_rejected() -> None:
     async def check() -> None:
-        manager = SessionService(ControlledGraph(), Memory())
+        graph = ControlledGraph()
+        manager = SessionService(graph, Memory())
         session = await manager.create(create_payload())
-        for revision in (0, 1):
+        try:
             with pytest.raises(SessionOperationError) as error:
                 await manager.resume(
                     session.session_id,
                     SessionResumeRequest(
-                        request_id=f"next-{revision}",
-                        expected_revision=revision,
+                        request_id="concurrent",
+                        expected_revision=session.revision,
                     ),
                 )
             assert error.value.status == 409
-        await manager.close()
+            await graph.started.wait()
+            graph.release.set()
+            await asyncio.sleep(0)
+            completed = await manager.get(session.session_id)
+            assert completed.outcome == "completed"
+            with pytest.raises(SessionOperationError) as error:
+                await manager.resume(
+                    session.session_id,
+                    SessionResumeRequest(
+                        request_id="stale",
+                        expected_revision=completed.revision - 1,
+                        action="edit_conditions",
+                    ),
+                )
+            assert error.value.status == 409
+            assert (await manager.get(session.session_id)).revision == completed.revision
+        finally:
+            await manager.close()
 
     asyncio.run(check())
 

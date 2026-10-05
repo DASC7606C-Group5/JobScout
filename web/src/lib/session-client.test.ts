@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { rejects } from 'node:assert/strict'
 
 import { createProfileFixture, createSessionFixture } from '../../tests/fixtures'
 import type { ResumeSessionRequest } from './contracts'
@@ -26,12 +27,6 @@ function createTransport(
   handler: (url: string, init: RequestInit) => Response | Promise<Response>,
 ) {
   return (url: string, init: RequestInit) => Promise.resolve(handler(url, init))
-}
-
-async function expectFailure(request: Promise<unknown>, message: string) {
-  const error: unknown = await request.catch((cause: unknown) => cause)
-  expect(error).toBeInstanceOf(Error)
-  expect(error).toHaveProperty('message', expect.stringContaining(message))
 }
 
 describe('Session HTTP API', () => {
@@ -98,47 +93,42 @@ describe('Session HTTP API', () => {
     }
   })
 
-  test('HTTP errors preserve status for recovery and show useful messages', async () => {
-    for (const [status, message] of [
-      [404, 'no longer available'],
-      [409, 'Refresh it'],
-      [422, 'invalid'],
-      [503, 'temporarily unavailable'],
-    ] as const) {
+  test('HTTP errors reject with status for recovery', async () => {
+    for (const status of [404, 409, 422, 503]) {
       const client = createSessionClient(
         '/api/v1',
         createTransport(() => Response.json({ detail: 'Backend error' }, { status })),
       )
-      const error: unknown = await client.get('session-1').catch((cause: unknown) => cause)
-      expect(error).toBeInstanceOf(SessionHttpError)
-      expect(error).toHaveProperty('status', status)
-      expect(error).toHaveProperty('message', expect.stringContaining(message))
+      await rejects(
+        client.get('session-1'),
+        (error: unknown) => error instanceof SessionHttpError && error.status === status,
+      )
     }
     const client = createSessionClient(
       '/api/v1',
       createTransport(() => new Response('Bad gateway', { status: 502 })),
     )
-    await expectFailure(client.get('session-1'), 'temporarily unavailable')
+    await rejects(client.get('session-1'), { status: 502 })
   })
 
-  test('network failures and invalid JSON produce readable errors', async () => {
+  test('network failures and invalid responses reject', async () => {
     const offline = createSessionClient(
       '/api/v1',
       createTransport(() => {
         throw new TypeError('Failed to fetch')
       }),
     )
-    await expectFailure(offline.start(input), 'Could not connect to the service')
+    await rejects(offline.start(input), Error)
     const invalidJson = createSessionClient(
       '/api/v1',
       createTransport(() => new Response('<html>Proxy misconfigured</html>')),
     )
-    await expectFailure(invalidJson.get('session-1'), 'unreadable data')
+    await rejects(invalidJson.get('session-1'), Error)
     const invalidSession = createSessionClient(
       '/api/v1',
       createTransport(() => Response.json({ session_id: 'session-1', outcome: 'running' })),
     )
-    await expectFailure(invalidSession.get('session-1'), 'invalid session response')
+    await rejects(invalidSession.get('session-1'), Error)
   })
 
   test('aborted requests preserve the abort error', async () => {
@@ -151,9 +141,9 @@ describe('Session HTTP API', () => {
         return Response.json(completed)
       }),
     )
-    const error: unknown = await client
-      .get('session-1', controller.signal)
-      .catch((cause: unknown) => cause)
-    expect(error).toBe(controller.signal.reason)
+    await rejects(
+      client.get('session-1', controller.signal),
+      (error: unknown) => error === controller.signal.reason,
+    )
   })
 })

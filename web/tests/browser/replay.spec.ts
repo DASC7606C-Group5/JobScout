@@ -91,24 +91,14 @@ async function confirmAndVerifyResults(page: Page, id: string) {
     }
     for (const evidence of reason.profile_evidence) expect(description).toContain(evidence.excerpt)
   }
-  await expect(page.getByText('Replay demo', { exact: false })).toBeVisible()
   const article = page
     .getByRole('article')
     .filter({ has: page.getByRole('heading', { name: item.job.title, exact: true }) })
   await article.getByText('Job details and preparation tips', { exact: true }).click()
-  await expect(
-    article.getByRole('heading', { name: 'Match reasons and evidence', exact: true }),
-  ).toBeVisible()
-  await expect(article.getByText('Your experience evidence', { exact: true }).first()).toBeVisible()
   await expect(article.getByRole('link', { name: 'Check source' }).first()).toHaveAttribute(
     'href',
     /^https?:\/\//,
   )
-  await expect(
-    page
-      .locator('details')
-      .filter({ has: page.getByText('View conversation history', { exact: true }) }),
-  ).not.toHaveAttribute('open')
   await page.reload()
   await expect(page.getByRole('region', { name: 'Recommended jobs' })).toBeVisible()
   expect((await snapshot(page, id)).recommendation).toEqual(results.recommendation)

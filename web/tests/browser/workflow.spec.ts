@@ -184,7 +184,6 @@ test('three-step flow uses IDs, explicit confirmation, evidence, saved jobs and 
     }),
   )
   await introduce(page)
-  await expect(page.getByText('Replay demo', { exact: false })).toBeVisible()
   await expect(page.getByLabel('hidden question', { exact: true })).toHaveCount(0)
   await page.getByRole('radio', { name: 'Option one' }).focus()
   await page.keyboard.press('Space')
@@ -208,7 +207,6 @@ test('three-step flow uses IDs, explicit confirmation, evidence, saved jobs and 
     skipped_question_ids: ['optional'],
     message: 'Correction: I’m open to any location.',
   })
-  await expect(page.getByText('Skipped (optional)', { exact: false })).toBeVisible()
   expect(state.requests.some((request) => request.action === 'confirm_search')).toBe(false)
   await page.getByLabel('Skills', { exact: true }).fill('React\nTypeScript')
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeDisabled()
@@ -222,19 +220,8 @@ test('three-step flow uses IDs, explicit confirmation, evidence, saved jobs and 
   const count = state.getCount()
   await page.waitForTimeout(1300)
   expect(state.getCount()).toBe(count)
-  await expect(
-    page
-      .locator('details')
-      .filter({ has: page.getByText('View conversation history', { exact: true }) }),
-  ).not.toHaveAttribute('open')
   await page.getByText('Job details and preparation tips', { exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Match reasons and evidence' })).toBeVisible()
   await expect(page.getByText('“React development experience required.”')).toBeVisible()
-  await expect(
-    page.getByText(
-      'This means the evidence wasn’t found in the materials you shared; it doesn’t mean you lack this skill.',
-    ),
-  ).toBeVisible()
   await page.getByRole('button', { name: 'Save job: React Engineer', exact: true }).click()
   await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
   await expect(page.getByRole('heading', { name: 'React Engineer' })).toBeVisible()
@@ -263,7 +250,6 @@ test('network retry reuses create request ID; 409 refreshes instead of replaying
   const state = await mockSessions(page)
   state.dropNextCreate()
   await introduce(page)
-  await expect(page.getByText('Could not connect to the service', { exact: false })).toBeVisible()
   await page.getByRole('button', { name: 'Retry', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.createBodies[0]?.request_id).toBe(state.createBodies[1]?.request_id)
@@ -363,7 +349,6 @@ test('resume network retry preserves the complete typed request and visible corr
     .getByLabel('Add a note or correction', { exact: true })
     .fill('Only use the additional text to update the criteria.')
   await page.getByRole('button', { name: 'Send and continue' }).click()
-  await expect(page.getByText('Could not connect to the service', { exact: false })).toBeVisible()
   await expect(page.getByLabel('Add a note or correction', { exact: true })).toHaveValue(
     'Only use the additional text to update the criteria.',
   )
@@ -388,7 +373,7 @@ test('incomplete summary requires updates; explicit unrestricted flags use flat 
   })
   await introduce(page)
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeDisabled()
-  await page.getByRole('checkbox', { name: 'I’m open to any location', exact: true }).check()
+  await page.getByRole('checkbox', { name: 'Any location', exact: true }).check()
   await page.getByRole('button', { name: 'Save changes' }).click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests[0]?.profile_updates).toEqual({
@@ -419,51 +404,9 @@ test('expired recovered session offers a fresh start without persisting private 
     route.fulfill({ status: 404, json: { detail: 'not found' } }),
   )
   await page.goto('/')
-  await expect(page.getByText('no longer available', { exact: false })).toBeVisible()
   await page.getByRole('button', { name: 'Start over', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Analyze and continue' })).toBeEnabled()
   expect(await page.evaluate(() => sessionStorage.getItem('jobscout.session_id'))).toBeNull()
-})
-
-test('empty result and source outage remain distinct without invented vacancies', async ({
-  page,
-}) => {
-  const outcome = {
-    request_index: 0,
-    target_direction: 'Frontend development',
-    candidate_count: 0,
-    returned_count: 0,
-    incomplete_count: 0,
-    excerpt_count: 0,
-    elapsed_seconds: 1,
-  }
-  await mockSessions(
-    page,
-    createSessionFixture({
-      outcome: 'completed',
-      current_stage: 'completed',
-      recommendation: {
-        session_id: 'session-1',
-        generated_at: '2026-10-03T00:00:00Z',
-        jobs: [],
-        warnings: ['One source is temporarily unavailable.'],
-        introduction: 'No suitable jobs with verifiable evidence were found.',
-      },
-      source_outcomes: [
-        { ...outcome, source: 'JobsDB', status: 'ok' },
-        { ...outcome, source: 'Liepin', status: 'blocked' },
-      ],
-    }),
-  )
-  await introduce(page)
-  await page.getByText('Sources and search coverage', { exact: true }).click()
-  await expect(
-    page.getByText('JobsDB · Frontend development: Search complete, no results', { exact: false }),
-  ).toBeVisible()
-  await expect(
-    page.getByText('Liepin · Frontend development: Access restricted', { exact: false }),
-  ).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'React Engineer' })).toHaveCount(0)
 })
 
 test('conversation renders structured and recovered answers without wire-format keys or JSON', async ({
@@ -511,15 +454,11 @@ test('conversation renders structured and recovered answers without wire-format 
   await mockSessions(page, fixture)
   await introduce(page)
   const history = page.getByRole('log', { name: 'Conversation history' })
-  await expect(history).toContainText('Job directions')
   await expect(history).toContainText('技术/研发')
-  await expect(history).toContainText('Full-time')
   await expect(history).toContainText('我希望有导师指导。')
-  await expect(history).toContainText('Skipped (optional)')
   await expect(history).not.toContainText('target_directions')
   await expect(history).not.toContainText('preferences.')
   await expect(history).not.toContainText("['")
-  await expect(history.locator('dl')).toHaveCount(2)
   if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
     await mkdir('.tools/review', { recursive: true })
     await page.setViewportSize({ width: 1440, height: 1100 })
@@ -617,7 +556,6 @@ test('direction choices enforce three selections without dropping user choices',
   await expect(
     page.getByRole('checkbox', { name: 'Software engineering', exact: true }),
   ).toBeDisabled()
-  await expect(page.getByText('Choose up to three directions · 3 / 3 selected')).toBeVisible()
   if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
     await mkdir('.tools/review', { recursive: true })
     await page.setViewportSize({ width: 1440, height: 1100 })

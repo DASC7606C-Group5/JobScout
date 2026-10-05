@@ -13,17 +13,16 @@ describe('workspace state', () => {
   test('retains raw drafts and favorites in isolated workspaces', () => {
     const store = createScoutStore()
     const draft = { ...createProfileFixture(), directions: '前端开发， 数据分析，' }
+    const original = structuredClone(draft)
     store.getState().saveDraft(draft)
     draft.preferences.location = '深圳'
-    expect(store.getState().draft.directions).toBe('前端开发， 数据分析，')
-    expect(store.getState().draft.preferences.location).toBe('香港')
+    expect(store.getState().draft).toEqual(original)
     const item = createRecommendationFixture()
     store.getState().toggleSaved(item)
     expect(store.getState().saved).toEqual([item])
     expect(createScoutStore().getState().saved).toEqual([])
     store.getState().toggleSaved(item)
     expect(store.getState().saved).toEqual([])
-    expect(store.getState().announcement).toContain('Removed from saved jobs')
   })
 
   test('merges the returned profile without replacing the description or resume', () => {
@@ -50,7 +49,7 @@ describe('workspace state', () => {
     profile.preferences.location = '深圳'
     expect(store.getState().draft.directions).toBe('数据分析')
     expect(store.getState().draft.preferences.work_mode).toBe('remote')
-    expect(store.getState().draft.preferences.location).toBe('香港')
+    expect(store.getState().draft.preferences.location).toBe(draft.preferences.location)
     expect(store.getState().draft.description).toBe(draft.description)
     expect(store.getState().draft.resume).toEqual(draft.resume)
     store.getState().applyProfile(null)

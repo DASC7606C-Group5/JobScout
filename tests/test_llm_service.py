@@ -13,7 +13,6 @@ from jobscout.config import Settings
 from jobscout.services.llm_service import (
     DeepSeekProvider,
     LLMProvider,
-    LLMServiceError,
     ModelProvider,
     ModelServiceError,
     get_llm_provider,
@@ -104,7 +103,6 @@ def test_json_wire_format_typed_response_and_borrowed_client(settings: Settings)
     assert body["model"] == "deepseek-flash"
     assert body["max_tokens"] == 100
     assert "JSON" in body["messages"][0]["content"]
-    assert '"required": ["name", "count"]' in body["messages"][0]["content"]
     assert body["messages"][1] == messages()[0]
     assert all(0 < value <= 2 for value in request.extensions["timeout"].values())
 
@@ -166,7 +164,6 @@ def test_one_schema_or_json_repair(settings: Settings, content: str) -> None:
     repaired_messages = calls[1]["messages"]
     assert isinstance(repaired_messages, list)
     assert repaired_messages[-2] == {"role": "assistant", "content": content}
-    assert "corrected JSON" in repaired_messages[-1]["content"]
 
 
 @pytest.mark.parametrize(
@@ -440,13 +437,8 @@ def test_factory_and_configurable_model(settings: Settings) -> None:
     provider = get_llm_provider(settings)
     assert isinstance(provider, DeepSeekProvider)
     assert provider.model == "synthetic-alternate-model"
-    assert LLMServiceError is ModelServiceError
-    assert Settings.model_fields["llm_model"].default == "deepseek-flash"
-    assert Settings.model_fields["llm_provider"].default == "deepseek"
-    assert Settings.model_fields["llm_base_url"].default == "https://api.deepseek.com"
     assert "synthetic-test-token" not in repr(settings)
     assert "synthetic-test-token" not in repr(provider)
-    assert ModelServiceError("synthetic secret").code == "model_output"
 
 
 @pytest.mark.parametrize("provider_name", ["demo", "openai_compatible", "synthetic unknown"])

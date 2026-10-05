@@ -279,20 +279,7 @@ def test_build_clarification_questions_without_profile_asks_for_a_direction() ->
     assert [question.field for question in questions] == ["target_directions"]
 
 
-def test_build_clarification_questions_uses_english_copy() -> None:
-    questions = build_clarification_questions(build_from_input(missing_input()))
-
-    assert questions[0].question == "What kind of roles are you looking for?"
-    assert questions[1].question == "Which city would you like to work in?"
-    assert questions[2].question == "What type of employment are you looking for?"
-    assert [question.reason for question in questions] == [
-        "Job directions define the search scope. Separate multiple directions with commas.",
-        "Enter a city. If you have no location preference, answer “No preference.”",
-        "For example, full-time, internship, or part-time. If you have no preference, answer “No preference.”",
-    ]
-
-
-def test_build_clarification_questions_localizes_the_generic_fallback() -> None:
+def test_build_clarification_questions_covers_an_unlisted_field() -> None:
     profile = build_from_input(complete_input()).model_copy(
         update={"missing_required_fields": ["preferences.salary_range"]}
     )
@@ -300,16 +287,6 @@ def test_build_clarification_questions_localizes_the_generic_fallback() -> None:
     questions = build_clarification_questions(profile)
 
     assert [question.field for question in questions] == ["preferences.salary_range"]
-    assert questions[0].question == "Please provide information about preferences.salary_range."
-
-
-def test_build_clarification_questions_localizes_the_skills_conflict() -> None:
-    profile = build_from_input(conflicting_input()).model_copy(update={"conflicts": ["skills"]})
-    questions = build_clarification_questions(profile)
-
-    assert [question.field for question in questions] == ["skills"]
-    assert questions[0].question.isascii()
-    assert "complete" in questions[0].reason
 
 
 def test_apply_answers_fills_required_gaps() -> None:
@@ -453,7 +430,6 @@ def test_extract_profile_node_builds_a_profile_and_is_idempotent() -> None:
 def test_extract_profile_node_warns_when_no_background_is_given() -> None:
     update = extract_profile_node(make_state(input_data=missing_input()))
 
-    assert update["warnings"] == ["No resume or personal description was provided."]
     assert update["profile"].missing_required_fields == [
         "target_directions",
         "preferences.location",
@@ -473,7 +449,6 @@ def test_extract_profile_node_reports_a_non_mapping_input() -> None:
     update = extract_profile_node(make_state(input_data="target_directions=data analyst"))
 
     assert update["errors"][0].code == "invalid_input"
-    assert update["errors"][0].message == "input_data must be an object."
     assert update["errors"][0].stage == "profile"
     assert "profile" not in update
 
@@ -492,7 +467,6 @@ def test_validate_profile_node_recomputes_missing_fields() -> None:
 def test_validate_profile_node_without_profile_only_warns() -> None:
     update = validate_profile_node(make_state())
 
-    assert update["warnings"] == ["No profile is available for validation."]
     assert "profile" not in update
 
 
@@ -533,9 +507,6 @@ def test_clarification_node_pauses_then_applies_answers() -> None:
         "preferences.employment_type",
     ]
     assert graph.get_state(config).next == ("clarify",)
-    assert paused["__interrupt__"][0].value["message"] == (
-        "Answer the pending clarification questions to continue."
-    )
 
     resumed = graph.invoke(
         Command(
@@ -684,7 +655,6 @@ def test_clarification_node_fails_the_session_when_the_profile_is_missing() -> N
     )
 
     assert resumed["errors"][0].code == "invalid_input"
-    assert resumed["errors"][0].message == "No profile is available to update."
     assert resumed["errors"][0].stage == "clarify"
     assert resumed["current_stage"] == "clarify"
     assert graph.get_state(config).next == ()

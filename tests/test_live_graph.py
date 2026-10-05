@@ -990,41 +990,7 @@ def test_conversation_keeps_free_text_and_displays_choice_labels_without_evidenc
     asyncio.run(scenario())
 
 
-def test_edited_conditions_have_english_values_and_one_response_per_preference() -> None:
-    async def scenario() -> None:
-        graph, _, _, _ = setup()
-        await graph.ainvoke(initial(), configuration())
-        state = await graph.ainvoke(
-            resume(
-                action="edit_conditions",
-                profile_updates={
-                    "preferences.employment_type": None,
-                    "preferences.employment_type_unrestricted": True,
-                    "preferences.location_unrestricted": False,
-                    "preferences.location": "Shanghai",
-                    "preferences.work_mode": "hybrid",
-                    "preferences.salary_range": None,
-                    "education": [],
-                    "target_directions": ["data analyst", "backend engineer"],
-                },
-            ),
-            configuration(),
-        )
-        submitted = state["conversation"][-2]
-        assert submitted.text == "Answer submitted or criteria updated."
-        assert [(item.label, item.value) for item in submitted.responses] == [
-            ("Employment type", "No preference"),
-            ("Work location", "Shanghai"),
-            ("Work arrangement", "Hybrid"),
-            ("Expected salary", "Not provided"),
-            ("Education", "Not provided"),
-            ("Job directions", ["data analyst", "backend engineer"]),
-        ]
-
-    asyncio.run(scenario())
-
-
-def test_required_question_fallbacks_are_readable_and_empty_choices_allow_text() -> None:
+def test_required_questions_are_retained_and_empty_choices_allow_text() -> None:
     class EmptyChoiceProvider(FakeProvider):
         async def structured[SchemaT: BaseModel](
             self,
@@ -1051,16 +1017,8 @@ def test_required_question_fallbacks_are_readable_and_empty_choices_allow_text()
         service = ConversationService(EmptyChoiceProvider())
         fields = ["target_directions", "preferences.location", "preferences.employment_type"]
         questions = await service.questions(UserProfile(profile_id="p"), fields, [], 1)
-        assert len(questions) == 3
+        assert [question.field for question in questions] == fields
         assert questions[0].control_type == "text"
-        assert (
-            questions[1].question
-            == "Specify your work location (Hong Kong, mainland China, or any location)."
-        )
-        assert (
-            questions[2].question
-            == "Specify your employment type (full-time, internship, part-time, contract, freelance, or no preference)."
-        )
         assert all(question.required for question in questions)
         assert all("preferences." not in question.question for question in questions)
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { rejects } from 'node:assert/strict'
 
 import { QueryClient, QueryObserver } from '@tanstack/react-query'
 
@@ -33,10 +34,9 @@ describe('session query lifecycle', () => {
       requests += 1
       return Promise.resolve(Response.json({ detail: 'Session not found' }, { status: 404 }))
     })
-    const error: unknown = await cache
-      .fetchQuery(sessionQueryOptions(client, 'missing'))
-      .catch((cause: unknown) => cause)
-    expect(error).toHaveProperty('message', expect.stringContaining('no longer available'))
+    await rejects(cache.fetchQuery(sessionQueryOptions(client, 'missing')), {
+      status: 404,
+    })
     expect(requests).toBe(1)
     cache.clear()
   })

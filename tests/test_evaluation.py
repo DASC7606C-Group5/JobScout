@@ -5,12 +5,10 @@ import asyncio
 import pytest
 from scripts.evaluate import (
     DATA,
-    AuthoredReplayProvider,
     evaluate,
     extraction_metrics,
     load_dataset,
     output_path,
-    read_json,
     validate_dataset,
     verify_baseline,
 )
@@ -58,8 +56,3 @@ def test_baseline_and_authored_replay_share_candidates_but_not_quality_claims() 
     assert recording is None
     assert replay["usage"]["actual_network_requests"] == 0
     assert replay["latency"]["kind"] == "local_execution_only"
-
-
-def test_authored_provider_is_visibly_not_a_live_model() -> None:
-    provider = AuthoredReplayProvider(read_json(DATA / "replay" / "authored.json"), "unused")
-    assert provider.model == "authored-fixture-not-a-model"

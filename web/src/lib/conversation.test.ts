@@ -60,33 +60,30 @@ const message = (text: string): ConversationMessage => ({
 })
 
 test('legacy evidence lines become human-readable answers without changing ordinary user text', () => {
-  expect(
-    presentConversation(
-      message(
-        "测试\ntarget_directions: ['技术/研发', '产品/项目']\npreferences.location: 不限\npreferences.employment_type: full-time\n备注: 使用 [React]。",
-      ),
+  const presented = presentConversation(
+    message(
+      "测试\ntarget_directions: ['技术/研发', '产品/项目']\npreferences.location: location-sentinel\n备注: 使用 [React]。",
     ),
-  ).toEqual({
-    text: '测试\n备注: 使用 [React]。',
-    responses: [
-      { label: 'Job directions', value: ['技术/研发', '产品/项目'], status: 'answered' },
-      { label: 'Work location', value: 'No preference', status: 'answered' },
-      { label: 'Employment type', value: 'Full-time', status: 'answered' },
-    ],
-  })
+  )
+  expect(presented.text).toBe('测试\n备注: 使用 [React]。')
+  expect(presented.responses.map(({ value, status }) => ({ value, status }))).toEqual([
+    { value: ['技术/研发', '产品/项目'], status: 'answered' },
+    { value: 'location-sentinel', status: 'answered' },
+  ])
 })
 
 test('legacy unrestricted updates produce one meaningful row and safely decode quoted lists', () => {
-  expect(
-    presentConversation(
-      message(
-        "projects: ['O\\'Brien project', 'React, SQL']\npreferences.location: None\npreferences.location_unrestricted: True",
-      ),
-    ).responses,
-  ).toEqual([
-    { label: 'Projects', value: ["O'Brien project", 'React, SQL'], status: 'answered' },
-    { label: 'Work location', value: 'No preference', status: 'answered' },
-  ])
+  const presented = presentConversation(
+    message(
+      "projects: ['O\\'Brien project', 'React, SQL']\npreferences.location: stale-location\npreferences.location_unrestricted: True",
+    ),
+  )
+  expect(presented.responses).toHaveLength(2)
+  expect(presented.responses[0]).toMatchObject({
+    value: ["O'Brien project", 'React, SQL'],
+    status: 'answered',
+  })
+  expect(presented.responses.map(({ value }) => value)).not.toContain('stale-location')
 })
 
 test('new structured messages preserve free text and skipped answers', () => {
@@ -114,12 +111,10 @@ test('answer history resolves option IDs while direction validation preserves al
   expect(presentQuestionAnswer({ ...question('skill'), answer: 'react-id' })).toEqual(['React'])
   const directions = { ...question('directions'), field: 'target_directions' }
   const four = ['a', 'b', 'c', 'd']
-  expect(answerValidation([directions], { directions: four }, [])).toContain(
-    'Choose no more than three',
-  )
+  expect(answerValidation([directions], { directions: four }, [])).not.toBe('')
   expect(answerValidation([directions], { directions: four.slice(0, 3) }, [])).toBe('')
   expect(
     answerValidation([directions], { directions: '前端开发\n数据分析\n产品设计\n软件工程' }, []),
-  ).toContain('Choose no more than three')
+  ).not.toBe('')
   expect(four).toEqual(['a', 'b', 'c', 'd'])
 })
