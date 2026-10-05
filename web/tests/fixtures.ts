@@ -165,7 +165,7 @@ export function createSessionFixture(overrides: Partial<ScoutSession> = {}): Sco
       confirmed: false,
       editable_fields: summaryFields.map(([key]) => key),
       missing_fields: [],
-      coverage_notice: 'Search supported job sources in Hong Kong and mainland China.',
+      coverage_notice: '',
     },
     source_outcomes: [],
     recommendation: null,
