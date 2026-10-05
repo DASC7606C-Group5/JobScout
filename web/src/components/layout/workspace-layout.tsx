@@ -134,7 +134,7 @@ export function WorkspaceLayout() {
   }, [desktop, mobileOpen])
 
   return (
-    <div className="drawer min-h-screen bg-base-200/25 text-base-content lg:drawer-open">
+    <div className="drawer min-h-screen bg-base-200/25 text-base-content [overflow-anchor:none] lg:drawer-open">
       <input
         id="workspace-drawer"
         type="checkbox"

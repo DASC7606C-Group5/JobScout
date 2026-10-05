@@ -64,8 +64,17 @@ export function Sidebar({
   const historyHeading = useRef<HTMLHeadingElement>(null)
   const [candidate, setCandidate] = useState<HistorySearch | null>(null)
   const [announcement, setAnnouncement] = useState('')
+  const [historyVisible, setHistoryVisible] = useState(true)
   const savedCount = saved.data?.length ?? 0
+  const historyExpanded = expanded && historyVisible
   const drawerAction = mobile ? 'Close sidebar' : expanded ? 'Collapse sidebar' : 'Expand sidebar'
+
+  function toggleHistory() {
+    if (!expanded) {
+      setHistoryVisible(true)
+      onHistory()
+    } else setHistoryVisible((visible) => !visible)
+  }
 
   function beforeNavigate(event: MouseEvent<HTMLAnchorElement>) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
@@ -124,28 +133,30 @@ export function Sidebar({
         role={mobile && expanded ? 'dialog' : undefined}
         aria-modal={mobile && expanded ? true : undefined}
         aria-label="Workspace navigation"
-        className="flex h-dvh min-h-full flex-col border-r border-base-300 bg-base-100 is-drawer-close:w-14 is-drawer-open:w-64"
+        className="flex h-dvh min-h-full flex-col border-r border-base-300 bg-base-100 motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-out is-drawer-close:w-18 is-drawer-open:w-72 is-drawer-open:overflow-hidden"
       >
-        <div className="flex h-20 shrink-0 items-center px-2 is-drawer-close:justify-center is-drawer-open:px-4">
+        <div className="flex h-24 shrink-0 items-center gap-2 px-3">
           <Link
             to="/new"
             search={{}}
             onClick={beforeNavigate}
-            className="flex min-w-0 items-center gap-2.5 rounded-field is-drawer-close:tooltip is-drawer-close:tooltip-right"
+            className="flex min-w-0 items-center gap-3 rounded-field is-drawer-close:tooltip is-drawer-close:tooltip-right"
             data-tip="New search"
             aria-label="JobScout — New search"
           >
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-box bg-primary/55 text-primary-content">
-              <Icon name="compass" size={24} />
+            <span className="flex size-11 shrink-0 items-center justify-center">
+              <span className="flex size-9 items-center justify-center rounded-box bg-primary/55 text-primary-content">
+                <Icon name="compass" size={24} />
+              </span>
             </span>
-            <span className="text-xl font-bold tracking-tight is-drawer-close:hidden">
+            <span className="text-xl font-bold tracking-tight whitespace-nowrap is-drawer-close:hidden">
               JobScout<span className="text-primary-content">.</span>
             </span>
           </Link>
           <button
             type="button"
             data-drawer-close
-            className="btn ml-auto btn-square btn-ghost drawer-button btn-sm lg:hidden"
+            className="btn ml-auto btn-square size-11 shrink-0 btn-ghost shadow-none drawer-button lg:hidden"
             aria-label="Close sidebar"
             aria-controls="workspace-sidebar"
             aria-expanded={expanded}
@@ -158,30 +169,62 @@ export function Sidebar({
           pathname={pathname}
           savedCount={savedCount}
           beforeNavigate={beforeNavigate}
-          onHistory={onHistory}
-          expanded={expanded}
         />
+        <div className="mx-3 mt-5 shrink-0 border-t border-base-300 pt-4">
+          <div
+            className="is-drawer-close:tooltip is-drawer-close:tooltip-right"
+            data-tip="Search history"
+          >
+            <button
+              type="button"
+              className={`btn h-11 w-full flex-nowrap justify-start gap-3 border-0 btn-ghost p-0 text-sm font-medium shadow-none ${sessionId && !expanded ? 'bg-primary/15 text-primary-content' : 'text-base-content/70'}`}
+              aria-label="Search history"
+              aria-controls="search-history"
+              aria-expanded={historyExpanded}
+              onClick={toggleHistory}
+            >
+              <span className="flex size-11 shrink-0 items-center justify-center">
+                <Icon name="clock" size={20} />
+              </span>
+              <span className="whitespace-nowrap is-drawer-close:hidden">Search history</span>
+              <Icon
+                name="chevron"
+                size={14}
+                className={`mr-3 ml-auto shrink-0 is-drawer-close:hidden ${historyExpanded ? 'rotate-90' : ''}`}
+              />
+            </button>
+          </div>
+        </div>
         <HistoryMenu
+          hidden={!historyExpanded}
           sessionId={sessionId}
           beforeNavigate={beforeNavigate}
           historyHeading={historyHeading}
           onDelete={openDelete}
         />
-        <div
-          className="mt-auto shrink-0 border-t border-base-300 p-2 is-drawer-close:tooltip is-drawer-close:tooltip-right"
-          data-tip={drawerAction}
-        >
-          <button
-            type="button"
-            className="btn h-10 w-full justify-start gap-3 border-0 btn-ghost px-3 leading-normal drawer-button btn-sm is-drawer-close:justify-center is-drawer-close:px-0"
-            aria-label={drawerAction}
-            aria-expanded={expanded}
-            aria-controls="workspace-sidebar"
-            onClick={onToggleDrawer}
+        <div className="mt-auto flex h-20 shrink-0 items-center gap-3 border-t border-base-300 px-3">
+          <div
+            className="shrink-0 is-drawer-close:tooltip is-drawer-close:tooltip-right"
+            data-tip={drawerAction}
           >
-            <Icon name="panel" size={20} className="shrink-0 is-drawer-open:rotate-180" />
-            <span className="text-xs font-normal is-drawer-close:hidden">{drawerAction}</span>
-          </button>
+            <button
+              id="workspace-sidebar-toggle"
+              type="button"
+              className="btn btn-square size-11 btn-ghost shadow-none drawer-button"
+              aria-label={drawerAction}
+              aria-expanded={expanded}
+              aria-controls="workspace-sidebar"
+              onClick={onToggleDrawer}
+            >
+              <Icon name="panel" size={20} className="is-drawer-open:rotate-180" />
+            </button>
+          </div>
+          <label
+            htmlFor="workspace-sidebar-toggle"
+            className="cursor-pointer text-xs whitespace-nowrap text-base-content/60 hover:text-base-content is-drawer-close:hidden"
+          >
+            {drawerAction}
+          </label>
         </div>
         <div className="sr-only" aria-live="polite">
           {announcement}
@@ -205,18 +248,14 @@ function SidebarNavigation({
   pathname,
   savedCount,
   beforeNavigate,
-  onHistory,
-  expanded,
 }: {
   pathname: string
   savedCount: number
   beforeNavigate: NavigateHandler
-  onHistory: () => void
-  expanded: boolean
 }) {
   return (
     <nav aria-label="Main navigation" className="shrink-0">
-      <ul className="menu w-full gap-1 menu-sm px-2 py-3">
+      <ul className="menu w-full gap-2 menu-sm px-3 py-0">
         <li
           className="w-full is-drawer-close:tooltip is-drawer-close:tooltip-right"
           data-tip="New search"
@@ -225,12 +264,14 @@ function SidebarNavigation({
             to="/new"
             search={{}}
             onClick={beforeNavigate}
-            className={`flex h-10 w-full items-center gap-3 px-3 leading-normal is-drawer-close:justify-center is-drawer-close:px-0 ${pathname === '/new' ? 'menu-active' : ''}`}
+            className={`flex h-11 w-full flex-nowrap items-center gap-3 p-0 text-sm leading-normal shadow-none ${pathname === '/new' ? 'bg-primary/20 font-semibold text-primary-content' : 'text-base-content/75'}`}
             aria-label="New search"
             aria-current={pathname === '/new' ? 'page' : undefined}
           >
-            <Icon name="plus" size={20} className="shrink-0" />
-            <span className="is-drawer-close:hidden">New search</span>
+            <span className="flex size-11 shrink-0 items-center justify-center">
+              <Icon name="plus" size={20} />
+            </span>
+            <span className="whitespace-nowrap is-drawer-close:hidden">New search</span>
           </Link>
         </li>
         <li
@@ -241,32 +282,18 @@ function SidebarNavigation({
             to="/saved"
             search={{}}
             onClick={beforeNavigate}
-            className={`flex h-10 w-full items-center gap-3 px-3 leading-normal is-drawer-close:justify-center is-drawer-close:px-0 ${pathname === '/saved' ? 'menu-active' : ''}`}
+            className={`flex h-11 w-full flex-nowrap items-center gap-3 p-0 text-sm leading-normal shadow-none ${pathname === '/saved' ? 'bg-primary/20 font-semibold text-primary-content' : 'text-base-content/75'}`}
             aria-label="Saved jobs"
             aria-current={pathname === '/saved' ? 'page' : undefined}
           >
-            <Icon name="bookmark" size={20} className="shrink-0" />
-            <span className="is-drawer-close:hidden">Saved jobs</span>
-            <span className="ml-auto badge badge-sm tabular-nums is-drawer-close:hidden">
+            <span className="flex size-11 shrink-0 items-center justify-center">
+              <Icon name="bookmark" size={20} />
+            </span>
+            <span className="whitespace-nowrap is-drawer-close:hidden">Saved jobs</span>
+            <span className="mr-3 ml-auto badge border-0 bg-base-200 badge-sm tabular-nums is-drawer-close:hidden">
               {savedCount}
             </span>
           </Link>
-        </li>
-        <li
-          className="w-full is-drawer-close:tooltip is-drawer-close:tooltip-right is-drawer-open:hidden"
-          data-tip="Search history"
-        >
-          <button
-            type="button"
-            className="flex h-10 w-full items-center gap-3 px-3 leading-normal is-drawer-close:justify-center is-drawer-close:px-0"
-            aria-label="Search history"
-            aria-controls="search-history"
-            aria-expanded={expanded}
-            onClick={onHistory}
-          >
-            <Icon name="clock" size={20} className="shrink-0" />
-            <span className="is-drawer-close:hidden">Search history</span>
-          </button>
         </li>
       </ul>
     </nav>
@@ -274,11 +301,13 @@ function SidebarNavigation({
 }
 
 function HistoryMenu({
+  hidden,
   sessionId,
   beforeNavigate,
   historyHeading,
   onDelete,
 }: {
+  hidden: boolean
   sessionId: string | undefined
   beforeNavigate: NavigateHandler
   historyHeading: Ref<HTMLHeadingElement>
@@ -301,13 +330,14 @@ function HistoryMenu({
   return (
     <section
       id="search-history"
+      hidden={hidden}
       aria-labelledby="search-history-heading"
-      className="min-h-0 flex-1 overflow-y-auto border-t border-base-300 px-2 pt-4 pb-3 is-drawer-close:hidden"
+      className="min-h-0 flex-1 [scrollbar-gutter:stable] overflow-y-auto px-3 pt-3 pb-5 is-drawer-close:hidden"
     >
       {current && (
         <div className="mb-4">
           <h2 className="px-3 text-[11px] font-semibold text-base-content/55">Current search</h2>
-          <ul className="menu mt-2 w-full menu-sm p-0">
+          <ul className="mt-2 flex w-full flex-col gap-2">
             <HistoryRow
               search={current}
               sessionId={sessionId}
@@ -322,7 +352,7 @@ function HistoryMenu({
         ref={historyHeading}
         tabIndex={-1}
         data-history-heading
-        className="px-3 text-[11px] font-semibold text-base-content/55"
+        className="px-3 text-[11px] font-medium text-base-content/50"
       >
         Recent searches
       </h2>
@@ -333,11 +363,12 @@ function HistoryMenu({
         </output>
       )}
       {!history.isPending && searches.length === 0 && !history.isError && (
-        <p className="px-3 py-5 text-xs leading-5 text-base-content/65">
-          Your searches will appear here after you start one.
-        </p>
+        <div className="px-3 py-5 text-xs leading-5 text-base-content/60">
+          <p className="font-medium text-base-content/75">A place to pick up where you left off.</p>
+          <p className="mt-1">Start a search and find it here next time.</p>
+        </div>
       )}
-      <ul className="menu mt-2 w-full gap-1 menu-sm p-0">
+      <ul className="mt-2 flex w-full flex-col gap-2">
         {searches.map((search) => (
           <HistoryRow
             key={search.session_id}
@@ -460,9 +491,9 @@ function HistoryRow({
   const title = searchTitle(search)
   return (
     <li
-      className={`rounded-field ${sessionId === search.session_id ? 'bg-primary/20 font-semibold focus-within:bg-primary/25 hover:bg-primary/25' : 'focus-within:bg-base-200 hover:bg-base-200'}`}
+      className={`group card border transition-colors ${sessionId === search.session_id ? 'border-primary/30 bg-primary/10' : 'border-transparent focus-within:bg-base-200/60 hover:bg-base-200/60'}`}
     >
-      <div className="flex min-w-0 items-stretch gap-0 rounded-field p-0 hover:bg-transparent">
+      <div className="flex min-w-0 items-start">
         <Link
           to="/searches/$sessionId"
           params={{ sessionId: search.session_id }}
@@ -470,9 +501,12 @@ function HistoryRow({
           onClick={beforeNavigate}
           data-session-id={search.session_id}
           aria-current={sessionId === search.session_id ? 'page' : undefined}
-          className="flex min-w-0 flex-1 flex-col items-start gap-1 rounded-field bg-transparent px-3 py-2.5 hover:bg-transparent active:bg-transparent"
+          className="flex min-w-0 flex-1 flex-col items-start gap-1.5 rounded-box px-3 py-3"
         >
-          <span className="line-clamp-2 text-xs leading-5">{title}</span>
+          <span className="line-clamp-2 text-xs leading-5 font-medium">{search.title}</span>
+          {search.location && (
+            <span className="text-[11px] text-base-content/60">{search.location}</span>
+          )}
           <span className="flex w-full items-center gap-1.5 text-[10px] font-normal text-base-content/65">
             <span className={`status status-xs ${status.tone}`} aria-hidden="true" />
             <span>{status.label}</span>
@@ -492,7 +526,7 @@ function HistoryRow({
         </Link>
         <button
           type="button"
-          className="btn my-auto btn-square shrink-0 bg-transparent btn-ghost text-base-content/55 btn-xs hover:bg-transparent hover:text-error active:bg-transparent"
+          className="btn mt-2 mr-1 btn-square shrink-0 btn-ghost text-base-content/45 shadow-none btn-xs hover:text-error"
           aria-label={`Delete search: ${title}`}
           onClick={(event) => onDelete(search, event.currentTarget)}
         >

@@ -40,8 +40,6 @@ Separate sections with borders and theme surfaces. Use restrained shadows; stick
 
 Use daisyUI radii and control shapes consistently. Keep icons aligned and touch targets comfortably spaced.
 
-Use component defaults for Boxes, Fields and Selectors. Custom surfaces reference the same theme variables; see [radius conventions](docs/ui-design.md).
-
 ## Components
 
 Reuse shared job views, `Icon` and native daisyUI controls. Give controls accessible names, visible focus and consistent states. Preserve input during errors, confirm destructive actions and respect reduced motion. Global interaction styles belong in the application stylesheet.
