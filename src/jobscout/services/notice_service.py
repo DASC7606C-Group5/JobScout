@@ -1,4 +1,4 @@
-"""Project operational facts into bounded, applicant-facing notices and recovery."""
+"""Build applicant notices and recovery actions from search and job results."""
 
 from collections.abc import Iterable, Sequence
 from typing import Literal

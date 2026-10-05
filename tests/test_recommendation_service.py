@@ -11,8 +11,8 @@ from jobscout.schemas.profile import ProfilePreferences, ProfileSource, UserProf
 from jobscout.schemas.recommendation import RecommendationResult
 from jobscout.services.recommendation_service import (
     RecommendationError,
-    _capabilities,
     _evaluate,
+    _extract_skill_terms,
     _skill_in_texts,
     recommend_jobs,
 )
@@ -378,10 +378,10 @@ def test_injected_time_is_converted_to_utc() -> None:
     "text", ["React, TypeScript", "React / TypeScript", "Experience using React and TypeScript"]
 )
 def test_compound_skill_fields_do_not_require_a_verbatim_resume_phrase(text: str) -> None:
-    assert set(_capabilities(text, ["React", "TypeScript"])) == {"React", "TypeScript"}
+    assert set(_extract_skill_terms(text, ["React", "TypeScript"])) == {"React", "TypeScript"}
 
 
 def test_skill_aliases_work_in_both_language_directions_and_keep_open_ended_names() -> None:
     assert _skill_in_texts("API 对接", ["API integration"])
     assert _skill_in_texts("API integration", ["API 对接"])
-    assert _capabilities("User Experience Design") == ["User Experience Design"]
+    assert _extract_skill_terms("User Experience Design") == ["User Experience Design"]

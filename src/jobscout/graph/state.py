@@ -21,7 +21,7 @@ WorkflowStage = Literal[
     "retrieve",
     "normalize",
     "understand",
-    "coverage",
+    "check_result_count",
     "present",
     "completed",
     "failed",

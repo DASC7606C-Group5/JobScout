@@ -1,4 +1,4 @@
-"""Model-assisted conversation with deterministic ownership of user constraints."""
+"""Model-assisted conversation with server-controlled search preferences."""
 
 import json
 from collections.abc import Mapping, Sequence

@@ -139,8 +139,8 @@ def _atomic_skill(text: str) -> bool:
     )
 
 
-def _capabilities(text: str, supplied: Sequence[str] = ()) -> list[str]:
-    """Find grounded terms; supplied unfamiliar names are as valid as known aliases."""
+def _extract_skill_terms(text: str, supplied: Sequence[str] = ()) -> list[str]:
+    """Find skill names mentioned in the text, including supplied names and aliases."""
     if _atomic_skill(text):
         return [text.strip()]
     candidates = [*supplied, *_SKILL_LEXICON, *(aliases[0] for aliases in _SKILL_ALIASES)]
@@ -224,11 +224,11 @@ def _direction_matches(profile: UserProfile, job: JobPosting) -> bool:
 
 
 def eligible_jobs(profile: UserProfile, jobs: Sequence[JobPosting]) -> list[JobPosting]:
-    """Return unique eligible vacancies before coverage checks and model analysis.
+    """Return unique eligible vacancies before result-count checks and model analysis.
 
     Only confirmed hard constraints exclude candidates. Unknown conditions remain
     eligible; normalized company/title/location and source URLs prevent duplicates
-    from inflating coverage. Input objects are not changed.
+    from inflating the candidate count. Input objects are not changed.
     """
     selected: list[JobPosting] = []
     seen_ids: set[str] = set()
@@ -284,9 +284,9 @@ def _required_degree(job: JobPosting) -> int:
 def _evaluate(profile: UserProfile, job: JobPosting) -> _Candidate:
     requirements = _unique_skills(
         [
-            capability
+            skill
             for requirement in job.required_skills
-            for capability in _capabilities(requirement, profile.skills)
+            for skill in _extract_skill_terms(requirement, profile.skills)
         ]
     )
     user_skills = {_skill_key(skill) for skill in profile.skills if skill.strip()}
@@ -298,12 +298,12 @@ def _evaluate(profile: UserProfile, job: JobPosting) -> _Candidate:
         score += 70 * Fraction(len(requirements) - len(missing), len(requirements))
         score += 20 * Fraction(len(relevant), len(requirements))
 
-    supported = _unique_skills(
+    matched_skills = _unique_skills(
         [*relevant, *(skill for skill in requirements if skill not in missing)]
     )
     suggestions = [
         f"Choose one {skill} example and explain your decisions and results."
-        for skill in supported[:2]
+        for skill in matched_skills[:2]
     ]
 
     required_degree = _required_degree(job)

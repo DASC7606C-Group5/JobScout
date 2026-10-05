@@ -12,7 +12,7 @@ const stages: Record<string, string> = {
   retrieve: 'Searching supported job sources',
   normalize: 'Organizing job listings',
   understand: 'Reviewing job requirements',
-  assess_coverage: 'Checking search coverage',
+  check_result_count: 'Checking the number of matching jobs',
   recommend: 'Assessing job matches',
   present: 'Preparing your recommendations',
 }

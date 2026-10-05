@@ -867,7 +867,10 @@ def build_live_graph(
                     state["session_id"],
                     deadline=state["operation_deadline"],
                 )
-            update: dict[str, Any] = {"assessment": assessment, "current_stage": "coverage"}
+            update: dict[str, Any] = {
+                "assessment": assessment,
+                "current_stage": "check_result_count",
+            }
             try:
                 update["jd_cache"] = service.export_cache()
             except Exception:
@@ -897,16 +900,16 @@ def build_live_graph(
             )
             return {
                 "assessment": assessment,
-                "current_stage": "coverage",
+                "current_stage": "check_result_count",
                 "warnings": [
                     "Model job analysis did not finish. Keeping the deterministic analysis results."
                 ],
             }
 
-    def coverage(state: AgentState) -> dict[str, Any]:
-        return {"current_stage": "coverage"}
+    def check_result_count(state: AgentState) -> dict[str, Any]:
+        return {"current_stage": "check_result_count"}
 
-    async def coverage_route(state: AgentState) -> str:
+    async def route_after_result_count(state: AgentState) -> str:
         profile = state["confirmed_profile"]
         assert profile is not None
         remaining = state["operation_deadline"] - asyncio.get_running_loop().time()
@@ -1049,7 +1052,7 @@ def build_live_graph(
         "retrieve": retrieve,
         "normalize": normalize,
         "understand": understand,
-        "coverage": coverage,
+        "check_result_count": check_result_count,
         "recommend": recommend,
         "present": present,
         "failed": failed,
@@ -1101,7 +1104,7 @@ def build_live_graph(
         ("plan", "retrieve"),
         ("retrieve", "normalize"),
         ("normalize", "understand"),
-        ("understand", "coverage"),
+        ("understand", "check_result_count"),
     ):
         graph.add_conditional_edges(
             name,
@@ -1110,7 +1113,9 @@ def build_live_graph(
             ),
             ["failed", successor],
         )
-    graph.add_conditional_edges("coverage", cast(Any, coverage_route), ["plan", "recommend"])
+    graph.add_conditional_edges(
+        "check_result_count", cast(Any, route_after_result_count), ["plan", "recommend"]
+    )
     graph.add_edge("recommend", "present")
     graph.add_edge("present", END)
     graph.add_edge("failed", END)

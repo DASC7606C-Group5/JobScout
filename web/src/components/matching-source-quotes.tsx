@@ -45,15 +45,15 @@ function SourceQuoteList({
 }
 
 export function MatchingSourceQuotes({ reasons }: { reasons: MatchingReason[] }) {
-  const supported = reasons.filter(
+  const reasonsWithQuotes = reasons.filter(
     (reason) => reason.job_source_quotes.length || reason.profile_source_quotes.length,
   )
-  if (!supported.length) return null
+  if (!reasonsWithQuotes.length) return null
   return (
     <details className="collapse-arrow collapse rounded-xl border border-base-300 bg-base-100">
       <summary className="collapse-title text-sm font-medium">View source excerpts</summary>
       <div className="collapse-content space-y-5">
-        {supported.map((reason) => (
+        {reasonsWithQuotes.map((reason) => (
           <section key={JSON.stringify(reason)} className="space-y-3">
             <h4 className="text-sm font-semibold break-words">{reason.requirement}</h4>
             <SourceQuoteList title="Job requirement" quotes={reason.job_source_quotes} kind="job" />

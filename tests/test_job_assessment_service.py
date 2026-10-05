@@ -956,7 +956,7 @@ def test_active_first_stable_ties_and_eligible_unique_candidates() -> None:
         ),
     ],
 )
-def test_capabilities_match_aliases_and_project_work_without_sentence_matching(
+def test_skills_match_aliases_and_project_work_without_sentence_matching(
     source_text: str, terms: list[str], skills: list[str], project: str
 ) -> None:
     candidate = job("a")
@@ -972,9 +972,9 @@ def test_capabilities_match_aliases_and_project_work_without_sentence_matching(
         if task == "jd_analysis":
             row["requirements"] = [
                 {
-                    "requirement_id": "capability",
-                    "text": "Relevant capability" if terms else source_text,
-                    "capability_terms": terms,
+                    "requirement_id": "skill",
+                    "text": "Relevant skill" if terms else source_text,
+                    "skill_terms": terms,
                     "source_quotes": [{"document_id": "doc-a", "excerpt": source_text}],
                 }
             ]
@@ -997,7 +997,7 @@ def test_capabilities_match_aliases_and_project_work_without_sentence_matching(
     assert item.matching_reasons[0].job_source_quotes[0].excerpt == source_text
     assert item.matching_reasons[0].profile_source_quotes[0].excerpt == project
     assert [call["task"] for call in provider.calls] == ["jd_analysis", "matching"]
-    assert provider.calls[1]["jobs"][0]["requirements"][0]["capability_terms"]
+    assert provider.calls[1]["jobs"][0]["requirements"][0]["skill_terms"]
 
 
 @pytest.mark.parametrize("stage", ["jd_analysis", "matching"])
@@ -1016,7 +1016,7 @@ def test_invalid_requirement_keeps_valid_sibling_and_uses_no_extra_model_call(st
                 {
                     "requirement_id": "sql",
                     "text": "SQL",
-                    "capability_terms": ["SQL"],
+                    "skill_terms": ["SQL"],
                     "source_quotes": [
                         {
                             "document_id": "doc-a",
@@ -1043,27 +1043,27 @@ def test_invalid_requirement_keeps_valid_sibling_and_uses_no_extra_model_call(st
     provider = ReplayProvider(respond)
     result = assess(provider, [candidate], user, documents)
     item = result.jobs[0]
-    by_capability = {reason.requirement: reason for reason in item.matching_reasons}
+    by_skill = {reason.requirement: reason for reason in item.matching_reasons}
     assert item.analysis_status == "partial"
-    assert by_capability["Python"].level == "partial"
-    assert by_capability["Python"].profile_source_quotes[-1].excerpt == "Built a Python dashboard"
-    assert by_capability["SQL"].level == "strong"
-    assert by_capability["SQL"].profile_source_quotes[0].excerpt == "SQL"
+    assert by_skill["Python"].level == "partial"
+    assert by_skill["Python"].profile_source_quotes[-1].excerpt == "Built a Python dashboard"
+    assert by_skill["SQL"].level == "strong"
+    assert by_skill["SQL"].profile_source_quotes[0].excerpt == "SQL"
     assert {notice.code for notice in item.notices} == {"analysis_partial"}
     assert [call["task"] for call in provider.calls] == ["jd_analysis", "matching"]
 
 
-def test_invented_capability_is_rejected_even_with_an_existing_source_quote() -> None:
+def test_invented_skill_is_rejected_even_with_an_existing_source_quote() -> None:
     def corrupt(task: str, response: dict[str, Any]) -> None:
         if task == "jd_analysis":
-            response["jobs"][0]["requirements"][0]["capability_terms"] = ["Rust"]
+            response["jobs"][0]["requirements"][0]["skill_terms"] = ["Rust"]
 
     result = assess(ReplayProvider(corrupt), [job("a")])
     assert result.jobs[0].analysis_status == "unavailable"
     assert {reason.requirement for reason in result.jobs[0].matching_reasons} == {"Python"}
 
 
-def test_compound_capabilities_are_matched_independently() -> None:
+def test_compound_skills_are_matched_independently() -> None:
     candidate = job("a")
     candidate.required_skills = ["React", "TypeScript"]
     candidate.description = candidate.source_documents[0].text = "React and TypeScript required."
@@ -1076,7 +1076,7 @@ def test_compound_capabilities_are_matched_independently() -> None:
         if task == "jd_analysis":
             row["requirements"][0].update(
                 text="Frontend tools",
-                capability_terms=["React", "TypeScript"],
+                skill_terms=["React", "TypeScript"],
                 source_quotes=[
                     {"document_id": "doc-a", "excerpt": "React and TypeScript required."}
                 ],
@@ -1175,35 +1175,35 @@ def test_preparation_actions_are_bounded_and_reference_valid_requirements() -> N
 
 
 @pytest.mark.parametrize("action", ["practice", "portfolio", "review"])
-def test_unknown_capability_keeps_valid_match_without_generic_preparation(action: str) -> None:
-    capability = "Microsoft Fabric"
+def test_unknown_skill_keeps_valid_match_without_generic_preparation(action: str) -> None:
+    skill = "Microsoft Fabric"
     candidate = job("a")
-    candidate.required_skills = [capability]
-    candidate.description = candidate.source_documents[0].text = capability
+    candidate.required_skills = [skill]
+    candidate.description = candidate.source_documents[0].text = skill
     user = profile()
-    user.skills = [capability]
+    user.skills = [skill]
     user.projects = []
 
     def respond(task: str, response: dict[str, Any]) -> None:
         row = response["jobs"][0]
         if task == "jd_analysis":
             row["requirements"][0].update(
-                text=capability,
-                capability_terms=[capability],
-                source_quotes=[{"document_id": "doc-a", "excerpt": capability}],
+                text=skill,
+                skill_terms=[skill],
+                source_quotes=[{"document_id": "doc-a", "excerpt": skill}],
             )
         else:
             row["matches"][0].update(
                 level="strong",
-                profile_source_quotes=[{"document_id": "resume", "excerpt": capability}],
+                profile_source_quotes=[{"document_id": "resume", "excerpt": skill}],
             )
             row["preparation_suggestions"] = [{"requirement_id": "python", "action": action}]
 
     provider = ReplayProvider(respond)
-    result = assess(provider, [candidate], user, {"resume": capability})
+    result = assess(provider, [candidate], user, {"resume": skill})
     assert result.jobs[0].analysis_status == "complete"
     assert result.jobs[0].matching_reasons[0].level == "strong"
-    assert result.jobs[0].matching_reasons[0].profile_source_quotes[0].excerpt == capability
+    assert result.jobs[0].matching_reasons[0].profile_source_quotes[0].excerpt == skill
     assert result.jobs[0].preparation_suggestions == []
     assert [call["task"] for call in provider.calls] == ["jd_analysis", "matching"]
 
@@ -1248,7 +1248,7 @@ def test_rule_recovery_does_not_bypass_duration_or_degree_subject_constraints() 
             "requirement_id": "years",
             "text": "3 years of React experience",
             "category": "skill",
-            "capability_terms": ["React"],
+            "skill_terms": ["React"],
         },
         {"requirement_id": "education", "text": "Bachelor of Medicine", "category": "education"},
     ]
@@ -1284,3 +1284,59 @@ def test_analysis_limit_emits_structured_coverage_notice() -> None:
         assert service.analyzed_count == 20
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("level", ["partial", "related_experience"])
+@pytest.mark.parametrize(
+    "project",
+    [
+        "Built a Python dashboard for inventory planning",
+        "使用Python搭建库存看板，处理数据并展示统计结果",
+    ],
+)
+def test_match_explanations_preserve_project_text_and_partial_levels(
+    level: str, project: str
+) -> None:
+    candidate = job("a")
+    source_text = "Python and SQL required."
+    candidate.required_skills = ["Python", "SQL"]
+    candidate.description = candidate.source_documents[0].text = source_text
+    user = profile()
+    user.projects = [project]
+    documents = {"resume": "Python. " + project}
+
+    def respond(task: str, response: dict[str, Any]) -> None:
+        row = response["jobs"][0]
+        if task == "jd_analysis":
+            row["requirements"] = [
+                {
+                    "requirement_id": "reporting",
+                    "text": "Reporting tools",
+                    "skill_terms": ["Python", "SQL"],
+                    "source_quotes": [{"document_id": "doc-a", "excerpt": source_text}],
+                }
+            ]
+        else:
+            for entry in row["matches"]:
+                entry.update(
+                    level=level,
+                    profile_source_quotes=[{"document_id": "resume", "excerpt": "Python"}],
+                    experience_source_quotes=[{"document_id": "resume", "excerpt": project}],
+                )
+
+    provider = ReplayProvider(respond)
+    result = assess(provider, [candidate], user, documents)
+    reasons = {reason.requirement: reason for reason in result.jobs[0].matching_reasons}
+    assert {skill: reason.level for skill, reason in reasons.items()} == {
+        "Python": level,
+        "SQL": level,
+    }
+    for reason in reasons.values():
+        assert project in reason.explanation
+        assert reason.job_source_quotes[0].document_id == "doc-a"
+        assert reason.job_source_quotes[0].excerpt == source_text
+        assert [quote.model_dump() for quote in reason.profile_source_quotes] == [
+            {"document_id": "resume", "excerpt": "Python", "source_url": None},
+            {"document_id": "resume", "excerpt": project, "source_url": None},
+        ]
+    assert [call["task"] for call in provider.calls] == ["jd_analysis", "matching"]
