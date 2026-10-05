@@ -578,14 +578,14 @@ test('a running search can end immediately with confirmed and pending results ke
   const stop = page.getByRole('button', { name: 'End search and view results' })
   await expect(stop).toBeEnabled()
   await expect(page.getByRole('list', { name: 'Job search steps' })).toHaveCount(0)
-  await expect(page.getByRole('progressbar', { name: 'Matching jobs found' })).toHaveAttribute(
-    'value',
-    '1',
+  await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toBeVisible()
+  await page.getByRole('button', { name: 'View job: Pending Engineer' }).click()
+  await expect(page.getByRole('link', { name: 'View job listing', exact: true })).toHaveAttribute(
+    'href',
+    pending.job.source_url,
   )
-  await expect(page.getByRole('progressbar', { name: 'Matching jobs found' })).toHaveAttribute(
-    'max',
-    '10',
-  )
+  await page.getByRole('button', { name: 'Back to jobs' }).click()
   await expect(page.locator('body')).not.toContainText('private-agent-detail')
   await expect(page.locator('body')).not.toContainText('private-source-id')
   await mkdir('.tools/browser', { recursive: true })

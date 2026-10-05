@@ -5,7 +5,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 StopReason = Literal[
-    "target_reached", "source_exhausted", "budget_exhausted", "user_stopped", "error"
+    "results_ready",
+    "target_reached",
+    "source_exhausted",
+    "budget_exhausted",
+    "user_stopped",
+    "error",
 ]
 
 

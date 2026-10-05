@@ -212,6 +212,90 @@ def query(**changes: Any) -> tuple[str, dict[str, Any]]:
     }
 
 
+def test_useful_results_can_finish_below_display_limit_without_exhausting_sources() -> None:
+    async def scenario() -> None:
+        search = SnapshotSearch(2)
+        provider = ScriptedProvider(
+            [
+                lambda _: ("finish_search", {"reason": "results_ready"}),
+                lambda _: query(),
+                lambda o: (
+                    "assess_candidates",
+                    {"job_ids": [row["job_id"] for row in o["candidates"]]},
+                ),
+                lambda _: ("finish_search", {"reason": "results_ready"}),
+            ]
+        )
+        result = await run(provider, search, Assessment(), profile(20))
+        assert result["stop_reason"] == "results_ready"
+        assert result["agent_error_code"] is None
+        assert {item.job.source_url for item in result["recommendation"].jobs} == {
+            "https://jobsdb.example/jobs/0",
+            "https://jobsdb.example/jobs/1",
+        }
+        assert len(search.requests) == 1
+        assert provider.observations[-1]["unexhausted_pairs"]
+
+    asyncio.run(scenario())
+
+
+def test_decision_context_keeps_latest_feedback_without_replaying_old_snapshots() -> None:
+    class RecordingProvider(ScriptedProvider):
+        def __init__(self) -> None:
+            super().__init__(
+                [
+                    lambda _: query(),
+                    *[lambda _: query() for _ in range(5)],
+                    lambda _: ("finish_search", {"reason": "results_ready"}),
+                ]
+            )
+            self.inputs: list[list[dict[str, Any]]] = []
+
+        async def tool_turn(
+            self, messages: list[dict[str, Any]], *args: Any, **kwargs: Any
+        ) -> ToolTurn:
+            self.inputs.append(messages)
+            return await super().tool_turn(messages, *args, **kwargs)
+
+    async def scenario() -> None:
+        provider, search = RecordingProvider(), SnapshotSearch(1)
+        applicant = profile()
+        applicant.projects = ["PRIVATE_PROFILE_SENTINEL " * 100]
+        result = await run(provider, search, Assessment(), applicant)
+        assert result["stop_reason"] == "results_ready"
+        assert len(search.requests) == 1
+        assert max(len(messages) for messages in provider.inputs) == 5
+        assert all(
+            "PRIVATE_PROFILE_SENTINEL" not in json.dumps(messages) for messages in provider.inputs
+        )
+        assert json.loads(provider.inputs[-1][-2]["content"])["error"] == "already_completed"
+        assert (
+            result["recommendation"].pending_jobs[0].job.source_url
+            == "https://jobsdb.example/jobs/0"
+        )
+
+    asyncio.run(scenario())
+
+
+def test_overlapping_interests_do_not_allocate_slots_or_change_fit_order() -> None:
+    from tests.test_job_assessment_service import job
+
+    agent = SearchAgent(ReplayProvider(), SnapshotSearch(), Assessment())
+    agent.profile, agent.target = profile(), 5
+    agent.profile.target_directions = ["Frontend", "Software engineering"]
+    items = [
+        RecommendationItem(job=job("a", direction="Frontend"), recommendation_fit="recommended"),
+        RecommendationItem(job=job("b", direction="Frontend"), recommendation_fit="recommended"),
+        RecommendationItem(
+            job=job("c", direction="Software engineering"), recommendation_fit="possible"
+        ),
+    ]
+    assert [item.job.job_id for item in agent.ranked(items)] == ["a", "b", "c"]
+    items[0].job.target_directions = list(agent.profile.target_directions)
+    agent.profile.target_directions.reverse()
+    assert [item.job.job_id for item in agent.ranked(list(reversed(items)))] == ["a", "b", "c"]
+
+
 def test_model_failure_preserves_retrieved_vacancies_and_published_progress() -> None:
     class FailingDecisionProvider(ScriptedProvider):
         async def tool_turn(self, *args: Any, **kwargs: Any) -> ToolTurn:
@@ -294,6 +378,44 @@ def test_successful_details_are_deduplicated_per_vacancy_across_batches() -> Non
         )
         await run(provider, search, Assessment())
         assert len(search.details) == len(set(search.details)) == 2
+
+    asyncio.run(scenario())
+
+
+def test_new_details_allow_reassessment_without_reusing_summary_analysis() -> None:
+    class DetailSearch(SnapshotSearch):
+        async def fetch_details(
+            self, jobs: Sequence[JobPosting], *, timeout: float = 30
+        ) -> list[JobPosting]:
+            return [
+                job.model_copy(update={"description": "Full listing: analyze data using Python."})
+                for job in jobs
+            ]
+
+    class DetailAssessment(Assessment):
+        async def assess(self, *args: Any, **kwargs: Any) -> RecommendationResult:
+            self.pending = not args[1][0].description.startswith("Full listing:")
+            return await super().assess(*args, **kwargs)
+
+    async def scenario() -> None:
+        provider = ScriptedProvider(
+            [
+                lambda _: query(),
+                lambda o: ("assess_candidates", {"job_ids": [o["candidates"][0]["job_id"]]}),
+                lambda o: ("fetch_job_details", {"job_ids": [o["candidates"][0]["job_id"]]}),
+                lambda o: ("assess_candidates", {"job_ids": [o["candidates"][0]["job_id"]]}),
+                lambda _: ("finish_search", {"reason": "results_ready"}),
+            ]
+        )
+        assessment = DetailAssessment()
+        result = await run(provider, DetailSearch(1), assessment)
+        assert len(assessment.feedback) == 2
+        assert [item.job.source_url for item in result["recommendation"].jobs] == [
+            "https://jobsdb.example/jobs/0"
+        ]
+        assert result["recommendation"].pending_jobs == []
+        assert result["recommendation"].jobs[0].job.description.startswith("Full listing:")
+        assert provider.observations[3]["candidates"][0]["analysis_attempts"] == 1
 
     asyncio.run(scenario())
 

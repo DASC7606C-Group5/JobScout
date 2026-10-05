@@ -27,7 +27,7 @@ class CandidateSelection(ToolArguments):
 
 
 class FinishSearch(ToolArguments):
-    reason: Literal["target_reached", "source_exhausted"]
+    reason: Literal["results_ready", "target_reached", "source_exhausted"]
 
 
 class ToolRegistry:
@@ -52,14 +52,10 @@ class ToolRegistry:
             "Analyze existing jobs using original evidence. Keep useful vacancies and supported partial conclusions; "
             "personal skills and experience guide ranking, not hiring eligibility.",
         ),
-        "review_results": (
-            CandidateSelection,
-            "Inspect analysis diagnostics and obtain concrete repair suggestions without another model review. "
-            "A failed analysis may be corrected once using assess_candidates.",
-        ),
         "finish_search": (
             FinishSearch,
-            "Deliver completed results after reaching the target or exhausting useful source queries.",
+            "Deliver useful results with results_ready even below the display limit. "
+            "Use target_reached for a filled display limit or source_exhausted for exhausted queries.",
         ),
     }
 

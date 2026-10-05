@@ -126,7 +126,6 @@ class ReplayProvider:
                             ],
                         }
                     )
-                elif task == "conditions":
                     metadata = next(
                         row
                         for row in candidate["documents"]
@@ -139,7 +138,7 @@ class ReplayProvider:
                     ) -> list[dict[str, str]]:
                         return [{"document_id": metadata["document_id"], "excerpt": text}]
 
-                    rows.append(
+                    rows[-1].update(
                         {
                             "job_id": candidate["job_id"],
                             "locations": [{"query": location, "source_quotes": quote(location)}]
@@ -156,7 +155,10 @@ class ReplayProvider:
                     )
                 else:
                     has_python = (
-                        "Python" in payload["profile"]["skills"]
+                        any(
+                            fact["text"] == "Python" and fact["field"] == "skills"
+                            for fact in payload["profile_facts"].values()
+                        )
                         and "resume" in payload["profile_documents"]
                     )
                     rows.append(
@@ -285,13 +287,13 @@ def test_invalid_evidence_removes_only_the_analysis_and_preserves_source_vacancy
                 ]
 
     result = assess(ReplayProvider(corrupt), [job("a"), job("b")])
-    rows = {row.job.job_id: row for row in result.jobs}
+    rows = {row.job.job_id: row for row in [*result.jobs, *result.pending_jobs]}
     assert set(rows) == {"a", "b"}
     assert rows["a"].analysis_status == "unavailable"
     assert rows["a"].matching_reasons == []
     assert rows["a"].job.source_url == "https://example.org/a"
     assert rows["b"].matching_reasons[0].level == "strong"
-    assert result.pending_jobs == []
+    assert [row.job.job_id for row in result.pending_jobs] == (["a"] if damage == "job_id" else [])
 
 
 @pytest.mark.parametrize("field", ["source_url", "posted_at", "freshness_status", "profile"])
@@ -303,10 +305,10 @@ def test_model_cannot_write_server_owned_fields(field: str) -> None:
     candidate = job("a")
     before = candidate.model_dump()
     result = assess(ReplayProvider(corrupt), [candidate])
-    assert [row.job.job_id for row in result.jobs] == ["a"]
-    assert result.jobs[0].analysis_status == "unavailable"
+    assert [row.job.job_id for row in result.pending_jobs] == ["a"]
+    assert result.pending_jobs[0].analysis_status == "unavailable"
     for field in ("source_url", "posted_at", "freshness_status"):
-        assert getattr(result.jobs[0].job, field) == getattr(candidate, field)
+        assert getattr(result.pending_jobs[0].job, field) == getattr(candidate, field)
     assert candidate.model_dump() == before
 
 
@@ -471,7 +473,6 @@ def test_cache_reuses_only_jd_revalidates_sources_and_recomputes_user_match() ->
         assert second.jobs[0].matching_reasons[0].level == "not_documented"
         assert Counter(call["task"] for call in provider.calls) == {
             "jd_analysis": 1,
-            "conditions": 2,
             "matching": 2,
         }
         snapshot = service.export_cache()
@@ -486,6 +487,11 @@ def test_cache_reuses_only_jd_revalidates_sources_and_recomputes_user_match() ->
         provider.model = "new-model"
         await restored.assess(user, [candidate], PROFILE_DOCUMENTS, "s")
         assert len(restored.cache) == 3
+        user.target_directions = ["Data", "Design"]
+        await restored.assess(user, [candidate], PROFILE_DOCUMENTS, "s")
+        assert provider.calls[-2]["task"] == "jd_analysis"
+        assert provider.calls[-2]["target_directions"] == ["Data", "Design"]
+        assert len(restored.cache) == 4
 
     asyncio.run(scenario())
 
@@ -516,10 +522,10 @@ def test_candidate_budget_accumulates_and_new_confirmation_resets_only_budget(co
         await service.begin_search("run-1")
         user = profile()
         user.search_options.result_count = count
-        candidates = [job(f"{index:02}") for index in range(count * 3 + 1)]
+        candidates = [job(f"{index:02}") for index in range(30 + 1)]
         await service.assess(user, candidates[:7], PROFILE_DOCUMENTS, "s")
         await service.assess(user, candidates, PROFILE_DOCUMENTS, "s")
-        assert service.analyzed_count == count * 3
+        assert service.analyzed_count == 30
         extracted_ids = {
             row["job_id"]
             for call in provider.calls
@@ -530,7 +536,7 @@ def test_candidate_budget_accumulates_and_new_confirmation_resets_only_budget(co
         blocked = await service.assess(user, candidates[-1:], PROFILE_DOCUMENTS, "s")
         assert blocked.jobs == []
         await service.begin_search("run-2")
-        assert service.analyzed_count == 0 and len(service.cache) == count * 3
+        assert service.analyzed_count == 0 and len(service.cache) == 30
         await service.assess(user, candidates[-1:], PROFILE_DOCUMENTS, "s")
         assert service.analyzed_count == 1
 
@@ -548,7 +554,7 @@ def test_repair_feedback_invalidates_jd_cache_once_and_is_forwarded() -> None:
             profile(), [job("a")], PROFILE_DOCUMENTS, "s", repair_feedback=feedback
         )
         assert Counter(call["task"] for call in provider.calls)["jd_analysis"] == 2
-        assert all(call["repair_feedback"] == feedback for call in provider.calls[-3:])
+        assert all(call["repair_feedback"] == feedback for call in provider.calls[-2:])
 
     asyncio.run(scenario())
 
@@ -590,7 +596,7 @@ def test_deadline_cancellation_and_completed_batch_callback() -> None:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
-        assert completed == ["00", "01"]
+        assert completed == ["00", "01", "02"]
         await service.cleanup_session("s")
         assert service.cache == {}
         with pytest.raises(RecommendationError):

@@ -645,32 +645,32 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
             payload = json.loads(messages[-1]["content"])
             if schema is JDAnalysisBatch:
                 self.jd_calls += 1
-                return schema.model_validate(
-                    {
-                        "jobs": [
-                            {
-                                "job_id": job["job_id"],
-                                "requirements": [
-                                    {
-                                        "requirement_id": "python",
-                                        "text": "Python",
-                                        "category": "skill",
-                                        "source_quotes": [
-                                            {
-                                                "document_id": job["documents"][0]["document_id"],
-                                                "excerpt": "Python",
-                                            }
-                                        ],
-                                    }
-                                ],
-                            }
-                            for job in payload["jobs"]
-                        ]
-                    }
-                )
+                response = await super().structured(schema, messages, deadline=deadline)
+                data = response.model_dump()
+                for row, job in zip(data["jobs"], payload["jobs"], strict=True):
+                    row["requirements"] = [
+                        {
+                            "requirement_id": "python",
+                            "text": "Python",
+                            "category": "skill",
+                            "source_quotes": [
+                                {
+                                    "document_id": job["documents"][0]["document_id"],
+                                    "excerpt": "Python",
+                                }
+                            ],
+                        }
+                    ]
+                return schema.model_validate(data)
             if schema is MatchingBatch:
                 self.match_calls += 1
-                self.match_profiles.append(payload["profile"]["skills"])
+                self.match_profiles.append(
+                    [
+                        fact["text"]
+                        for fact in payload["profile_facts"].values()
+                        if fact["field"] == "skills"
+                    ]
+                )
                 return schema.model_validate(
                     {
                         "jobs": [
@@ -714,7 +714,7 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
         json.dumps(state["jd_cache"])
         first_ids = set(state["analyzed_job_ids"])
         assert services[0].analyzed_count == 20
-        assert provider.jd_calls == provider.match_calls == 20
+        assert provider.jd_calls == provider.match_calls == 8
         for skills in (["SQL"], ["Java"]):
             if rebuild_graph:
                 cleanup = getattr(graph, "cleanup_session", None)
@@ -738,9 +738,9 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
             assert state["profile"].skills == skills
         assert len(services) == (3 if rebuild_graph else 1)
         assert len(services[-1].cache) == 40
-        assert provider.jd_calls == 40
-        assert provider.match_calls == 60
-        assert provider.match_profiles == [["Python"]] * 20 + [["SQL"]] * 20 + [["Java"]] * 20
+        assert provider.jd_calls == 16
+        assert provider.match_calls == 24
+        assert provider.match_profiles == [["Python"]] * 8 + [["SQL"]] * 8 + [["Java"]] * 8
         cleanup = getattr(graph, "cleanup_session", None)
         assert callable(cleanup)
         await cleanup("s1")

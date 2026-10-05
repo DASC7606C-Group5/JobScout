@@ -85,10 +85,13 @@ function JobMatch({ item }: { item: RecommendationItem }) {
   const reasons = item.matching_reasons
     .filter((reason) => reason.level !== 'not_documented')
     .slice(0, 3)
-  if (!reasons.length) return null
+  if (!reasons.length && !item.recommendation_reason) return null
   return (
     <section>
       <h3 className="mb-2 font-semibold">Why this role</h3>
+      {item.recommendation_reason && (
+        <p className="mb-3 text-base-content/75">{item.recommendation_reason}</p>
+      )}
       <ul className="space-y-2 text-base-content/75">
         {reasons.map((reason) => (
           <li key={JSON.stringify(reason)}>{reason.explanation}</li>

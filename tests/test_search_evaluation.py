@@ -22,10 +22,12 @@ def test_detail_enrichment_changes_confirmed_results_without_counting_pending_ro
     expected = {"j1", "j2", "j3", "j4", "j5"}
     assert fixed["returned_job_ids"] == []
     assert set(fixed["pending_job_ids"]) == expected
-    assert not fixed["target_success"]
+    assert fixed["display_limit_filled"]
+    assert fixed["visible_relevant_recall"] == 1
+    assert fixed["first_result_seconds"] <= fixed["latency_seconds"]
     assert set(adaptive["returned_job_ids"]) == expected
     assert adaptive["pending_job_ids"] == []
-    assert adaptive["target_success"]
+    assert adaptive["display_limit_filled"]
     assert "fetch_job_details" in {call["name"] for call in adaptive["tool_calls"]}
     assert "fetch_job_details" not in {call["name"] for call in fixed["tool_calls"]}
 
@@ -40,7 +42,7 @@ def test_district_evaluation_preserves_unknown_broad_locations_and_twenty_job_ta
     assert district["hard_condition_violations"] == {}
     twenty = asyncio.run(run_policy(cases["target_twenty"], "authored-replay", "adaptive"))
     assert set(twenty["returned_job_ids"]) == {f"j{index}" for index in range(1, 21)}
-    assert twenty["target_success"]
+    assert twenty["display_limit_filled"]
     assert twenty["relevant_recall"] == 1
 
 
@@ -97,7 +99,7 @@ def test_measurements_detect_wrong_identity_hard_constraints_and_unsupported_cit
     assert measured["relevant_recall"] == 0
     assert measured["citation_count"] == 1
     assert measured["citation_correctness"] == 0
-    assert not measured["target_success"]
+    assert not measured["display_limit_filled"]
 
 
 def test_recall_excludes_relevant_roles_that_no_source_snapshot_can_return() -> None:

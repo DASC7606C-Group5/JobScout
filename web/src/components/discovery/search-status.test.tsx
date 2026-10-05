@@ -3,9 +3,9 @@ import { expect, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { createSessionFixture } from '../../../tests/fixtures'
-import { SearchActivity, SearchLoading } from './search-status'
+import { SearchLoading } from './search-status'
 
-test('search progress caps an overshooting batch at the requested result count and hides internal events', () => {
+test('search activity preserves public counts and hides internal events', () => {
   const session = createSessionFixture({
     outcome: 'running',
     current_stage: 'search',
@@ -22,8 +22,6 @@ test('search progress caps an overshooting batch at the requested result count a
       source: 'internal-source-code',
     },
   ]
-  const progress = renderToStaticMarkup(<SearchActivity session={session} />)
-  expect(progress).toContain('value="5" max="5"')
   const loading = renderToStaticMarkup(
     <SearchLoading session={session} onStop={() => {}} stopping={false} />,
   )

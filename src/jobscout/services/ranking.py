@@ -1,20 +1,13 @@
-"""A shared, count-normalized support score; source freshness is ranked separately."""
+"""Order opportunities by overall fit, independently of requirement counts."""
 
-from collections.abc import Sequence
-from fractions import Fraction
-
-from jobscout.schemas.conversation import MatchingReason
-
-_SUPPORT = {
-    "strong": Fraction(1),
-    "partial": Fraction(1, 2),
-    "related_experience": Fraction(1, 4),
-    "not_documented": Fraction(0),
-}
+from jobscout.schemas.recommendation import RecommendationItem
 
 
-def evidence_score(reasons: Sequence[MatchingReason]) -> Fraction:
-    if not reasons:
-        return Fraction(0)
-    # Averaging avoids rewarding a longer JD or more granular extraction.
-    return sum((_SUPPORT[reason.level] for reason in reasons), Fraction(0)) / len(reasons)
+def recommendation_key(item: RecommendationItem) -> tuple[int, bool, str]:
+    # Unknown fit stays explorable; missing information is not a negative verdict.
+    fit = {"recommended": 0, "possible": 1, "unknown": 1, "unlikely": 2}
+    return (
+        fit[item.recommendation_fit],
+        item.job.freshness_status != "active",
+        item.job.job_id,
+    )

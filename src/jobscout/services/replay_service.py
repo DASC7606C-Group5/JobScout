@@ -169,7 +169,9 @@ class ReplayProvider:
             row["job_id"] for row in observation["candidates"] if row["analysis_attempts"] == 0
         ]
         arguments: dict[str, Any]
-        if candidates and observation["remaining_candidates"]:
+        if observation["matched_count"] >= observation["result_limit"]:
+            name, arguments = "finish_search", {"reason": "target_reached"}
+        elif candidates and observation["remaining_candidates"]:
             name, arguments = "assess_candidates", {"job_ids": candidates[:10]}
         else:
             remaining = observation["unexhausted_pairs"]
@@ -193,7 +195,7 @@ class ReplayProvider:
                     "finish_search",
                     {
                         "reason": "target_reached"
-                        if observation["matched_count"] >= observation["target"]
+                        if observation["matched_count"] >= observation["result_limit"]
                         else "source_exhausted"
                     },
                 )
@@ -216,9 +218,7 @@ class ReplayProvider:
             output: dict[str, Any] = _profile_fixture(payload)
         elif name == "PreferenceMeaning":
             output = replay_preferences(payload)
-        elif name == "QualityReview":
-            output = {"job_id": payload["recommendation"]["job"]["job_id"], "accepted": True}
-        elif name == "ConditionAssessmentBatch":
+        elif payload.get("task") == "jd_analysis":
             output = {"jobs": []}
             for job in payload["jobs"]:
                 metadata = next(
@@ -253,6 +253,32 @@ class ReplayProvider:
                         "direction_quotes": citation(title),
                     }
                 )
+            for row, job in zip(output["jobs"], payload["jobs"], strict=True):
+                requirements: list[dict[str, Any]] = []
+                for sample in _dataset()["vacancies"]:
+                    if not any(
+                        document["source_url"] == sample["job"]["source_url"]
+                        for document in job["documents"]
+                    ):
+                        continue
+                    for requirement in sample["annotations"]["requirements"]:
+                        source_quotes = [
+                            {"document_id": document["document_id"], "excerpt": ref["excerpt"]}
+                            for ref in requirement["references"]
+                            for document in job["documents"]
+                            if document["source_url"] == ref["source_url"]
+                            and ref["excerpt"] in document["text"]
+                        ]
+                        if source_quotes:
+                            requirements.append(
+                                {
+                                    "requirement_id": requirement["requirement_id"],
+                                    "text": requirement["text"],
+                                    "category": "skill",
+                                    "source_quotes": source_quotes,
+                                }
+                            )
+                row["requirements"] = requirements
         elif name == "QuestionGeneration":
             output = {"questions": []}
             for field in payload.get("required_fields", [])[:3]:
@@ -317,39 +343,14 @@ class ReplayProvider:
                 match = re.search(pattern, message, re.IGNORECASE)
                 if match:
                     output["changes"].append({"field": field, "value": match.group(1).strip()})
-        elif payload.get("task") == "jd_analysis":
-            output = {"jobs": []}
-            for job in payload["jobs"]:
-                requirements: list[dict[str, Any]] = []
-                for sample in _dataset()["vacancies"]:
-                    if not any(
-                        document["source_url"] == sample["job"]["source_url"]
-                        for document in job["documents"]
-                    ):
-                        continue
-                    for requirement in sample["annotations"]["requirements"]:
-                        source_quotes = [
-                            {"document_id": document["document_id"], "excerpt": ref["excerpt"]}
-                            for ref in requirement["references"]
-                            for document in job["documents"]
-                            if document["source_url"] == ref["source_url"]
-                            and ref["excerpt"] in document["text"]
-                        ]
-                        if source_quotes:
-                            requirements.append(
-                                {
-                                    "requirement_id": requirement["requirement_id"],
-                                    "text": requirement["text"],
-                                    "category": "skill",
-                                    "source_quotes": source_quotes,
-                                }
-                            )
-                output["jobs"].append({"job_id": job["job_id"], "requirements": requirements})
         elif payload.get("task") == "matching":
             output = {"jobs": []}
-            profile = payload["profile"]
             documents = payload["profile_documents"]
-            skills = {value.casefold() for value in profile["skills"]}
+            skills = {
+                fact["text"].casefold()
+                for fact in payload["profile_facts"].values()
+                if fact["field"] == "skills"
+            }
             for job in payload["jobs"]:
                 matches = []
                 suggestions = []

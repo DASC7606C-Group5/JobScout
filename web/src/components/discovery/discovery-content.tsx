@@ -55,7 +55,22 @@ function SessionContent() {
   if (!session) return <ProfileForm />
   switch (session.outcome) {
     case 'running':
-      return <SearchLoading session={session} onStop={stop} stopping={stopping} />
+      return (
+        <>
+          <SearchLoading session={session} onStop={stop} stopping={stopping} />
+          {Boolean(
+            session.recommendation?.jobs.length || session.recommendation?.pending_jobs.length,
+          ) && (
+            <Results
+              result={session.recommendation}
+              notices={session.notices}
+              saved={saved}
+              onToggle={toggleSaved}
+              onEdit={edit}
+            />
+          )}
+        </>
+      )
     case 'paused':
       return (
         <>

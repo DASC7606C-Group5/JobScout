@@ -145,6 +145,8 @@ export function isRecommendationItem(value: unknown): value is RecommendationIte
     string(value.job.job_id) &&
     member(value.analysis_status, ['complete', 'partial', 'unavailable']) &&
     member(value.verification_status, ['confirmed', 'pending', 'unknown']) &&
+    member(value.recommendation_fit, ['recommended', 'possible', 'unlikely', 'unknown']) &&
+    string(value.recommendation_reason) &&
     list(value.unknown_conditions, string) &&
     list(value.notices, notice) &&
     list(value.matching_reasons, matchingReason) &&
@@ -184,6 +186,7 @@ export function isSessionResponse(value: unknown): value is ScoutSession {
     progress(value.progress) &&
     (value.stop_reason === null ||
       member(value.stop_reason, [
+        'results_ready',
         'target_reached',
         'source_exhausted',
         'budget_exhausted',

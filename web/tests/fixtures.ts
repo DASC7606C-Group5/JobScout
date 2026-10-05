@@ -72,6 +72,9 @@ export function createRecommendationFixture(): RecommendationItem {
     ],
     notices: [],
     analysis_status: 'complete',
+    recommendation_fit: 'recommended',
+    recommendation_reason:
+      'The role builds on your React projects; SQL experience is not yet documented.',
     verification_status: 'confirmed',
     unknown_conditions: [],
   }

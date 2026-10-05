@@ -171,6 +171,8 @@ export interface RecommendationItem {
   analysis_status: 'complete' | 'partial' | 'unavailable'
   verification_status: 'confirmed' | 'pending' | 'unknown'
   unknown_conditions: string[]
+  recommendation_fit: 'recommended' | 'possible' | 'unlikely' | 'unknown'
+  recommendation_reason: string
 }
 
 export interface RecommendationResult {
@@ -233,6 +235,7 @@ export interface StopSessionRequest {
 }
 
 export type StopReason =
+  | 'results_ready'
   | 'target_reached'
   | 'source_exhausted'
   | 'budget_exhausted'

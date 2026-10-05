@@ -11,7 +11,6 @@ from jobscout.services.condition_service import ConditionService
 from jobscout.services.conversation_service import ProfileChange, apply_changes, missing_fields
 from jobscout.services.job_processing_service import process_jobs
 from jobscout.services.job_retrieval.models import SearchResult, SourceOutcome, workflow_error
-from jobscout.services.ranking import evidence_score
 from jobscout.services.replay_service import ReplayProvider
 from jobscout.services.search_agent import SearchAgent
 from tests.test_conditions_and_locations import MeaningProvider
@@ -155,7 +154,7 @@ def test_degree_status_or_unrelated_higher_degree_cannot_claim_strong_match(
     assert result.jobs[0].analysis_status == "unavailable"
 
 
-def test_global_ranking_does_not_reward_longer_lists_of_requirements() -> None:
+def test_global_ranking_uses_overall_fit_instead_of_requirement_support_ratios() -> None:
     def reasons(level: str, count: int) -> list[MatchingReason]:
         return [
             MatchingReason.model_validate(
@@ -168,15 +167,18 @@ def test_global_ranking_does_not_reward_longer_lists_of_requirements() -> None:
     from tests.test_job_assessment_service import job
 
     short = RecommendationItem(
-        job=job("short", direction="Data Analyst"), matching_reasons=reasons("strong", 2)
+        job=job("short", direction="Data Analyst"),
+        matching_reasons=reasons("strong", 1),
+        recommendation_fit="possible",
     )
     long = RecommendationItem(
-        job=job("long", direction="Data Analyst"), matching_reasons=reasons("partial", 20)
+        job=job("long", direction="Data Analyst"),
+        matching_reasons=reasons("partial", 20),
+        recommendation_fit="recommended",
     )
     agent = SearchAgent(ReplayProvider(), SnapshotSearch(), Assessment())
     agent.profile, agent.target = profile(), 10
-    assert evidence_score(reasons("strong", 2)) == evidence_score(reasons("strong", 20))
-    assert [row.job.job_id for row in agent.ranked([long, short])] == ["short", "long"]
+    assert [row.job.job_id for row in agent.ranked([long, short])] == ["long", "short"]
 
 
 @pytest.mark.parametrize("initial", ["duplicates", "empty", "timeout"])

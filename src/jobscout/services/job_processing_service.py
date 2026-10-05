@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections import defaultdict, deque
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -496,54 +495,20 @@ def _source_documents(raw: dict[str, Any]) -> list[SourceDocument]:
     return documents
 
 
-def select_balanced_candidates(jobs: Sequence[JobPosting], limit: int = 20) -> list[JobPosting]:
-    """Rotate directions, then sources; each stable vacancy ID consumes one slot."""
-    if limit <= 0:
-        return []
-    groups: dict[str, dict[str, deque[JobPosting]]] = defaultdict(lambda: defaultdict(deque))
+def select_candidates(jobs: Sequence[JobPosting], limit: int = 20) -> list[JobPosting]:
+    """Choose distinct readable candidates without source or direction quotas."""
     ordered = sorted(
         jobs,
         key=lambda job: (
-            not any(
-                document.text.strip() and not document.is_excerpt
-                for document in job.source_documents
-            )
-            if job.source_documents
-            else not bool(job.description.strip() and not job.description_is_excerpt),
+            not bool(job.description.strip() and not job.description_is_excerpt),
             job.job_id,
             job.source_url,
         ),
     )
+    selected: dict[str, JobPosting] = {}
     for job in ordered:
-        if job.freshness_status == FreshnessStatus.EXPIRED:
-            continue
-        directions = set(job.target_directions or [job.target_direction])
-        sources = {document.source for document in job.source_documents} or set(
-            job.source.split(", ")
-        )
-        for direction in sorted(directions):
-            for source in sorted(sources):
-                groups[direction][source].append(job)
-    source_rotation = {direction: deque(sorted(sources)) for direction, sources in groups.items()}
-    directions_left = deque(sorted(groups))
-    selected: list[JobPosting] = []
-    seen: set[str] = set()
-    while directions_left and len(selected) < limit:
-        direction = directions_left.popleft()
-        rotation = source_rotation[direction]
-        while rotation:
-            source = rotation.popleft()
-            queue = groups[direction][source]
-            while queue and queue[0].job_id in seen:
-                queue.popleft()
-            if not queue:
-                continue
-            job = queue.popleft()
-            seen.add(job.job_id)
-            selected.append(job)
-            if queue:
-                rotation.append(source)
+        if len(selected) >= max(0, limit):
             break
-        if rotation:
-            directions_left.append(direction)
-    return selected
+        if job.freshness_status != FreshnessStatus.EXPIRED:
+            selected.setdefault(job.job_id, job)
+    return list(selected.values())

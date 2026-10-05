@@ -31,19 +31,18 @@ export function SearchActivity({ session }: { session: ScoutSession }) {
   if (!session.run_id || session.outcome !== 'running') return null
   const target = session.profile?.search_options.result_count ?? 10
   const matched = Math.min(progress.matched_count, target)
+  const pending = Math.min(progress.pending_count, target - matched)
   return (
     <div className="w-full max-w-sm text-left">
       <output className="block text-sm">
-        {matched} of {target} matches found
+        {matched + pending} {matched + pending === 1 ? 'role' : 'roles'} found
       </output>
-      <progress
-        className="progress mt-3 w-full"
-        aria-label="Matching jobs found"
-        value={matched}
-        max={target}
-      />
       <p className="mt-2 text-xs text-base-content/60">
-        {progress.analyzed_count} {progress.analyzed_count === 1 ? 'job' : 'jobs'} reviewed
+        {matched} with search conditions confirmed · {pending} to verify
+      </p>
+      <p className="mt-2 text-xs text-base-content/60">
+        {progress.analyzed_count} {progress.analyzed_count === 1 ? 'job' : 'jobs'} reviewed ·
+        Showing up to {target}
       </p>
     </div>
   )
@@ -60,22 +59,27 @@ export function SearchLoading({
 }) {
   const searching = Boolean(session.run_id)
   const activity = session.progress.events.at(-1)?.action
+  const hasResults = Boolean(
+    session.recommendation?.jobs.length || session.recommendation?.pending_jobs.length,
+  )
   return (
     <section
-      className="card min-h-96 items-center justify-center border border-base-300 bg-base-100 p-8 text-center"
+      className={`card items-center justify-center border border-base-300 bg-base-100 text-center ${hasResults ? 'mb-6 p-5' : 'min-h-96 p-8'}`}
       aria-live="polite"
     >
-      <span className="mb-6 flex size-20 items-center justify-center rounded-full bg-primary/20 text-primary-content">
-        <span className="loading loading-lg loading-spinner" />
-      </span>
+      {!hasResults && (
+        <span className="mb-6 flex size-20 items-center justify-center rounded-full bg-primary/20 text-primary-content">
+          <span className="loading loading-lg loading-spinner" />
+        </span>
+      )}
       <h2 className="text-xl font-semibold">
         {(searching && activity && activities[activity]) ||
           stages[session.current_stage] ||
           'Finding and checking job matches'}
       </h2>
-      <p className="mt-3 max-w-sm text-sm leading-7 text-base-content/60">
+      <p className="mt-3 max-w-md text-sm leading-7 text-base-content/60">
         {searching
-          ? 'You can end the search whenever you’re ready to explore the results.'
+          ? 'You can explore available roles below or end the search whenever you’re ready.'
           : 'We’re organizing your experience and search criteria for you to review.'}
       </p>
       {searching && (

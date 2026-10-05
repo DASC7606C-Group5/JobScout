@@ -4,7 +4,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 
 from jobscout.schemas.job import FreshnessStatus, JobPosting
-from jobscout.services.job_processing_service import process_jobs, select_balanced_candidates
+from jobscout.services.job_processing_service import process_jobs, select_candidates
 
 NOW = datetime(2026, 10, 1, tzinfo=UTC)
 
@@ -122,7 +122,7 @@ def posting(identifier: str, direction: str, source: str, *, excerpt: bool = Fal
     )
 
 
-def test_balanced_rotation_prefers_complete_and_is_input_order_independent() -> None:
+def test_candidate_selection_prefers_readable_content_without_direction_or_source_quotas() -> None:
     jobs = [
         posting("a-excerpt", "A", "one", excerpt=True),
         posting("z-complete", "A", "one"),
@@ -130,10 +130,10 @@ def test_balanced_rotation_prefers_complete_and_is_input_order_independent() -> 
         posting("b-one", "B", "one"),
         posting("b-two", "B", "two"),
     ]
-    selected = select_balanced_candidates(jobs, 4)
-    assert [job.job_id for job in selected] == ["z-complete", "b-one", "a-two", "b-two"]
-    assert select_balanced_candidates(list(reversed(jobs)), 4) == selected
-    assert not select_balanced_candidates(jobs, 0)
+    selected = select_candidates(jobs, 4)
+    assert [job.job_id for job in selected] == ["a-two", "b-one", "b-two", "z-complete"]
+    assert select_candidates(list(reversed(jobs)), 4) == selected
+    assert not select_candidates(jobs, 0)
 
 
 def test_multiple_directions_sources_count_once_and_expired_are_excluded() -> None:
@@ -142,8 +142,8 @@ def test_multiple_directions_sources_count_once_and_expired_are_excluded() -> No
     jobs[0].source = "one, two"
     jobs[1].freshness_status = FreshnessStatus.EXPIRED
     jobs.append(jobs[0].model_copy())
-    result = select_balanced_candidates(jobs)
+    result = select_candidates(jobs)
     assert len(result) == 20
     assert len({job.job_id for job in result}) == 20
     assert jobs[1] not in result
-    assert select_balanced_candidates(list(reversed(jobs))) == result
+    assert select_candidates(list(reversed(jobs))) == result

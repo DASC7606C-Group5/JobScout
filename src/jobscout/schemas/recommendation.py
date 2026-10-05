@@ -9,6 +9,8 @@ from jobscout.schemas.conversation import MatchingReason
 from jobscout.schemas.job import JobPosting
 from jobscout.schemas.notices import ApplicantNotice
 
+RecommendationFit = Literal["recommended", "possible", "unlikely", "unknown"]
+
 
 class RecommendationItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -20,6 +22,8 @@ class RecommendationItem(BaseModel):
     analysis_status: Literal["complete", "partial", "unavailable"] = "complete"
     verification_status: Literal["confirmed", "pending", "unknown"] = "unknown"
     unknown_conditions: list[str] = Field(default_factory=list)
+    recommendation_fit: RecommendationFit = "unknown"
+    recommendation_reason: str = ""
 
 
 class RecommendationResult(BaseModel):

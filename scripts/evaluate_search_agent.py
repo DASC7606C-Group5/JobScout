@@ -247,6 +247,16 @@ class PolicyProvider:
         args: Json
         candidates = [row for row in observation["candidates"] if not row["analysis_attempts"]]
         detail_ids = [row["job_id"] for row in candidates if row["needs_details"]]
+        if observation["matched_count"] >= observation["result_limit"]:
+            return ToolTurn(
+                calls=[
+                    ToolCall(
+                        id=f"scripted-{self.decisions}",
+                        name="finish_search",
+                        arguments={"reason": "target_reached"},
+                    )
+                ]
+            )
         if self.policy == "adaptive" and detail_ids:
             name, args = "fetch_job_details", {"job_ids": detail_ids[:10]}
         elif candidates and observation["remaining_candidates"]:
@@ -334,10 +344,6 @@ class PolicyProvider:
         if self.delegate:
             return await self.delegate.structured(schema, messages, deadline=deadline)
         payload = json.loads(messages[-1]["content"])
-        if schema.__name__ == "QualityReview":
-            return schema.model_validate(
-                {"job_id": payload["recommendation"]["job"]["job_id"], "accepted": True}
-            )
         rows = []
         for job in payload["jobs"]:
             row: Json = {"job_id": job["job_id"]}
@@ -383,7 +389,7 @@ class PolicyProvider:
                                     ],
                                 }
                             )
-                elif payload["task"] == "conditions":
+                if payload["task"] == "jd_analysis":
                     row.update(
                         {
                             "locations": [],
@@ -464,9 +470,22 @@ def metrics(case: Json, result: RecommendationResult) -> Json:
                 quote_correct += bool(
                     quote.excerpt and quote.excerpt in texts.get(quote.document_id, "")
                 )
+    visible = [*result.jobs, *result.pending_jobs]
+    visible_ids = {item.job.source_url.rsplit("/", 1)[-1] for item in visible}
+    useful = {
+        key
+        for key, row in truth.items()
+        if key in reachable and row["relevant"] and not row["hard_violations"]
+    }
     coverage = {truth[key]["direction"] for key in correct}
     return {
-        "target_success": len(correct) >= case["target_count"] and not violations,
+        "display_limit_filled": len(visible_ids) >= case["target_count"],
+        "useful_results_count": len(visible_ids & useful),
+        "visible_relevant_recall": len(visible_ids & useful) / len(useful) if useful else None,
+        "analysis_completion_rate": sum(item.analysis_status == "complete" for item in visible)
+        / len(visible)
+        if visible
+        else None,
         "returned_job_ids": returned,
         "pending_job_ids": [item.job.source_url.rsplit("/", 1)[-1] for item in result.pending_jobs],
         "precision_at_n": len(correct) / len(returned) if returned else None,
@@ -486,11 +505,28 @@ async def run_policy(case: Json, mode: Mode, policy: str, budget: float = 300) -
     identity = f"evaluation-{case['id']}-{policy}"
     await assessment.begin_search(identity)
     started = time.monotonic()
+    first_result_seconds: float | None = None
+    first_analysis_seconds: float | None = None
+
+    async def progress(update: Json) -> None:
+        nonlocal first_result_seconds, first_analysis_seconds
+        result = update["recommendation"]
+        visible = [*result.jobs, *result.pending_jobs]
+        elapsed = round(time.monotonic() - started, 3)
+        if visible and first_result_seconds is None:
+            first_result_seconds = elapsed
+        if (
+            any(item.analysis_status != "unavailable" for item in visible)
+            and first_analysis_seconds is None
+        ):
+            first_analysis_seconds = elapsed
+
     state = await SearchAgent(provider, search, assessment).run(
         profile,
         PROFILE_DOCUMENTS,
         identity,
         deadline=asyncio.get_running_loop().time() + budget,
+        on_progress=progress,
     )
     return {
         "scenario": case["id"],
@@ -500,6 +536,8 @@ async def run_policy(case: Json, mode: Mode, policy: str, budget: float = 300) -
         "stop_reason": state["stop_reason"],
         "error_code": state.get("agent_error_code"),
         "latency_seconds": round(time.monotonic() - started, 3),
+        "first_result_seconds": first_result_seconds,
+        "first_analysis_seconds": first_analysis_seconds,
         "tool_call_count": len(provider.tool_calls),
         "tool_calls": provider.tool_calls,
         "model_usage": state["model_usage"],
@@ -514,7 +552,6 @@ async def evaluate(
     source_paths = [
         "scripts/evaluate_search_agent.py",
         "src/jobscout/services/search_agent.py",
-        "src/jobscout/services/quality_evaluator.py",
         "src/jobscout/services/tool_registry.py",
         "src/jobscout/services/job_assessment_service.py",
         "src/jobscout/services/job_processing_service.py",
@@ -551,7 +588,12 @@ async def evaluate(
             "precision_at_n": "Relevant, hard-condition-compliant returned matches divided by returned matches (not padded to the target); null when no matches.",
             "relevant_recall": "Correct returned identities divided by relevant confirmed identities reachable in at least one nonblocked source snapshot.",
             "citation_correctness": "Exact excerpt presence in the referenced original document only; this does not measure semantic entailment or claim correctness.",
-            "target_success": "At least the requested count of relevant, compliant identities returned with zero hard-condition violations.",
+            "display_limit_filled": "The visible shortlist fills the requested display limit; this measures quantity, not usefulness.",
+            "useful_results_count": "Visible relevant jobs without known hard-condition violations, including jobs labeled with unknown conditions.",
+            "visible_relevant_recall": "Useful visible identities divided by reachable useful identities, including pending jobs.",
+            "analysis_completion_rate": "Visible jobs with complete personal analysis divided by all visible jobs; null for no results.",
+            "first_result_seconds": "Time until the first source-backed job can be displayed, before analysis if necessary.",
+            "first_analysis_seconds": "Time until the first visible job has complete or partial personal analysis.",
             "direction_coverage": "Confirmed requested directions represented by correct returned matches divided by requested directions.",
         },
         "comparison": "Same production agent loop, assessment service, source snapshots, model, 12-decision and candidate budgets; isolated providers, catalog and caches. Fixed control searches two predetermined pages and never enriches details. Adaptive live arm uses native model tool decisions.",
