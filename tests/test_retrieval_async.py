@@ -46,10 +46,9 @@ class Adapter:
         self.finished = False
         self.cancelled = False
 
-    def search(self, request: SearchRequest) -> SourceResult:
-        raise AssertionError("Must not invoke a blocking adapter")
-
-    async def search_async(self, request: SearchRequest) -> SourceResult:
+    async def search_async(
+        self, request: SearchRequest, *, result: SourceResult | None = None
+    ) -> SourceResult:
         self.started = True
         try:
             await asyncio.sleep(self.delay)
@@ -144,7 +143,9 @@ def test_concurrency_is_bounded_and_loop_remains_responsive() -> None:
         ticks = 0
 
         class CountingAdapter(Adapter):
-            async def search_async(self, request: SearchRequest) -> SourceResult:
+            async def search_async(
+                self, request: SearchRequest, *, result: SourceResult | None = None
+            ) -> SourceResult:
                 nonlocal active, peak
                 active += 1
                 peak = max(peak, active)
@@ -169,21 +170,6 @@ def test_concurrency_is_bounded_and_loop_remains_responsive() -> None:
     asyncio.run(scenario())
 
 
-def test_sync_only_adapter_is_not_run_in_worker_thread() -> None:
-    class Blocking:
-        def search(self, request: SearchRequest) -> SourceResult:
-            raise AssertionError("Synchronous callable was invoked")
-
-    result = asyncio.run(
-        JobSearchService({"old": Blocking()}).search_many_async(
-            [request(sources=["old"])],
-            timeout=0.01,
-        )
-    )
-    assert result.outcomes[0].status == "unavailable"
-    assert result.errors[0].code == "SEARCH_ASYNC_UNAVAILABLE"
-
-
 def test_unrestricted_employment_has_four_sources_and_no_type_filter() -> None:
     req = request()
     assert select_sources(req) == ["zhaopin", "liepin", "shixiseng", "jobsdb"]
@@ -191,7 +177,7 @@ def test_unrestricted_employment_has_four_sources_and_no_type_filter() -> None:
     assert "contract_type" not in careerjet_params(req, "hk")
     assert "work_hours" not in careerjet_params(req, "cn")
     result = asyncio.run(
-        JobSearchService(web_client=FixtureWebClient(FIXTURE)).search_many_async([req])
+        JobSearchService(async_web_client=FixtureWebClient(FIXTURE)).search_many_async([req])
     )
     assert not result.errors
     assert {job.source for job in result.raw_jobs} == set(select_sources(req))
@@ -199,7 +185,7 @@ def test_unrestricted_employment_has_four_sources_and_no_type_filter() -> None:
 
 def test_work_mode_is_advisory_for_default_sources() -> None:
     result = asyncio.run(
-        JobSearchService(web_client=FixtureWebClient(FIXTURE)).search_many_async(
+        JobSearchService(async_web_client=FixtureWebClient(FIXTURE)).search_many_async(
             [
                 request(work_mode="remote"),
             ]

@@ -1,5 +1,6 @@
 """Careerjet v4 regional search. Requires publisher credentials for live calls."""
 
+import asyncio
 import base64
 import ipaddress
 import os
@@ -8,6 +9,7 @@ from urllib.parse import urlencode, urlparse
 from pydantic import ValidationError
 
 from jobscout.schemas.search import SearchRequest
+from jobscout.services.notice_service import make_notice
 
 from .models import RawJob, RetrievalFailure
 from .planning import location_region, normalized, plan_keywords, validate_request
@@ -65,7 +67,10 @@ class CareerjetAdapter:
         self.name = f"careerjet_{region}"
         self.client = client
 
-    def search(self, request: SearchRequest) -> SourceResult:
+    async def search_async(
+        self, request: SearchRequest, *, result: SourceResult | None = None
+    ) -> SourceResult:
+        result = SourceResult() if result is None else result
         params = careerjet_params(request, self.region)
         client = self.client
         if client is None:
@@ -87,7 +92,7 @@ class CareerjetAdapter:
             authorization = "Basic " + base64.b64encode((key + ":").encode()).decode()
             # No disk cache: this request includes end-user IP and authenticated access.
             client = HttpJsonClient(authorization=authorization, retries=1)
-        page = client.get(ENDPOINT + "?" + urlencode(params))
+        page = await client.get(ENDPOINT + "?" + urlencode(params))
         if page.payload.get("type") == "LOCATIONS":
             raise RetrievalFailure(
                 "SEARCH_LOCATION_AMBIGUOUS",
@@ -98,7 +103,7 @@ class CareerjetAdapter:
             raise RetrievalFailure(
                 "SEARCH_RESPONSE_FORMAT", "Expected Careerjet JOBS response and jobs array."
             )
-        result = SourceResult(candidate_count=min(len(records), 10))
+        result.candidate_count += min(len(records), 10)
         result.warnings.append(
             f"{self.name}: source-native location/employment filters; description is an excerpt, not guaranteed full JD; first page only."
         )
@@ -109,6 +114,7 @@ class CareerjetAdapter:
         if request.salary_range:
             result.warnings.append(f"{self.name}: optional salary preference is not filtered.")
         for index, record in enumerate(records[:10]):
+            await asyncio.sleep(0)
             try:
                 if not isinstance(record, dict):
                     raise ValueError("Invalid record")
@@ -148,6 +154,7 @@ class CareerjetAdapter:
                     )
                 )
         if page.payload.get("pages", 1) != 1 or len(records) >= 10:
+            result.notices.append(make_notice("coverage_limited", source=self.name))
             result.warnings.append(
                 f"{self.name}: page/candidate bound reached; results are not exhaustive."
             )

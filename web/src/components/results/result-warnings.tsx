@@ -1,61 +1,56 @@
-const FALLBACK_WARNING_MARKER = 'a deterministic fallback was used.'
-const MERGED_JOB_WARNING_MARKER = 'no responsibilities or required skills extracted.'
+import { noticeIdentity, uniqueNotices } from '../../lib/applicant-notices'
+import type { ApplicantNotice } from '../../lib/contracts'
 
-type WarningGroup = {
-  label: string
-  warnings: string[]
-}
-
-function WarningGroup({ label, warnings }: WarningGroup) {
-  if (!warnings.length) return null
-  return (
-    <details className="collapse-arrow collapse mb-5 rounded-xl border border-base-300 bg-base-100 text-left text-xs leading-6 text-base-content/70">
-      <summary className="collapse-title text-sm font-medium">
-        {label} ({warnings.length})
-      </summary>
-      <div className="collapse-content space-y-2">
-        {warnings.map((warning) => (
-          <p key={warning} className="break-words">
-            {warning}
-          </p>
+export function ResultWarnings({
+  notices,
+  onEdit,
+  onRetry,
+  listingUrl,
+  collapsed = false,
+}: {
+  notices: ApplicantNotice[]
+  onEdit?: () => void
+  onRetry?: () => void
+  listingUrl?: string | undefined
+  collapsed?: boolean
+}) {
+  const unique = uniqueNotices(notices)
+  if (!unique.length) return null
+  const actions = new Set(unique.map((notice) => notice.action))
+  const content = (
+    <div className="text-sm leading-6 text-base-content/70">
+      <ul className="space-y-3">
+        {unique.map((notice) => (
+          <li key={noticeIdentity(notice)}>{notice.message}</li>
         ))}
+      </ul>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {actions.has('edit_conditions') && onEdit && (
+          <button className="btn btn-ghost btn-sm" onClick={onEdit}>
+            Edit search criteria
+          </button>
+        )}
+        {actions.has('retry') && onRetry && (
+          <button className="btn btn-ghost btn-sm" onClick={onRetry}>
+            Try again
+          </button>
+        )}
+        {actions.has('open_listing') && listingUrl && (
+          <a className="link" href={listingUrl} target="_blank" rel="noopener noreferrer">
+            View full listing
+          </a>
+        )}
       </div>
-    </details>
+    </div>
   )
-}
-
-export function ResultWarnings({ warnings }: { warnings: string[] }) {
-  const fallbackWarnings: string[] = []
-  const mergedJobWarnings: string[] = []
-  const jobQualityWarnings: string[] = []
-  const preferenceWarnings: string[] = []
-  const sourceWarnings: string[] = []
-  const otherWarnings: string[] = []
-
-  for (const warning of new Set(warnings)) {
-    if (warning.includes(FALLBACK_WARNING_MARKER)) {
-      fallbackWarnings.push(warning)
-    } else if (warning.includes(MERGED_JOB_WARNING_MARKER)) {
-      mergedJobWarnings.push(warning)
-    } else if (warning.startsWith('Job ')) {
-      jobQualityWarnings.push(warning)
-    } else if (warning.startsWith('Could not reliably verify ')) {
-      preferenceWarnings.push(warning)
-    } else if (warning.includes('/') && warning.includes(':')) {
-      sourceWarnings.push(warning)
-    } else {
-      otherWarnings.push(warning)
-    }
-  }
-
-  return (
-    <>
-      <WarningGroup label="Model analysis fallback" warnings={fallbackWarnings} />
-      <WarningGroup label="Missing job description fields" warnings={mergedJobWarnings} />
-      <WarningGroup label="Job evidence and status" warnings={jobQualityWarnings} />
-      <WarningGroup label="Preference checks" warnings={preferenceWarnings} />
-      <WarningGroup label="Source search and coverage" warnings={sourceWarnings} />
-      <WarningGroup label="Other notices" warnings={otherWarnings} />
-    </>
+  return collapsed ? (
+    <details className="collapse-arrow collapse rounded-xl border border-base-300 bg-base-100">
+      <summary className="collapse-title text-sm font-medium">About this search</summary>
+      <div className="collapse-content">{content}</div>
+    </details>
+  ) : (
+    <aside aria-label="Important details" className="rounded-xl bg-base-200/60 p-4">
+      {content}
+    </aside>
   )
 }

@@ -8,7 +8,7 @@ from jobscout.schemas.search import SearchRequest
 from .models import RetrievalFailure
 
 DEFAULT_SOURCES = ("zhaopin", "liepin", "shixiseng", "jobsdb")
-LEGACY_SOURCES = ("remotive", "arbeitnow")
+FEED_SOURCES = ("remotive", "arbeitnow")
 REGIONAL_SOURCES = {"hk": ("jobsdb",), "cn": ("zhaopin", "liepin", "shixiseng")}
 
 
@@ -184,7 +184,7 @@ def plan_source_query(
     request: SearchRequest, source: str, *, page: int = 1, candidate_limit: int = 1000
 ) -> SourceQuery:
     validate_request(request)
-    if source not in LEGACY_SOURCES:
+    if source not in FEED_SOURCES:
         raise RetrievalFailure("SEARCH_UNKNOWN_SOURCE", "Unknown job source.")
     # One bounded snapshot serves all directions. Neither feed documents native
     # location/employment filters. Do not send invented query parameters.

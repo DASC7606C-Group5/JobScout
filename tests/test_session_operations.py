@@ -5,7 +5,10 @@ from typing import Any
 
 import pytest
 
+from jobscout.schemas.conversation import QuestionOption
+from jobscout.schemas.search import ClarificationMessage
 from jobscout.schemas.session import SessionCreateRequest, SessionResumeRequest
+from jobscout.services.notice_service import make_notice
 from jobscout.services.session_service import SessionOperationError, SessionService
 
 
@@ -23,7 +26,7 @@ class ControlledGraph:
         self.states: dict[str, dict[str, Any]] = {}
         self.cleaned: list[str] = []
 
-    def cleanup_session(self, session_id: str) -> None:
+    async def cleanup_session(self, session_id: str) -> None:
         self.cleaned.append(session_id)
 
     async def ainvoke(self, data: Any, config: dict[str, Any]) -> dict[str, Any]:
@@ -190,13 +193,15 @@ def test_question_controls_and_confirmation_are_validated_before_acceptance() ->
         record = manager.sessions[session.session_id]
         record.outcome = "paused"
         record.state["clarification_questions"] = [
-            {
-                "question_id": "required",
-                "status": "pending",
-                "required": True,
-                "control_type": "single_choice",
-                "options": [{"id": "one", "label": "One"}],
-            }
+            ClarificationMessage(
+                question_id="required",
+                question="Choose a role",
+                field="target_directions",
+                reason="",
+                required=True,
+                control_type="single_choice",
+                options=[QuestionOption(id="one", label="One")],
+            )
         ]
         invalid: list[dict[str, Any]] = [
             {"skipped_question_ids": ["required"]},
@@ -249,7 +254,7 @@ def test_get_does_not_restore_a_previous_revision_while_editing() -> None:
             "session_id": session.session_id,
             "current_stage": "completed",
             "revision": 1,
-            "warnings": ["outdated"],
+            "notices": [make_notice("coverage_limited", source="jobsdb")],
         }
         graph.release.clear()
         await manager.resume(
@@ -263,7 +268,7 @@ def test_get_does_not_restore_a_previous_revision_while_editing() -> None:
         snapshot = await manager.get(session.session_id)
         assert snapshot.revision == 2
         assert snapshot.recommendation is None
-        assert "outdated" not in snapshot.warnings
+        assert not any(notice.source == "jobsdb" for notice in snapshot.notices)
         await manager.close()
 
     asyncio.run(check())

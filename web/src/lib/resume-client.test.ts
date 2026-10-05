@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { rejects } from 'node:assert/strict'
 
+import { ApplicantRequestError } from './applicant-errors'
 import { createResumeReader, MAX_RESUME_BYTES, MAX_RESUME_TEXT_LENGTH } from './resume-client'
 
 describe('resume file input', () => {
@@ -58,17 +59,38 @@ describe('resume file input', () => {
     expect(uploads).toBe(0)
   })
 
-  test('preserves useful parser errors and handles proxy and network failures', async () => {
+  test('preserves parser recovery codes without disclosing diagnostic bodies', async () => {
     const file = new File(['sample'], 'resume.pdf')
     const parserMessage = 'parser-detail-sentinel'
-    for (const [status, body] of [
-      [422, { detail: { code: 'no_extractable_text', message: parserMessage } }],
-      [415, { detail: parserMessage }],
+    for (const [status, body, code] of [
+      [
+        422,
+        {
+          detail: {
+            code: 'no_extractable_text',
+            message: parserMessage,
+            action: 'edit_conditions',
+          },
+        },
+        'no_extractable_text',
+      ],
+      [415, { detail: parserMessage }, 'unsupported_format'],
+      [
+        400,
+        { detail: { code: parserMessage, message: parserMessage, action: null } },
+        'request_failed',
+      ],
     ] as const) {
       const read = createResumeReader('/api/v1', () =>
         Promise.resolve(Response.json(body, { status })),
       )
-      await rejects(read(file), { message: parserMessage })
+      await rejects(
+        read(file),
+        (error: unknown) =>
+          error instanceof ApplicantRequestError &&
+          error.code === code &&
+          !error.message.includes(parserMessage),
+      )
     }
     for (const status of [500, 503]) {
       const diagnostic = 'private-server-diagnostic'

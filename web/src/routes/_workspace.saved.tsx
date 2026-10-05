@@ -2,9 +2,13 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 
 import { PageHeading } from '../components/layout/page-heading'
 import { Results } from '../components/results'
+import { resultSearch } from '../lib/result-navigation'
 import { useScout } from '../state/scout-context'
 
-export const Route = createFileRoute('/_workspace/saved')({ component: SavedPage })
+export const Route = createFileRoute('/_workspace/saved')({
+  validateSearch: resultSearch,
+  component: SavedPage,
+})
 
 function SavedPage() {
   const saved = useScout((state) => state.saved)
@@ -13,9 +17,9 @@ function SavedPage() {
   return (
     <>
       <PageHeading
-        eyebrow="KEEP THE POSSIBILITIES"
-        title="Save jobs to compare later."
-        description="Keep track of roles that interest you and get ready for your next step."
+        eyebrow="SAVED JOBS"
+        title={`${saved.length} saved ${saved.length === 1 ? 'job' : 'jobs'}`}
+        description="Compare the roles you saved during this visit."
       />
       <Results
         result={null}
@@ -23,7 +27,7 @@ function SavedPage() {
         savedOnly
         onToggle={toggleSaved}
         onEdit={() => {
-          void navigate({ to: '/' })
+          void navigate({ to: '/', search: {} })
         }}
       />
     </>

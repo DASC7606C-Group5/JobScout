@@ -41,7 +41,7 @@ export interface ConversationMessage {
   text: string
   question_ids: string[]
   created_at: string
-  responses?: ConversationResponse[]
+  responses: ConversationResponse[]
 }
 
 export interface ConversationResponse {
@@ -118,25 +118,36 @@ export interface JobPosting {
 
 export interface RecommendationItem {
   job: JobPosting
-  missing_skills: string[]
   preparation_suggestions: string[]
   matching_reasons: MatchingReason[]
-  uncertainty_notices: string[]
+  notices: ApplicantNotice[]
+  analysis_status: 'complete' | 'partial' | 'unavailable'
 }
 
 export interface RecommendationResult {
   session_id: string
   generated_at: string
   jobs: RecommendationItem[]
-  warnings: string[]
   introduction: string
+  notices: ApplicantNotice[]
 }
 
-export interface WorkflowError {
+export interface ApplicantNotice {
+  code: string
+  scope: 'session' | 'source' | 'job'
+  message: string
+  action: 'retry' | 'edit_conditions' | 'open_listing' | null
+  job_id: string | null
+  source: string | null
+  preference: string | null
+}
+
+export type ApplicantRecovery = 'retry' | 'edit_conditions' | 'reload' | 'start_new_search' | null
+
+export interface ApplicantError {
   code: string
   message: string
-  stage: string
-  details: Record<string, string | number | boolean | null> | null
+  action: ApplicantRecovery
 }
 
 // Mirrors src/jobscout/schemas/session.py.
@@ -174,8 +185,8 @@ export interface ScoutSession {
   search_summary: SearchSummary | null
   source_outcomes: SourceOutcome[]
   recommendation: RecommendationResult | null
-  errors: WorkflowError[]
-  warnings: string[]
+  errors: ApplicantError[]
+  notices: ApplicantNotice[]
   retryable: boolean
   mode: 'live' | 'replay'
 }

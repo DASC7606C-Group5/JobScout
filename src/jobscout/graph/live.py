@@ -35,6 +35,11 @@ from jobscout.services.job_processing_service import process_jobs, select_balanc
 from jobscout.services.job_retrieval.models import SearchResult
 from jobscout.services.job_search_service import JobSearchService
 from jobscout.services.llm_service import LLMProvider, ModelServiceError
+from jobscout.services.notice_service import (
+    finalize_recommendation,
+    make_notice,
+    source_notices,
+)
 from jobscout.services.profile_service import dedupe
 from jobscout.services.recommendation_service import recommend_jobs
 
@@ -149,6 +154,14 @@ class SearchService(Protocol):
 
 
 class AssessmentService(Protocol):
+    async def begin_search(self, search_id: str) -> None: ...
+
+    async def cleanup_session(self, session_id: str) -> None: ...
+
+    def import_cache(self, snapshot: object, session_id: str) -> None: ...
+
+    def export_cache(self) -> dict[str, object]: ...
+
     async def assess(
         self,
         profile: UserProfile,
@@ -171,7 +184,7 @@ def _failure(code: str, stage: str, *, retryable: bool = True) -> dict[str, Any]
         "invalid_answer": "The answer format is invalid. Check the question options or edit your criteria directly.",
         "search_unavailable": "Job sources are temporarily unavailable. Try again later.",
         "operation_timeout": "This search reached its time limit. Please try again.",
-        "model_auth": "Model service authentication failed. Check the service configuration.",
+        "model_auth": "JobScout is temporarily unavailable. Your input is saved; try again later.",
     }
     return {
         "current_stage": "failed",
@@ -206,21 +219,17 @@ def build_live_graph(
         """Dispose session evidence after its operation has been cancelled/awaited."""
         service = evidence.pop(session_id, None)
         evidence_search_ids.pop(session_id, None)
-        cleanup = getattr(service, "cleanup_session", None)
-        if callable(cleanup):
-            result = cleanup(session_id)
-            if inspect.isawaitable(result):
-                await result
+        if service is not None:
+            await service.cleanup_session(session_id)
 
     async def session_evidence(
         session_id: str, revision: int, snapshot: dict[str, object] | None = None
     ) -> AssessmentService:
         if session_id not in evidence:
             service = factory(provider)
-            restore = getattr(service, "import_cache", None)
-            if snapshot and callable(restore):
+            if snapshot:
                 try:
-                    restore(snapshot, session_id)
+                    service.import_cache(snapshot, session_id)
                 except Exception:
                     logger.warning(
                         "workflow_cache_rejected", extra={"error_code": "invalid_checkpoint_cache"}
@@ -230,18 +239,16 @@ def build_live_graph(
         service = evidence[session_id]
         search_id = f"{session_id}:{revision}"
         if evidence_search_ids.get(session_id) != search_id:
-            begin = getattr(service, "begin_search", None)
-            if callable(begin):
-                result = begin(search_id)
-                if inspect.isawaitable(result):
-                    await result
+            await service.begin_search(search_id)
             evidence_search_ids[session_id] = search_id
         return service
 
     def entry(state: AgentState) -> dict[str, Any]:
         reset: dict[str, Any] = {
             "errors": Overwrite([]),
+            "source_errors": Overwrite([]),
             "warnings": Overwrite([]),
+            "notices": Overwrite([]),
             "outcome": "running",
             "retryable": False,
             "recommendation": None,
@@ -559,13 +566,26 @@ def build_live_graph(
                 update={"responses": [*responses, *_edited_responses(request, profile)]}
             )
             documents = list(state.get("profile_documents", []))
+            submitted_values = [
+                *(change.value for change in updates),
+                *request.profile_updates.values(),
+            ]
             evidence_text = "\n".join(
                 filter(
                     None,
                     [
                         request.message,
-                        *(f"{change.field}: {change.value}" for change in updates),
-                        *(f"{field}: {value}" for field, value in request.profile_updates.items()),
+                        *(
+                            text
+                            for value in submitted_values
+                            for text in (
+                                [value]
+                                if isinstance(value, str)
+                                else value
+                                if isinstance(value, list)
+                                else []
+                            )
+                        ),
                     ],
                 )
             )
@@ -668,7 +688,7 @@ def build_live_graph(
         text = (
             "Review and confirm your search criteria. The search will begin after you confirm."
             if summary.ready
-            else "Some required criteria still need confirmation. Edit the summary directly; choose up to three directions and select a supported location or no preference."
+            else "Complete the required search details below before searching."
         )
         return {
             "search_summary": summary,
@@ -718,6 +738,7 @@ def build_live_graph(
         if budget <= 0:
             return {
                 "retrieval_round": 2,
+                "notices": [make_notice("coverage_limited")],
                 "warnings": [
                     "The cumulative search time limit was reached. Keeping the jobs found so far."
                 ],
@@ -729,22 +750,39 @@ def build_live_graph(
                 found = await search.search_many_async(
                     state.get("search_requests", []), timeout=source_budget
                 )
+            logger.debug(
+                "retrieval_diagnostics",
+                extra={
+                    "session_id": state["session_id"],
+                    "diagnostic_count": len(found.warnings),
+                    "source_error_count": len(found.errors),
+                },
+            )
+            notices = list(found.notices)
+            if found.errors and not found.outcomes:
+                notices.append(
+                    make_notice("source_partial" if found.raw_jobs else "source_unavailable")
+                )
             raw = [
                 *state.get("raw_jobs", []),
                 *(job.model_dump(mode="json") for job in found.raw_jobs),
             ]
             outcomes = [*state.get("source_outcomes", []), *found.outcomes]
             successful = bool(raw) or any(
-                outcome.status in {"ok", "empty", "partial", "success"} for outcome in outcomes
+                outcome.status in {"ok", "empty", "partial"} for outcome in outcomes
             )
             if not successful and (found.errors or outcomes):
                 return _failure("search_unavailable", "retrieve") | {
                     "source_outcomes": outcomes,
+                    "source_errors": found.errors,
                     "warnings": found.warnings,
+                    "notices": notices,
                 }
             return {
                 "raw_jobs": raw,
                 "source_outcomes": outcomes,
+                "source_errors": found.errors,
+                "notices": notices,
                 "warnings": [
                     *found.warnings,
                     *(
@@ -765,6 +803,7 @@ def build_live_graph(
                 return {
                     "retrieval_round": 2,
                     "retrieval_seconds": RETRIEVAL_SECONDS,
+                    "notices": [make_notice("coverage_limited")],
                     "warnings": [
                         "The search timed out. Keeping the jobs found in the previous round."
                     ],
@@ -774,6 +813,7 @@ def build_live_graph(
             if state.get("raw_jobs"):
                 return {
                     "retrieval_round": 2,
+                    "notices": [make_notice("source_partial")],
                     "warnings": [
                         "The additional search did not finish. Keeping the jobs found in the previous round."
                     ],
@@ -785,6 +825,10 @@ def build_live_graph(
             profile = state["confirmed_profile"]
             assert profile is not None
             jobs, warnings = process_jobs(state.get("raw_jobs", []))
+            logger.debug(
+                "normalization_diagnostics",
+                extra={"session_id": state["session_id"], "diagnostic_count": len(warnings)},
+            )
             eligible = eligible_jobs(profile, jobs)
             old_ids = set(state.get("analyzed_job_ids", []))
             retained = [job for job in eligible if job.job_id in old_ids]
@@ -824,18 +868,16 @@ def build_live_graph(
                     deadline=state["operation_deadline"],
                 )
             update: dict[str, Any] = {"assessment": assessment, "current_stage": "coverage"}
-            export = getattr(service, "export_cache", None)
-            if callable(export):
-                try:
-                    update["jd_cache"] = export()
-                except Exception:
-                    update["warnings"] = [
-                        "Job analysis finished, but the cache was not saved. A later search may need to analyze these jobs again."
-                    ]
-                    logger.warning(
-                        "workflow_cache_export_failed",
-                        extra={"error_code": "checkpoint_cache_unavailable"},
-                    )
+            try:
+                update["jd_cache"] = service.export_cache()
+            except Exception:
+                update["warnings"] = [
+                    "Job analysis finished, but the cache was not saved. A later search may need to analyze these jobs again."
+                ]
+                logger.warning(
+                    "workflow_cache_export_failed",
+                    extra={"error_code": "checkpoint_cache_unavailable"},
+                )
             return update
         except asyncio.CancelledError:
             raise
@@ -844,6 +886,14 @@ def build_live_graph(
         except Exception:
             assessment = recommend_jobs(
                 profile, state.get("analysis_jobs", []), session_id=state["session_id"]
+            )
+            assessment = assessment.model_copy(
+                update={
+                    "jobs": [
+                        item.model_copy(update={"analysis_status": "unavailable"})
+                        for item in assessment.jobs
+                    ]
+                }
             )
             return {
                 "assessment": assessment,
@@ -884,15 +934,17 @@ def build_live_graph(
             session_id=state["session_id"], generated_at=datetime.now(UTC)
         )
         intro = (
-            f"Found {len(result.jobs)} jobs matching your confirmed criteria. Check the source links to verify the details."
+            f"Found {len(result.jobs)} roles for you to explore. Open a role to see the details."
             if result.jobs
-            else "No jobs matched your confirmed criteria. We did not broaden your search automatically; you can edit your criteria and search again."
+            else "No roles were found for these criteria. Adjust your search to explore other opportunities."
         )
-        result = result.model_copy(
-            update={
-                "introduction": intro,
-                "warnings": dedupe([*result.warnings, *state.get("warnings", [])]),
-            }
+        result = finalize_recommendation(
+            result.model_copy(update={"introduction": intro}),
+            profile=state.get("confirmed_profile"),
+            notices=[
+                *state.get("notices", []),
+                *source_notices(state.get("source_outcomes", [])),
+            ],
         )
         return {
             "recommendation": result,

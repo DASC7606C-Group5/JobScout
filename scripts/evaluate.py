@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import hashlib
-import importlib.util
 import json
 import sys
 import time
@@ -13,7 +12,6 @@ import unicodedata
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from types import ModuleType
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,6 +28,7 @@ BASELINE_HASHES = {
     "profile_service.py": "68c3d501a885343df98bba75e92765210700284ada59a792c292a26c4e9533ad",
     "recommendation_service.py": "ac12a2f6b403d41d8a8c378c8487dad4405201f552ff96c1eae5cdaa2550e7ce",
 }
+BASELINE_REPORT_SHA256 = "bed8ff77c00dd95e08fbe9c4b34abe1001dbc78f3c6499a0fa39a8cf3a4a3f9e"
 BACKGROUND_FIELDS = ("education", "skills", "internships", "projects")
 type Mode = Literal["baseline", "authored-replay", "recorded-replay", "live"]
 type JsonObject = dict[str, Any]
@@ -111,10 +110,17 @@ def verify_baseline(root: Path = DATA) -> None:
     manifest = read_json(root / "manifest.json")
     if manifest["baseline"]["commit"] != BASELINE_COMMIT:
         raise ValueError("Baseline commit provenance changed")
-    for name, expected in BASELINE_HASHES.items():
-        actual = hashlib.sha256((root / "baseline" / name).read_bytes()).hexdigest()
-        if actual != expected or manifest["baseline"]["files"][name] != expected:
-            raise ValueError(f"Frozen baseline checksum mismatch: {name}")
+    report_path = root / "results" / "baseline.json"
+    if hashlib.sha256(report_path.read_bytes()).hexdigest() != BASELINE_REPORT_SHA256:
+        raise ValueError("Frozen baseline report checksum mismatch")
+    report = read_json(report_path)
+    if (
+        report["baseline_commit"] != BASELINE_COMMIT
+        or report["baseline_hashes"] != BASELINE_HASHES
+        or manifest["baseline"]["files"] != BASELINE_HASHES
+        or report["dataset_sha256"] != manifest["dataset_sha256"]
+    ):
+        raise ValueError("Frozen baseline report provenance mismatch")
 
 
 def _references_valid(references: Sequence[EvidenceReference], documents: dict[str, str]) -> bool:
@@ -279,31 +285,23 @@ def ranking_metrics(case: ProfileCase, result: RecommendationResult) -> JsonObje
     }
 
 
-def load_baseline(name: str) -> ModuleType:
+def baseline_report(dataset: Dataset) -> JsonObject:
+    """Read the historical result without executing an obsolete application contract."""
     verify_baseline()
-    module_name = f"_jobscout_frozen_{name}"
-    spec = importlib.util.spec_from_file_location(module_name, DATA / "baseline" / f"{name}.py")
-    if spec is None or spec.loader is None:
-        raise ValueError("Could not load frozen baseline")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def baseline_profiles(case: ProfileCase) -> tuple[UserProfile, UserProfile]:
-    baseline = load_baseline("profile_service")
-    parsed = baseline.parse_profile_input(case.input)
-    initial: UserProfile = baseline.build_profile(
-        case.profile_id,
-        description=parsed.description,
-        resume=parsed.resume,
-        target_directions=parsed.target_directions,
-        preferences=parsed.preferences,
-    )
-    questions = baseline.build_clarification_questions(initial)
-    final, _ = baseline.apply_answers(initial, questions, case.scripted_answers)
-    return initial, final
+    report = read_json(DATA / "results" / "baseline.json")
+    jobs = {row.job.job_id: row.job for row in dataset.vacancies}
+    rows = report["cases"]
+    if len(rows) != len(dataset.profiles) or any(
+        row["profile_id"] != case.profile_id
+        or row["candidate_ids"] != case.candidate_ids
+        or row["candidate_sha256"]
+        != digest([jobs[job_id].model_dump(mode="json") for job_id in case.candidate_ids])
+        for row, case in zip(rows, dataset.profiles, strict=True)
+    ):
+        raise ValueError("Historical baseline does not match the current evaluation candidates")
+    report["latency"]["kind"] = "recorded_baseline"
+    report["execution"] = "historical_result"
+    return report
 
 
 class AuthoredReplayProvider:
@@ -475,6 +473,8 @@ async def evaluate(
     mode: Mode, replay_path: Path | None = None
 ) -> tuple[JsonObject, JsonObject | None]:
     dataset = load_dataset()
+    if mode == "baseline":
+        return baseline_report(dataset), None
     jobs = {row.job.job_id: row.job for row in dataset.vacancies}
     fixture = read_json(DATA / "replay" / "authored.json") if mode == "authored-replay" else None
     shared: Any = None
@@ -487,7 +487,6 @@ async def evaluate(
         if replay_path is None:
             raise ValueError("--replay is required for recorded-replay")
         shared = RecordedProvider(read_json(replay_path))
-    ranker = load_baseline("recommendation_service") if mode == "baseline" else None
     rows: list[JsonObject] = []
     calls = 0
     started = time.perf_counter()
@@ -504,33 +503,24 @@ async def evaluate(
             ),
         }
         try:
-            if mode == "baseline":
-                initial, final = baseline_profiles(case)
-            else:
-                initial = await model_profile(case, provider, "initial")
-                final = await model_profile(case, provider, "confirmed")
+            initial = await model_profile(case, provider, "initial")
+            final = await model_profile(case, provider, "confirmed")
             row["extraction"] = extraction_metrics(initial, case.expected_initial)
             row["clarification"] = clarification_metrics(case, initial, final)
             # Both rankers receive the SAME annotation-confirmed profile and candidate pool.
             if case.expected_clarification_complete:
                 candidates = [jobs[jid].model_copy(deep=True) for jid in case.candidate_ids]
-                if ranker is not None:
-                    result = ranker.recommend_jobs(
-                        case.expected_confirmed.model_copy(deep=True),
-                        candidates,
-                        session_id=case.profile_id,
-                        now=datetime.fromisoformat(dataset.provenance["reference_time"]),
-                    )
-                else:
-                    from jobscout.services.evidence_service import EvidenceService
+                from jobscout.services.evidence_service import EvidenceService
 
-                    result = await EvidenceService(provider).assess(
-                        case.expected_confirmed.model_copy(deep=True),
-                        candidates,
-                        case.profile_documents,
-                        case.profile_id,
-                        deadline=asyncio.get_running_loop().time() + 180,
-                    )
+                evidence_service = EvidenceService(provider)
+                await evidence_service.begin_search(case.profile_id)
+                result = await evidence_service.assess(
+                    case.expected_confirmed.model_copy(deep=True),
+                    candidates,
+                    case.profile_documents,
+                    case.profile_id,
+                    deadline=asyncio.get_running_loop().time() + 180,
+                )
                 row["ranking"] = ranking_metrics(case, result)
                 row["recommended_ids"] = [item.job.job_id for item in result.jobs]
                 row["recommendation"] = result.model_dump(mode="json")
@@ -557,10 +547,8 @@ async def evaluate(
         "baseline_hashes": BASELINE_HASHES,
         "dataset_sha256": read_json(DATA / "manifest.json")["dataset_sha256"],
         "profile_schema_sha256": digest(UserProfile.model_json_schema()),
-        "provider": "none" if mode == "baseline" else "deepseek" if mode == "live" else "replay",
-        "model": str(getattr(shared, "model", AuthoredReplayProvider.model))
-        if mode != "baseline"
-        else None,
+        "provider": "deepseek" if mode == "live" else "replay",
+        "model": str(getattr(shared, "model", AuthoredReplayProvider.model)),
         "quality_evidence": mode in {"live", "recorded-replay"},
         "quality_caveat": "Synthetic machine annotations are unreviewed; no real-world quality claim.",
         "ranking_protocol": "Fixed candidate pool and annotation-confirmed profile for both arms; not end-to-end.",
@@ -579,7 +567,7 @@ async def evaluate(
             "provider_structured_calls": calls,
             "model_usage": shared.provider.usage.model_dump() if mode == "live" else None,
             "actual_network_requests": 0 if mode != "live" else shared.provider.usage.requests,
-            "tokens": 0 if mode == "baseline" else None,
+            "tokens": None,
         },
         "aggregate": _aggregate(rows),
         "cases": rows,
@@ -607,7 +595,7 @@ def output_path(value: str) -> Path:
     path = (ROOT / path).resolve() if not path.is_absolute() else path.resolve()
     if not path.is_relative_to(DATA.resolve()):
         raise ValueError("Evaluation artifacts must remain under data/evaluation")
-    if path in {DATA / "dataset.json", DATA / "manifest.json"} or "baseline" in path.parts:
+    if path in {DATA / "dataset.json", DATA / "manifest.json", DATA / "results" / "baseline.json"}:
         raise ValueError("Cannot overwrite frozen evaluation inputs")
     return path
 

@@ -1,12 +1,11 @@
 """Offline tests; no credentials, network, frontend or full graph required."""
 
+import asyncio
 import json
 from datetime import UTC, datetime
-from email.message import Message
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-from urllib.error import HTTPError, URLError
 
+import httpx
 import pytest
 from pydantic import JsonValue
 
@@ -57,7 +56,7 @@ class Pages:
         self.pages = list(pages)
         self.urls: list[str] = []
 
-    def get(self, url: str) -> Page:
+    async def get(self, url: str) -> Page:
         self.urls.append(url)
         value = self.pages.pop(0)
         if isinstance(value, RetrievalFailure):
@@ -102,7 +101,9 @@ def test_planning_preserves_intent_and_does_not_mutate() -> None:
 
 def test_single_direction_preserves_raw_fields_and_time() -> None:
     original = row(publication_date="2026-09-20T12:00:00", extra={"vendor": [1, None]})
-    result = service(Pages(page(records=[original]))).search(request(sources=["remotive"]))
+    result = asyncio.run(
+        service(Pages(page(records=[original]))).search_many_async([request(sources=["remotive"])])
+    )
     assert not result.errors
     job = result.raw_jobs[0]
     assert (job.source, job.source_url, job.target_direction) == (
@@ -119,11 +120,13 @@ def test_single_direction_preserves_raw_fields_and_time() -> None:
 
 def test_multiple_directions_reuse_snapshot_without_deduplicating() -> None:
     client = Pages(page())
-    result = service(client).search_many(
-        [
-            request(sources=["remotive"]),
-            request(target_direction="Business Analyst", sources=["remotive"]),
-        ]
+    result = asyncio.run(
+        service(client).search_many_async(
+            [
+                request(sources=["remotive"]),
+                request(target_direction="Business Analyst", sources=["remotive"]),
+            ]
+        )
     )
     assert [j.target_direction for j in result.raw_jobs] == ["Data Analyst", "Business Analyst"]
     assert len(client.urls) == 1
@@ -134,7 +137,9 @@ def test_multiple_directions_reuse_snapshot_without_deduplicating() -> None:
     "records", [[], [row(title="Unrelated", description="Unrelated")], [row(job_type="")]]
 )
 def test_normal_empty_is_not_source_error(records: list[JsonValue]) -> None:
-    result = service(Pages(page(records=records))).search(request(sources=["remotive"]))
+    result = asyncio.run(
+        service(Pages(page(records=records))).search_many_async([request(sources=["remotive"])])
+    )
     assert not result.raw_jobs and not result.errors
     assert result.outcomes[0].status == "empty"
 
@@ -153,16 +158,18 @@ def test_normal_empty_is_not_source_error(records: list[JsonValue]) -> None:
 )
 def test_invalid_semantic_input_never_calls_source(updates: dict[str, object]) -> None:
     client = Pages()
-    result = service(client).search(request(**updates))
+    result = asyncio.run(service(client).search_many_async([request(**updates)]))
     assert result.errors[0].code == "SEARCH_INPUT" and not client.urls
 
 
 def test_empty_batch() -> None:
-    assert JobSearchService({}).search_many([]).errors[0].code == "SEARCH_INPUT"
+    assert asyncio.run(JobSearchService({}).search_many_async([])).errors[0].code == "SEARCH_INPUT"
 
 
 def test_unknown_source_keeps_known_success() -> None:
-    result = service(Pages(page())).search(request(sources=["missing", "remotive"]))
+    result = asyncio.run(
+        service(Pages(page())).search_many_async([request(sources=["missing", "remotive"])])
+    )
     assert len(result.raw_jobs) == 1
     assert result.errors[0].code == "SEARCH_UNKNOWN_SOURCE"
     assert any("Partial retrieval" in w for w in result.warnings)
@@ -177,7 +184,7 @@ def test_partial_source_failure_keeps_other_source() -> None:
             "arbeitnow": FeedAdapter("arbeitnow", Pages(page("arbeitnow"))),
         }
     )
-    result = svc.search(request(sources=["remotive", "arbeitnow"]))
+    result = asyncio.run(svc.search_many_async([request(sources=["remotive", "arbeitnow"])]))
     assert len(result.raw_jobs) == 1 and result.raw_jobs[0].source == "arbeitnow"
     assert result.errors[0].code == "SEARCH_TIMEOUT"
     assert [o.status for o in result.outcomes] == ["unavailable", "ok"]
@@ -185,15 +192,19 @@ def test_partial_source_failure_keeps_other_source() -> None:
 
 @pytest.mark.parametrize("payload", [{}, {"jobs": None}, {"jobs": {}}, {"error": "changed"}])
 def test_changed_envelope_is_not_empty(payload: dict[str, JsonValue]) -> None:
-    result = service(Pages(Page(payload=payload, fetched_at=FETCHED))).search(
-        request(sources=["remotive"])
+    result = asyncio.run(
+        service(Pages(Page(payload=payload, fetched_at=FETCHED))).search_many_async(
+            [request(sources=["remotive"])]
+        )
     )
     assert result.errors[0].code == "SEARCH_RESPONSE_FORMAT"
 
 
 def test_bad_records_do_not_hide_good_records() -> None:
-    result = service(Pages(page(records=["bad", {}, row(title={"changed": True}), row()]))).search(
-        request(sources=["remotive"])
+    result = asyncio.run(
+        service(
+            Pages(page(records=["bad", {}, row(title={"changed": True}), row()]))
+        ).search_many_async([request(sources=["remotive"])])
     )
     assert len(result.raw_jobs) == 1 and len(result.errors) == 3
     assert result.outcomes[0].status == "partial"
@@ -203,7 +214,9 @@ def test_missing_optional_fields_stay_null() -> None:
     data = row()
     for key in ("url", "company_name", "id"):
         del data[key]
-    result = service(Pages(page(records=[data]))).search(request(sources=["remotive"]))
+    result = asyncio.run(
+        service(Pages(page(records=[data]))).search_many_async([request(sources=["remotive"])])
+    )
     job = result.raw_jobs[0]
     assert job.source_url is None and job.company is None and job.source_job_id is None
     assert any("missing core" in w for w in result.warnings)
@@ -211,47 +224,67 @@ def test_missing_optional_fields_stay_null() -> None:
 
 @pytest.mark.parametrize("url", ["javascript:alert(1)", "no-link", "https://[bad"])
 def test_unsafe_or_invalid_source_url(url: str) -> None:
-    result = service(Pages(page(records=[row(url=url)]))).search(request(sources=["remotive"]))
+    result = asyncio.run(
+        service(Pages(page(records=[row(url=url)]))).search_many_async(
+            [request(sources=["remotive"])]
+        )
+    )
     assert not result.raw_jobs and result.errors[0].code == "SEARCH_RESPONSE_FORMAT"
 
 
 def test_hong_kong_internship_does_not_become_worldwide_fulltime() -> None:
-    result = service(Pages(page())).search(
-        request(
-            location="Hong Kong",
-            location_unrestricted=False,
-            employment_type="internship",
-            sources=["remotive"],
+    result = asyncio.run(
+        service(Pages(page())).search_many_async(
+            [
+                request(
+                    location="Hong Kong",
+                    location_unrestricted=False,
+                    employment_type="internship",
+                    sources=["remotive"],
+                )
+            ]
         )
     )
     assert not result.raw_jobs and not result.errors
 
 
 def test_unrestricted_type_retains_unknown_and_mixed_employment() -> None:
-    result = service(Pages(page(records=[row(job_type=""), row(job_type="internship")]))).search(
-        request(sources=["remotive"], employment_type="", employment_type_unrestricted=True)
+    result = asyncio.run(
+        service(
+            Pages(page(records=[row(job_type=""), row(job_type="internship")]))
+        ).search_many_async(
+            [request(sources=["remotive"], employment_type="", employment_type_unrestricted=True)]
+        )
     )
     assert len(result.raw_jobs) == 2
     assert [job.employment_type for job in result.raw_jobs] == [None, "internship"]
 
 
 def test_hard_location_and_type_match() -> None:
-    result = service(
-        Pages(page(records=[row(candidate_required_location="Hong Kong", job_type="internship")]))
-    ).search(
-        request(
-            location="Hong Kong",
-            location_unrestricted=False,
-            employment_type="internship",
-            sources=["remotive"],
+    result = asyncio.run(
+        service(
+            Pages(
+                page(records=[row(candidate_required_location="Hong Kong", job_type="internship")])
+            )
+        ).search_many_async(
+            [
+                request(
+                    location="Hong Kong",
+                    location_unrestricted=False,
+                    employment_type="internship",
+                    sources=["remotive"],
+                )
+            ]
         )
     )
     assert len(result.raw_jobs) == 1
 
 
 def test_keyword_and_semantics() -> None:
-    result = service(Pages(page())).search(
-        request(keywords=["Data Analyst", "Python"], sources=["remotive"])
+    result = asyncio.run(
+        service(Pages(page())).search_many_async(
+            [request(keywords=["Data Analyst", "Python"], sources=["remotive"])]
+        )
     )
     assert not result.raw_jobs
     assert not result.errors
@@ -259,18 +292,26 @@ def test_keyword_and_semantics() -> None:
 
 def test_work_mode_does_not_infer_onsite_from_false() -> None:
     client = Pages()
-    result = service(client, "arbeitnow").search(request(work_mode="onsite", sources=["arbeitnow"]))
+    result = asyncio.run(
+        service(client, "arbeitnow").search_many_async(
+            [request(work_mode="onsite", sources=["arbeitnow"])]
+        )
+    )
     assert not result.raw_jobs and not client.urls
     assert any("cannot verify" in w for w in result.warnings)
 
 
 def test_remote_filter_keeps_only_remote_jobs() -> None:
-    result = service(
-        Pages(
-            page("arbeitnow", [row(slug="onsite", remote=False), row(slug="remote", remote=True)])
-        ),
-        "arbeitnow",
-    ).search(request(work_mode="remote", sources=["arbeitnow"]))
+    result = asyncio.run(
+        service(
+            Pages(
+                page(
+                    "arbeitnow", [row(slug="onsite", remote=False), row(slug="remote", remote=True)]
+                )
+            ),
+            "arbeitnow",
+        ).search_many_async([request(work_mode="remote", sources=["arbeitnow"])])
+    )
     assert not result.errors
     assert [job.source_job_id for job in result.raw_jobs] == ["remote"]
     assert result.raw_jobs[0].raw_payload["remote"] is True
@@ -281,42 +322,61 @@ def test_pagination_does_not_follow_response_url_and_preserves_partial() -> None
         page("arbeitnow", next_page="http://internal.invalid/secret"),
         RetrievalFailure("SEARCH_NETWORK", "network"),
     )
-    result = service(client, "arbeitnow", max_pages=2).search(request(sources=["arbeitnow"]))
+    result = asyncio.run(
+        service(client, "arbeitnow", max_pages=2).search_many_async(
+            [request(sources=["arbeitnow"])]
+        )
+    )
     assert len(result.raw_jobs) == 1 and result.errors[0].code == "SEARCH_NETWORK"
     assert client.urls[-1] == "https://www.arbeitnow.com/api/job-board-api?page=2"
 
 
 @pytest.mark.parametrize("bound", [{"result_limit": 1}, {"candidate_limit": 1}, {"max_pages": 1}])
 def test_bounds_are_reported(bound: dict[str, int]) -> None:
-    result = service(
-        Pages(page("arbeitnow", [row(), row()], next_page="next")), "arbeitnow", **bound
-    ).search(request(sources=["arbeitnow"]))
+    result = asyncio.run(
+        service(
+            Pages(page("arbeitnow", [row(), row()], next_page="next")), "arbeitnow", **bound
+        ).search_many_async([request(sources=["arbeitnow"])])
+    )
     assert any("limit" in w for w in result.warnings)
+
+
+async def no_wait(seconds: float) -> None:
+    pass
 
 
 @pytest.mark.parametrize(
     ("failure", "code", "calls"),
     [
-        (TimeoutError(), "SEARCH_TIMEOUT", 2),
-        (URLError("secret-url"), "SEARCH_NETWORK", 2),
-        (URLError(TimeoutError()), "SEARCH_TIMEOUT", 2),
-        (HTTPError("secret", 429, "rate", Message(), None), "SEARCH_RATE_LIMIT", 1),
-        (HTTPError("secret", 401, "auth", Message(), None), "SEARCH_AUTH", 1),
-        (HTTPError("secret", 403, "auth", Message(), None), "SEARCH_AUTH", 1),
-        (HTTPError("secret", 500, "server", Message(), None), "SEARCH_HTTP", 2),
-        (HTTPError("secret", 400, "bad", Message(), None), "SEARCH_HTTP", 1),
+        (httpx.ReadTimeout("secret-url"), "SEARCH_TIMEOUT", 2),
+        (httpx.ConnectError("secret-url"), "SEARCH_NETWORK", 2),
+        (429, "SEARCH_RATE_LIMIT", 1),
+        (401, "SEARCH_AUTH", 1),
+        (403, "SEARCH_AUTH", 1),
+        (500, "SEARCH_HTTP", 2),
+        (400, "SEARCH_HTTP", 1),
     ],
 )
 def test_transport_error_classification_and_bounded_retries(
-    failure: Exception, code: str, calls: int
+    failure: Exception | int, code: str, calls: int
 ) -> None:
-    with patch(
-        "jobscout.services.job_retrieval.transport.urlopen", side_effect=failure
-    ) as open_mock:
-        with pytest.raises(RetrievalFailure) as exc:
-            HttpJsonClient(sleep=lambda _: None).get("https://example.invalid")
+    count = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal count
+        count += 1
+        if isinstance(failure, Exception):
+            raise failure
+        return httpx.Response(failure)
+
+    with pytest.raises(RetrievalFailure) as exc:
+        asyncio.run(
+            HttpJsonClient(sleep=no_wait, transport=httpx.MockTransport(respond)).get(
+                "https://example.invalid"
+            )
+        )
     assert exc.value.code == code and "secret" not in str(exc.value)
-    assert open_mock.call_count == calls
+    assert count == calls
 
 
 @pytest.mark.parametrize(
@@ -325,31 +385,57 @@ def test_transport_error_classification_and_bounded_retries(
     ids=["html", "array", "oversized"],
 )
 def test_transport_invalid_json_and_size(body: bytes) -> None:
-    response = MagicMock()
-    response.__enter__.return_value.read.return_value = body
-    with patch("jobscout.services.job_retrieval.transport.urlopen", return_value=response):
-        with pytest.raises(RetrievalFailure) as exc:
-            HttpJsonClient().get("https://example.invalid")
+    async def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    with pytest.raises(RetrievalFailure) as exc:
+        asyncio.run(
+            HttpJsonClient(transport=httpx.MockTransport(respond)).get("https://example.invalid")
+        )
     assert exc.value.code == "SEARCH_RESPONSE_FORMAT"
 
 
 def test_disk_cache_preserves_actual_fetch_time(tmp_path: Path) -> None:
-    response = MagicMock()
-    response.__enter__.return_value.read.return_value = b'{"jobs": []}'
-    with patch("jobscout.services.job_retrieval.transport.urlopen", return_value=response) as get:
-        original = HttpJsonClient(cache_dir=tmp_path).get("https://example.invalid")
-        cached = HttpJsonClient(cache_dir=tmp_path).get("https://example.invalid")
-    assert get.call_count == 1 and cached.cached
-    assert cached.fetched_at == original.fetched_at
+    count = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal count
+        count += 1
+        return httpx.Response(200, json={"jobs": []})
+
+    async def scenario() -> None:
+        original = await HttpJsonClient(
+            cache_dir=tmp_path, transport=httpx.MockTransport(respond)
+        ).get("https://example.invalid")
+        cached = await HttpJsonClient(
+            cache_dir=tmp_path, transport=httpx.MockTransport(respond)
+        ).get("https://example.invalid")
+        assert count == 1 and cached.cached
+        assert cached.fetched_at == original.fetched_at
+
+    asyncio.run(scenario())
 
 
 def test_expired_cache_is_not_silently_used_on_failure(tmp_path: Path) -> None:
-    response = MagicMock()
-    response.__enter__.return_value.read.return_value = b'{"jobs": []}'
-    with patch("jobscout.services.job_retrieval.transport.urlopen", return_value=response):
-        HttpJsonClient(cache_dir=tmp_path).get("https://example.invalid")
-    with patch("jobscout.services.job_retrieval.transport.urlopen", side_effect=TimeoutError()):
+    calls = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise httpx.ReadTimeout("private")
+        return httpx.Response(200, json={"jobs": []})
+
+    async def scenario() -> None:
+        await HttpJsonClient(cache_dir=tmp_path, transport=httpx.MockTransport(respond)).get(
+            "https://example.invalid"
+        )
         with pytest.raises(RetrievalFailure):
-            HttpJsonClient(cache_dir=tmp_path, cache_seconds=0, retries=0).get(
-                "https://example.invalid"
-            )
+            await HttpJsonClient(
+                cache_dir=tmp_path,
+                cache_seconds=0,
+                retries=0,
+                transport=httpx.MockTransport(respond),
+            ).get("https://example.invalid")
+
+    asyncio.run(scenario())

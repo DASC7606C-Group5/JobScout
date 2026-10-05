@@ -66,26 +66,24 @@ def _parse_description(value: object) -> str:
 def _parse_resume(value: object) -> ResumeFile | None:
     if value is None:
         return None
-    if isinstance(value, str):
-        text = value.strip()
-        return ResumeFile(name="resume.txt", text=text) if text else None
     if isinstance(value, dict):
+        if set(value) != {"name", "text"}:
+            raise InputFormatError("resume must contain name and text.")
+        raw_name = value["name"]
+        if not isinstance(raw_name, str):
+            raise InputFormatError("resume.name must be a string.")
         raw_text = value.get("text")
         if not isinstance(raw_text, str):
             raise InputFormatError("resume.text must be a string.")
         if not raw_text.strip():
             return None
-        raw_name = value.get("name")
-        name = raw_name.strip() if isinstance(raw_name, str) and raw_name.strip() else "resume.txt"
-        return ResumeFile(name=name, text=raw_text.strip())
+        return ResumeFile(name=raw_name.strip(), text=raw_text.strip())
     raise InputFormatError("resume must be an object with name and text, or null.")
 
 
 def _parse_directions(value: object) -> list[str]:
     if value is None:
         return []
-    if isinstance(value, str):
-        return split_list_text(value)
     if isinstance(value, list):
         items = [item for item in value if isinstance(item, str)]
         if len(items) != len(value):
@@ -97,8 +95,6 @@ def _parse_directions(value: object) -> list[str]:
 def _parse_preferences(value: object) -> ProfilePreferences:
     if value is None:
         return ProfilePreferences()
-    if isinstance(value, ProfilePreferences):
-        return value.model_copy()
     if isinstance(value, dict):
         try:
             return ProfilePreferences.model_validate(value)

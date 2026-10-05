@@ -87,7 +87,8 @@ class AsyncHttpWebClient:
                                 )
                             chunks.append(chunk)
                         page = WebPage(
-                            b"".join(chunks).decode(response.encoding or "utf-8"), datetime.now(UTC)
+                            b"".join(chunks).decode(response.charset_encoding or "utf-8"),
+                            datetime.now(UTC),
                         )
                     if len(self._cache) >= 128:
                         self._cache.pop(next(iter(self._cache)))

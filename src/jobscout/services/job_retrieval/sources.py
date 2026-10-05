@@ -1,5 +1,6 @@
 """Source field mapping and conservative retrieval filters only."""
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Protocol
 from urllib.parse import urlencode, urlparse
@@ -7,7 +8,9 @@ from urllib.parse import urlencode, urlparse
 from pydantic import JsonValue, ValidationError
 
 from jobscout.schemas.errors import WorkflowError
+from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.search import SearchRequest
+from jobscout.services.notice_service import make_notice
 
 from .models import RawJob, RetrievalFailure, workflow_error
 from .planning import EMPLOYMENT_ALIASES, matches_text, normalized, plan_source_query
@@ -25,10 +28,13 @@ class SourceResult:
     errors: list[WorkflowError] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     candidate_count: int = 0
+    notices: list[ApplicantNotice] = field(default_factory=list)
 
 
 class SourceAdapter(Protocol):
-    def search(self, request: SearchRequest) -> SourceResult: ...
+    async def search_async(
+        self, request: SearchRequest, *, result: SourceResult | None = None
+    ) -> SourceResult: ...
 
 
 def map_job(source: str, record: dict[str, JsonValue], page: Page, direction: str) -> RawJob:
@@ -155,9 +161,12 @@ class FeedAdapter:
         )
         self._pages: dict[int, Page] = {}
         self._failures: dict[int, RetrievalFailure] = {}
+        self._page_locks: dict[int, asyncio.Lock] = {}
 
-    def search(self, request: SearchRequest) -> SourceResult:
-        result = SourceResult()
+    async def search_async(
+        self, request: SearchRequest, *, result: SourceResult | None = None
+    ) -> SourceResult:
+        result = SourceResult() if result is None else result
         label = f"{self.name}/{request.target_direction}"
         result.warnings.append(
             f"{label}: bounded feed; keyword AND phrases, location and employment type filtered locally; unknown hard fields excluded."
@@ -185,12 +194,19 @@ class FeedAdapter:
                 request, self.name, page=number, candidate_limit=self.candidate_limit
             )
             try:
-                if number in self._failures:
-                    raise self._failures[number]
-                page = self._pages.get(number)
-                if page is None:
-                    page = self.client.get(URLS[self.name] + "?" + urlencode(query.params))
-                    self._pages[number] = page
+                async with self._page_locks.setdefault(number, asyncio.Lock()):
+                    if number in self._failures:
+                        raise self._failures[number]
+                    page = self._pages.get(number)
+                    if page is None:
+                        try:
+                            page = await self.client.get(
+                                URLS[self.name] + "?" + urlencode(query.params)
+                            )
+                        except RetrievalFailure as exc:
+                            self._failures[number] = exc
+                            raise
+                        self._pages[number] = page
                 key = "jobs" if self.name == "remotive" else "data"
                 records = page.payload.get(key)
                 if not isinstance(records, list):
@@ -213,6 +229,7 @@ class FeedAdapter:
                 )
             remaining = self.candidate_limit - result.candidate_count
             for index, record in enumerate(records[:remaining]):
+                await asyncio.sleep(0)
                 result.candidate_count += 1
                 try:
                     if not isinstance(record, dict) or not record:
@@ -242,11 +259,13 @@ class FeedAdapter:
                         )
                     result.jobs.append(job)
                     if len(result.jobs) >= self.result_limit:
+                        result.notices.append(make_notice("coverage_limited", source=self.name))
                         result.warnings.append(
                             f"{label}: result limit {self.result_limit} reached; results are not exhaustive."
                         )
                         return result
             if result.candidate_count >= self.candidate_limit:
+                result.notices.append(make_notice("coverage_limited", source=self.name))
                 result.warnings.append(
                     f"{label}: candidate limit {self.candidate_limit} reached; results are not exhaustive."
                 )
@@ -254,6 +273,7 @@ class FeedAdapter:
             if self.name == "arbeitnow":
                 links = page.payload.get("links")
                 if not isinstance(links, dict) or "next" not in links:
+                    result.notices.append(make_notice("coverage_limited", source=self.name))
                     result.warnings.append(
                         f"{label}: pagination metadata missing; stopped after page {number}."
                     )
@@ -261,6 +281,7 @@ class FeedAdapter:
                 if not links["next"]:
                     break
                 if number == pages:
+                    result.notices.append(make_notice("coverage_limited", source=self.name))
                     result.warnings.append(
                         f"{label}: page limit {pages} reached; results are not exhaustive."
                     )

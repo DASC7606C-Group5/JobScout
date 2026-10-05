@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import { rejects } from 'node:assert/strict'
 
-import { createProfileFixture, createSessionFixture } from '../../tests/fixtures'
+import {
+  createProfileFixture,
+  createRecommendationFixture,
+  createSessionFixture,
+} from '../../tests/fixtures'
 import type { ResumeSessionRequest } from './contracts'
 import { toScoutInput } from './profile-form'
 import { createSessionClient, SessionHttpError } from './session-client'
@@ -16,11 +20,11 @@ const completed = createSessionFixture({
     session_id: 'session-1',
     generated_at: '2026-10-03T00:00:00Z',
     jobs: [],
-    warnings: [],
+    notices: [],
     introduction: '',
   },
   errors: [],
-  warnings: [],
+  notices: [],
 })
 
 function createTransport(
@@ -83,7 +87,7 @@ describe('Session HTTP API', () => {
         ...completed,
         outcome,
         recommendation: null,
-        warnings: ['Source search notice'],
+        notices: [],
       }
       const client = createSessionClient(
         '/api/v1',
@@ -111,6 +115,38 @@ describe('Session HTTP API', () => {
     await rejects(client.get('session-1'), { status: 502 })
   })
 
+  test('public error codes preserve recovery without displaying private response details', async () => {
+    const diagnostic =
+      'private-detail: Record index 0 gen-private kept as None detail_limit Group 6'
+    for (const [status, body, code] of [
+      [
+        409,
+        { detail: { code: 'request_conflict', message: diagnostic, action: 'reload' } },
+        'request_conflict',
+      ],
+      [400, { detail: diagnostic }, 'request_failed'],
+      [422, { detail: { code: diagnostic, message: diagnostic, action: null } }, 'invalid_input'],
+      [
+        503,
+        { detail: { code: 'service_unavailable', message: diagnostic, action: 'retry' } },
+        'service_unavailable',
+      ],
+    ] as const) {
+      const client = createSessionClient(
+        '/api/v1',
+        createTransport(() => Response.json(body, { status })),
+      )
+      await rejects(
+        client.get('session-1'),
+        (error: unknown) =>
+          error instanceof SessionHttpError &&
+          error.status === status &&
+          error.code === code &&
+          !error.message.includes(diagnostic),
+      )
+    }
+  })
+
   test('network failures and invalid responses reject', async () => {
     const offline = createSessionClient(
       '/api/v1',
@@ -118,17 +154,73 @@ describe('Session HTTP API', () => {
         throw new TypeError('Failed to fetch')
       }),
     )
-    await rejects(offline.start(input), Error)
+    await rejects(offline.start(input), { code: 'connection_unavailable' })
     const invalidJson = createSessionClient(
       '/api/v1',
       createTransport(() => new Response('<html>Proxy misconfigured</html>')),
     )
-    await rejects(invalidJson.get('session-1'), Error)
+    await rejects(invalidJson.get('session-1'), { code: 'invalid_response' })
     const invalidSession = createSessionClient(
       '/api/v1',
       createTransport(() => Response.json({ session_id: 'session-1', outcome: 'running' })),
     )
-    await rejects(invalidSession.get('session-1'), Error)
+    await rejects(invalidSession.get('session-1'), { code: 'invalid_response' })
+  })
+
+  test('requires the current notice, analysis, conversation and error contract before rendering', async () => {
+    const item = createRecommendationFixture()
+    const recommendation = { ...completed.recommendation!, jobs: [item] }
+    const current = { ...completed, recommendation }
+    const message = current.conversation[0]!
+    const invalidReplies = [
+      { ...current, notices: undefined },
+      { ...current, conversation: [{ ...message, responses: undefined }] },
+      { ...current, recommendation: { ...recommendation, notices: undefined } },
+      {
+        ...current,
+        recommendation: { ...recommendation, jobs: [{ ...item, notices: undefined }] },
+      },
+      {
+        ...current,
+        recommendation: { ...recommendation, jobs: [{ ...item, analysis_status: undefined }] },
+      },
+      {
+        ...current,
+        recommendation: { ...recommendation, jobs: [{ ...item, analysis_status: 'fallback' }] },
+      },
+      { ...current, errors: [{ code: 'service_unavailable', message: 'Private failure' }] },
+      {
+        ...current,
+        notices: [
+          {
+            code: 'listing_incomplete',
+            scope: 'job',
+            message: 'Listing notice',
+            action: 'open_listing',
+          },
+        ],
+      },
+    ]
+    for (const reply of invalidReplies) {
+      const client = createSessionClient(
+        '/api/v1',
+        createTransport(() => Response.json(reply)),
+      )
+      await rejects(client.get('session-1'), { code: 'invalid_response' })
+    }
+
+    current.conversation = [
+      {
+        ...message,
+        text: "User text: target_directions: ['React']; preferences.location: None",
+        responses: [{ label: 'Supplied label', value: ['Original value'], status: 'answered' }],
+      },
+    ]
+    const client = createSessionClient(
+      '/api/v1',
+      createTransport(() => Response.json(current)),
+    )
+    expect(await client.get('session-1')).toEqual(current)
   })
 
   test('aborted requests preserve the abort error', async () => {

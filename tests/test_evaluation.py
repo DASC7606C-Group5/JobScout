@@ -1,10 +1,13 @@
 """Integrity and metric checks for the fixed synthetic component benchmark."""
 
 import asyncio
+import shutil
+from pathlib import Path
 
 import pytest
 from scripts.evaluate import (
     DATA,
+    baseline_report,
     evaluate,
     extraction_metrics,
     load_dataset,
@@ -47,6 +50,8 @@ def test_baseline_and_authored_replay_share_candidates_but_not_quality_claims() 
     baseline, _ = asyncio.run(evaluate("baseline"))
     replay, recording = asyncio.run(evaluate("authored-replay"))
     assert baseline["aggregate"]["successful_cases"] == 12
+    assert baseline["execution"] == "historical_result"
+    assert baseline["latency"]["kind"] == "recorded_baseline"
     assert replay["aggregate"]["successful_cases"] == 12
     assert baseline["dataset_sha256"] == replay["dataset_sha256"]
     assert [row["candidate_sha256"] for row in baseline["cases"]] == [
@@ -56,3 +61,20 @@ def test_baseline_and_authored_replay_share_candidates_but_not_quality_claims() 
     assert recording is None
     assert replay["usage"]["actual_network_requests"] == 0
     assert replay["latency"]["kind"] == "local_execution_only"
+
+
+def test_historical_baseline_rejects_modified_report(tmp_path: Path) -> None:
+    (tmp_path / "results").mkdir()
+    shutil.copyfile(DATA / "manifest.json", tmp_path / "manifest.json")
+    (tmp_path / "results" / "baseline.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        verify_baseline(tmp_path)
+
+
+def test_historical_baseline_rejects_changed_candidates() -> None:
+    dataset = load_dataset().model_copy(deep=True)
+    dataset.profiles[0].candidate_ids.reverse()
+    with pytest.raises(ValueError, match="evaluation candidates"):
+        baseline_report(dataset)
+    with pytest.raises(ValueError):
+        output_path(str(DATA / "results" / "baseline.json"))

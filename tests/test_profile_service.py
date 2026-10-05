@@ -15,8 +15,13 @@ from jobscout.services.profile_service import (
     [
         {"description": 42},
         {"resume": []},
-        {"resume": {"text": 42}},
+        {"resume": "Skills\nPython\n"},
+        {"resume": {"text": "Python"}},
+        {"resume": {"name": 42, "text": "Python"}},
+        {"resume": {"name": "cv.txt", "text": 42}},
+        {"resume": {"name": "cv.txt", "text": "Python", "unknown": "value"}},
         {"target_directions": 42},
+        {"target_directions": "Data Analyst, Backend Engineer"},
         {"target_directions": ["Data Analyst", 42]},
         {"preferences": []},
         {"preferences": {"unknown": "value"}},
@@ -37,12 +42,7 @@ def test_parse_profile_input_keeps_complete_unstructured_text() -> None:
     assert parsed.resume == {"name": "cv.pdf", "text": resume}
 
 
-def test_parse_profile_input_accepts_plain_text_resume() -> None:
-    parsed = parse_profile_input({"resume": "Skills\nPython\n"})
-    assert parsed.resume == {"name": "resume.txt", "text": "Skills\nPython"}
-
-
-@pytest.mark.parametrize("resume", [None, "  ", {"name": "cv.txt", "text": "\n"}])
+@pytest.mark.parametrize("resume", [None, {"name": "cv.txt", "text": "\n"}])
 def test_parse_profile_input_drops_empty_resume(resume: object) -> None:
     assert parse_profile_input({"resume": resume}).resume is None
 
@@ -50,11 +50,6 @@ def test_parse_profile_input_drops_empty_resume(resume: object) -> None:
 def test_parse_profile_input_drops_blank_directions_and_duplicates() -> None:
     parsed = parse_profile_input({"target_directions": ["Data Analyst", " ", "data analyst"]})
     assert parsed.target_directions == ["Data Analyst"]
-
-
-def test_parse_profile_input_accepts_explicit_delimited_directions() -> None:
-    parsed = parse_profile_input({"target_directions": "Data Analyst, Backend Engineer"})
-    assert parsed.target_directions == ["Data Analyst", "Backend Engineer"]
 
 
 def test_explicit_list_normalization_preserves_unknown_multiword_values() -> None:

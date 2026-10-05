@@ -1,4 +1,5 @@
-import type { WorkflowError } from '../../lib/contracts'
+import { applicantErrorMessage } from '../../lib/applicant-errors'
+import type { ApplicantError } from '../../lib/contracts'
 import { Icon } from '../icon'
 const stages: Record<string, string> = {
   ingest: 'Reading your information',
@@ -39,10 +40,12 @@ export function SearchLoading({ stage }: { stage: string }) {
 export function SearchFailure({
   errors,
   onRetry,
+  onEdit,
   retryable,
 }: {
-  errors: WorkflowError[]
+  errors: ApplicantError[]
   onRetry: () => void
+  onEdit: () => void
   retryable: boolean
 }) {
   return (
@@ -51,22 +54,24 @@ export function SearchFailure({
         <Icon name="info" size={24} />
       </span>
       <h2 className="text-xl font-semibold">Something went wrong at this step</h2>
-      {errors.map((error) => (
-        <div key={`${error.code}-${error.stage}`} role="alert">
-          <p className="mt-3 text-sm leading-7 text-base-content/65">{error.message}</p>
-          <p className="mt-2 text-xs text-base-content/45">
-            {stages[error.stage] ?? 'Processing your information'}
-          </p>
-        </div>
-      ))}
-      <div className="mt-7">
-        <button
-          className="btn rounded-xl border-0 btn-primary"
-          disabled={!retryable}
-          onClick={onRetry}
-        >
-          Try again
-          <Icon name="arrow" size={17} />
+      {[...new Set(errors.length ? errors.map((error) => error.code) : ['request_failed'])].map(
+        (code) => (
+          <div key={code} role="alert">
+            <p className="mt-3 text-sm leading-7 text-base-content/65">
+              {applicantErrorMessage(code)}
+            </p>
+          </div>
+        ),
+      )}
+      <div className="mt-7 flex flex-wrap gap-3">
+        {retryable && (
+          <button className="btn rounded-xl border-0 btn-primary" onClick={onRetry}>
+            Try again
+            <Icon name="arrow" size={17} />
+          </button>
+        )}
+        <button className="btn rounded-xl" onClick={onEdit}>
+          Edit search criteria
         </button>
       </div>
     </section>

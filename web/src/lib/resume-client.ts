@@ -1,3 +1,4 @@
+import { ApplicantRequestError, responseErrorCode } from './applicant-errors'
 import type { ScoutInput } from './contracts'
 
 export const RESUME_FILE_ACCEPT =
@@ -12,27 +13,11 @@ function validateText(text: string): string {
     .replace(/^\uFEFF/, '')
     .replace(/\r\n?/g, '\n')
     .trim()
-  if (!normalized) throw new Error('This file contains no text. Check it and try again.')
+  if (!normalized) throw new ApplicantRequestError('empty_text')
   if (normalized.includes('\u0000') || normalized.includes('\uFFFD'))
-    throw new Error(
-      'The text could not be read correctly. Use a UTF-8 TXT file or re-export the PDF or DOCX document.',
-    )
-  if (normalized.length > MAX_RESUME_TEXT_LENGTH)
-    throw new Error('The resume is too long. Shorten it to 100,000 characters or fewer.')
+    throw new ApplicantRequestError('invalid_text')
+  if (normalized.length > MAX_RESUME_TEXT_LENGTH) throw new ApplicantRequestError('text_too_long')
   return normalized
-}
-
-function parseErrorMessage(status: number, body: unknown): string {
-  if (status >= 500)
-    return 'The resume parsing service is temporarily unavailable. Try again later.'
-  if (body && typeof body === 'object' && 'detail' in body) {
-    const detail = body.detail
-    if (typeof detail === 'string') return detail
-    if (detail && typeof detail === 'object' && 'message' in detail)
-      if (typeof detail.message === 'string') return detail.message
-  }
-  if (status === 413) return 'The file is too large. Choose a resume under 10 MB.'
-  return `Resume parsing failed (HTTP ${status}). Check the file and try again.`
 }
 
 export function createResumeReader(
@@ -43,11 +28,9 @@ export function createResumeReader(
   return async function readResume(file: File, signal?: AbortSignal): Promise<ResumePayload> {
     signal?.throwIfAborted()
     const extension = file.name.split('.').pop()?.toLowerCase()
-    if (!/\.(txt|pdf|docx)$/i.test(file.name))
-      throw new Error('Upload your resume as a PDF, DOCX, or UTF-8 TXT file.')
-    if (file.size > MAX_RESUME_BYTES)
-      throw new Error('The file is too large. Choose a resume under 10 MB.')
-    if (!file.size) throw new Error('This file is empty. Check it and try again.')
+    if (!/\.(txt|pdf|docx)$/i.test(file.name)) throw new ApplicantRequestError('unsupported_format')
+    if (file.size > MAX_RESUME_BYTES) throw new ApplicantRequestError('file_too_large')
+    if (!file.size) throw new ApplicantRequestError('empty_file')
     if (extension === 'txt') {
       const text = await file.text()
       signal?.throwIfAborted()
@@ -65,13 +48,11 @@ export function createResumeReader(
       })
     } catch (error) {
       if (signal?.aborted) throw error
-      throw new Error(
-        'Could not connect to the resume parsing service. Check your network or try again later.',
-      )
+      throw new ApplicantRequestError('connection_unavailable')
     }
     signal?.throwIfAborted()
     const data: unknown = await response.json().catch(() => null)
-    if (!response.ok) throw new Error(parseErrorMessage(response.status, data))
+    if (!response.ok) throw new ApplicantRequestError(responseErrorCode(data, response.status))
     if (
       !data ||
       typeof data !== 'object' ||
@@ -81,7 +62,7 @@ export function createResumeReader(
       !('text' in data) ||
       typeof data.text !== 'string'
     )
-      throw new Error('The service returned an invalid resume format. Try again later.')
+      throw new ApplicantRequestError('invalid_response')
     return { name: data.name, text: validateText(data.text) }
   }
 }

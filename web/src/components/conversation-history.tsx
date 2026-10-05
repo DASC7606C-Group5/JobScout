@@ -1,5 +1,4 @@
 import type { ConversationResponse, ScoutSession } from '../lib/contracts'
-import { presentConversation, presentQuestionAnswer, profileFieldLabel } from '../lib/conversation'
 import { Icon } from './icon'
 
 function Responses({ responses }: { responses: ConversationResponse[] }) {
@@ -45,20 +44,8 @@ export function ConversationHistory({
   session: ScoutSession
   collapsed?: boolean
 }) {
-  const messages = session.conversation.map((message) => ({
-    ...message,
-    ...presentConversation(message),
-  }))
-  const recordedLabels = new Set(
-    messages.flatMap((message) => message.responses.map((response) => response.label)),
-  )
-  const remaining = session.clarification_questions.filter(
-    (question) =>
-      question.status !== 'pending' &&
-      !recordedLabels.has(question.question) &&
-      !recordedLabels.has(profileFieldLabel(question.field)),
-  )
-  if (!messages.length && !remaining.length) return null
+  const messages = session.conversation
+  if (!messages.length) return null
   const history = (
     <div
       role="log"
@@ -83,17 +70,6 @@ export function ConversationHistory({
           </div>
         </div>
       ))}
-      {remaining.length > 0 && (
-        <div className="rounded-xl border border-base-300 bg-base-200/25 p-4">
-          <Responses
-            responses={remaining.map((question) => ({
-              label: question.question,
-              value: presentQuestionAnswer(question),
-              status: question.status === 'skipped' ? 'skipped' : 'answered',
-            }))}
-          />
-        </div>
-      )}
     </div>
   )
   return collapsed ? (

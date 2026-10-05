@@ -1,24 +1,24 @@
-import type { ScoutSession, SessionClient } from './contracts'
+import {
+  applicantErrorAction,
+  applicantErrorMessage,
+  ApplicantRequestError,
+  responseErrorCode,
+  type ApplicantErrorCode,
+} from './applicant-errors'
+import type { SessionClient } from './contracts'
+import { isSessionResponse } from './session-response'
 
 export class SessionHttpError extends Error {
   constructor(
     public status: number,
-    message: string,
+    public code: ApplicantErrorCode,
   ) {
-    super(message)
+    super(applicantErrorMessage(code, status))
     this.name = 'SessionHttpError'
   }
-}
-
-function errorMessage(status: number, body: unknown): string {
-  if (status === 404) return 'This session is no longer available. Start a new search.'
-  if (status === 409) return 'The session has changed. Refresh it to see the latest results.'
-  if (status === 422)
-    return 'Some submitted information is invalid. Check your search criteria and try again.'
-  if (status >= 500) return 'The service is temporarily unavailable. Try again later.'
-  if (body && typeof body === 'object' && 'detail' in body && typeof body.detail === 'string')
-    return body.detail
-  return `Request failed (HTTP ${status}). Please try again.`
+  get action() {
+    return applicantErrorAction(this.code, this.status)
+  }
 }
 
 export function createSessionClient(
@@ -43,39 +43,24 @@ export function createSessionClient(
       })
     } catch (error) {
       if (signal?.aborted) throw error
-      throw new Error('Could not connect to the service. Check your network or try again later.')
+      throw new ApplicantRequestError('connection_unavailable')
     }
     if (!response.ok) {
       const data: unknown = await response.json().catch(() => null)
-      throw new SessionHttpError(response.status, errorMessage(response.status, data))
+      const code = responseErrorCode(data, response.status)
+      throw new SessionHttpError(response.status, code)
     }
     return response
   }
   async function session(path: string, method: string, body?: unknown, signal?: AbortSignal) {
     const response = await request(path, method, body, signal)
-    let data: ScoutSession
+    let data: unknown
     try {
-      data = (await response.json()) as ScoutSession
+      data = await response.json()
     } catch {
-      throw new Error('The service returned unreadable data. Try again later.')
+      throw new ApplicantRequestError('invalid_response')
     }
-    if (
-      !data ||
-      typeof data.session_id !== 'string' ||
-      !['running', 'paused', 'completed', 'failed'].includes(data.outcome) ||
-      !Number.isInteger(data.revision) ||
-      data.revision < 0 ||
-      typeof data.current_stage !== 'string' ||
-      !Array.isArray(data.conversation) ||
-      !Array.isArray(data.source_outcomes) ||
-      !['live', 'replay'].includes(data.mode) ||
-      !Array.isArray(data.clarification_questions) ||
-      !Array.isArray(data.errors) ||
-      !Array.isArray(data.warnings)
-    )
-      throw new Error(
-        'The service returned an invalid session response. Check your API configuration.',
-      )
+    if (!isSessionResponse(data)) throw new ApplicantRequestError('invalid_response')
     return data
   }
   const pathFor = (id: string) => `/sessions/${encodeURIComponent(id)}`

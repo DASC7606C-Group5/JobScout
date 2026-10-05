@@ -30,7 +30,7 @@ Use the existing font stack above. Preserve current text sizes, weights and line
 
 ## Layout
 
-Preserve the workspace shell, padding and spacing. Shared results show a list beside details from `1100px`; narrower screens show the list or a selected role. Detailed behavior and ownership are in [the applicant experience contract](docs/applicant-experience.md).
+Preserve the workspace shell, padding and spacing. Shared results show a list beside details from `1100px`; narrower screens show the list or a selected role. The shared implementation is in [Results](web/src/components/results.tsx).
 
 ## Elevation & Depth
 

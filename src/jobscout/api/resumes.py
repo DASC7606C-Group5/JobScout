@@ -27,7 +27,7 @@ async def parse_resume_upload(file: UploadFile) -> ResumeInput:
     except ResumeParseError as error:
         raise HTTPException(
             status_code=error.status_code,
-            detail={"code": error.code, "message": str(error)},
+            detail={"code": error.code, "message": str(error), "action": "edit_conditions"},
         ) from error
     finally:
         await file.close()

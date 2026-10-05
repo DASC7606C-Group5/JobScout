@@ -1,6 +1,7 @@
 """Group 6 acceptance tests with fixed profiles and normalized jobs."""
 
 from datetime import UTC, datetime, timedelta, timezone
+from fractions import Fraction
 
 import pytest
 
@@ -8,7 +9,13 @@ from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import FreshnessStatus, JobPosting
 from jobscout.schemas.profile import ProfilePreferences, ProfileSource, UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
-from jobscout.services.recommendation_service import RecommendationError, recommend_jobs
+from jobscout.services.recommendation_service import (
+    RecommendationError,
+    _capabilities,
+    _evaluate,
+    _skill_in_evidence,
+    recommend_jobs,
+)
 
 NOW = datetime(2026, 10, 2, tzinfo=UTC)
 
@@ -71,7 +78,6 @@ def test_overall_top_five_and_complete_schema_fields() -> None:
     assert result.session_id == "session-group6"
     assert result.generated_at == NOW
     assert all(item.preparation_suggestions for item in result.jobs)
-    assert all(item.missing_skills == [] for item in result.jobs)
     assert [item.job for item in result.jobs] == jobs[:5]
     assert RecommendationResult.model_validate_json(result.model_dump_json()) == result
 
@@ -79,8 +85,6 @@ def test_overall_top_five_and_complete_schema_fields() -> None:
 def test_skill_coverage_ranks_a_better_match_first() -> None:
     result = run(make_profile(), [make_job("a", skills=["Python", "SQL", "R"]), make_job("z")])
     assert [item.job.job_id for item in result.jobs] == ["z", "a"]
-    assert result.jobs[1].missing_skills == ["R"]
-    assert any("R" in text for text in result.jobs[1].preparation_suggestions)
 
 
 @pytest.mark.parametrize("field", ["internships", "projects"])
@@ -90,7 +94,6 @@ def test_background_affects_ranking_without_claiming_a_skill(field: str) -> None
     setattr(profile, field, ["Built a Python dashboard"])
     result = run(profile, [make_job("a", skills=["SQL"]), make_job("z", skills=["Python"])])
     assert [item.job.job_id for item in result.jobs] == ["z", "a"]
-    assert result.jobs[0].missing_skills == ["Python"]
 
 
 @pytest.mark.parametrize(
@@ -276,27 +279,26 @@ def test_unverifiable_optional_preferences_are_reported() -> None:
     )
     result = run(profile, [make_job("a")])
     assert len(result.jobs) == 1
-    assert all(
-        any(field in warning for warning in result.warnings)
-        for field in ("salary_range", "work_mode", "industry")
-    )
+    assert {
+        notice.preference for notice in result.notices if notice.code == "preference_unverified"
+    } == {"salary_range", "work_mode", "industry"}
 
 
-def test_skill_aliases_whitespace_case_and_original_missing_labels() -> None:
+def test_skill_aliases_whitespace_and_case_preserve_coverage_score() -> None:
     profile = make_profile()
     profile.skills = [" javascript ", "K8S", "POSTGRES", "Ｃ＋＋"]
-    result = run(
-        profile, [make_job("a", skills=["JS", "Kubernetes", "PostgreSQL", "C++", " R ", "r"])]
+    candidate = _evaluate(
+        profile, make_job("a", skills=["JS", "Kubernetes", "PostgreSQL", "C++", " R ", "r"])
     )
-    assert result.jobs[0].missing_skills == ["R"]
+    assert candidate.score == 56
 
 
 def test_skill_names_do_not_match_substrings_or_other_languages() -> None:
     profile = make_profile()
     profile.skills = ["JavaScript", "C++", "C#"]
     profile.projects = ["JavaScript and C++ project"]
-    result = run(profile, [make_job("a", skills=["Java", "C", "C#"])])
-    assert result.jobs[0].missing_skills == ["Java", "C"]
+    candidate = _evaluate(profile, make_job("a", skills=["Java", "C", "C#"]))
+    assert candidate.score == Fraction(70, 3)
 
 
 def test_chinese_evidence_location_and_education() -> None:
@@ -370,3 +372,16 @@ def test_injected_time_is_converted_to_utc() -> None:
     )
     assert result.generated_at == NOW
     assert result.generated_at.tzinfo == UTC
+
+
+@pytest.mark.parametrize(
+    "text", ["React, TypeScript", "React / TypeScript", "Experience using React and TypeScript"]
+)
+def test_compound_skill_fields_do_not_require_a_verbatim_resume_phrase(text: str) -> None:
+    assert set(_capabilities(text, ["React", "TypeScript"])) == {"React", "TypeScript"}
+
+
+def test_skill_aliases_work_in_both_language_directions_and_keep_open_ended_names() -> None:
+    assert _skill_in_evidence("API 对接", ["API integration"])
+    assert _skill_in_evidence("API integration", ["API 对接"])
+    assert _capabilities("User Experience Design") == ["User Experience Design"]

@@ -17,6 +17,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
   const skippedIds = new Set(skipped)
   return (
     <form
+      noValidate
       className="card border border-base-300 bg-base-100 shadow-sm"
       onSubmit={(event) => {
         event.preventDefault()

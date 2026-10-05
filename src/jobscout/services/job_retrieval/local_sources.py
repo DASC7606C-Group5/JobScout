@@ -15,12 +15,13 @@ from uuid import uuid4
 from pydantic import JsonValue, TypeAdapter, ValidationError
 
 from jobscout.schemas.search import SearchRequest
+from jobscout.services.notice_service import make_notice
 
 from .html_fields import Tree
 from .models import RawJob, RetrievalFailure, workflow_error
 from .planning import location_region, normalized, plan_keywords, validate_request
 from .sources import SourceResult
-from .web_transport import AsyncWebClient, WebClient, WebPage
+from .web_transport import AsyncWebClient, WebPage
 
 JSON_OBJECT = TypeAdapter(dict[str, JsonValue])
 CITY_CODES = {
@@ -621,14 +622,13 @@ class LocalAdapter:
     def __init__(
         self,
         name: str,
-        client: WebClient,
+        client: AsyncWebClient,
         *,
         max_pages: int = 1,
         page_size: int = 10,
         candidate_limit: int = 60,
         result_limit: int = 10,
         detail_limit: int = 3,
-        async_client: AsyncWebClient | None = None,
     ) -> None:
         if (
             name not in HOSTS
@@ -640,7 +640,6 @@ class LocalAdapter:
         ):
             raise ValueError("Invalid source or retrieval bounds")
         self.name, self.client = name, client
-        self.async_client = async_client
         self.max_pages, self.page_size = max_pages, page_size
         self.candidate_limit, self.result_limit, self.detail_limit = (
             candidate_limit,
@@ -648,35 +647,15 @@ class LocalAdapter:
             detail_limit,
         )
 
-    def search(self, request: SearchRequest) -> SourceResult:
-        steps = self._search_steps(request, SourceResult())
-        try:
-            plan = next(steps)
-            while True:
-                try:
-                    page = self.client.request(plan.url, body=plan.body, headers=plan.headers)
-                except RetrievalFailure as exc:
-                    plan = steps.throw(exc)
-                else:
-                    plan = steps.send(page)
-        except StopIteration as done:
-            return done.value  # type: ignore[no-any-return]
-        finally:
-            steps.close()
-
     async def search_async(
         self, request: SearchRequest, *, result: SourceResult | None = None
     ) -> SourceResult:
-        if self.async_client is None:
-            raise RetrievalFailure(
-                "SEARCH_ASYNC_UNAVAILABLE", "Source requires an asynchronous transport."
-            )
         steps = self._search_steps(request, result if result is not None else SourceResult())
         try:
             plan = next(steps)
             while True:
                 try:
-                    page = await self.async_client.request_async(
+                    page = await self.client.request_async(
                         plan.url, body=plan.body, headers=plan.headers
                     )
                 except RetrievalFailure as exc:
@@ -832,6 +811,7 @@ class LocalAdapter:
                         )
                     )
             if not new_count:
+                result.notices.append(make_notice("coverage_limited", source=self.name))
                 result.warnings.append(
                     f"{label}: repeated page; stopped without claiming complete coverage."
                 )
@@ -841,6 +821,7 @@ class LocalAdapter:
                 or result.candidate_count >= self.candidate_limit
                 or number == self.max_pages
             ):
+                result.notices.append(make_notice("coverage_limited", source=self.name))
                 result.warnings.append(
                     f"{label}: retrieval bound reached; results are not exhaustive (pages={number}, candidates={result.candidate_count})."
                 )
@@ -854,10 +835,12 @@ class LocalAdapter:
                 f"{label}: excluded {filtered} candidates with mismatching/unknown hard filters."
             )
         if unreadable:
+            result.notices.append(make_notice("coverage_limited", source=self.name))
             result.warnings.append(
                 f"{label}: omitted {unreadable} unreadable-title cards after bounded detail retrieval; coverage is incomplete, increase detail_limit to request more details."
             )
         if unrelated:
+            result.notices.append(make_notice("coverage_limited", source=self.name))
             result.warnings.append(
                 f"{label}: excluded {unrelated} candidates without lexical keyword evidence in available title/description; this conservative check may miss synonyms."
             )

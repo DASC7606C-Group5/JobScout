@@ -48,6 +48,7 @@ def test_upload_errors_include_machine_code_and_user_message(
     assert response.status_code == status
     assert response.json()["detail"]["code"] == code
     assert response.json()["detail"]["message"]
+    assert response.json()["detail"]["action"] == "edit_conditions"
 
 
 def test_upload_requires_file_field() -> None:

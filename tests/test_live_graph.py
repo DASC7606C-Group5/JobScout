@@ -113,6 +113,15 @@ class FakeEvidence:
     async def begin_search(self, search_id: str) -> None:
         self.search_ids.append(search_id)
 
+    async def cleanup_session(self, session_id: str) -> None:
+        self.calls.clear()
+
+    def import_cache(self, snapshot: object, session_id: str) -> None:
+        pass
+
+    def export_cache(self) -> dict[str, object]:
+        return {}
+
     async def assess(
         self,
         profile: UserProfile,
@@ -974,10 +983,13 @@ def test_conversation_keeps_free_text_and_displays_choice_labels_without_evidenc
         ]
         assert "target_directions" not in submitted.model_dump_json()
         assert "preferences.location" not in submitted.model_dump_json()
-        assert (
-            "target_directions: ['Data Analyst', 'Backend Engineer']"
-            in state["profile_documents"][-1].text
-        )
+        assert state["profile_documents"][-1].text.splitlines() == [
+            "I also know SQL",
+            "Data Analyst",
+            "Backend Engineer",
+            "Any location",
+            "Full-time",
+        ]
 
     asyncio.run(scenario())
 

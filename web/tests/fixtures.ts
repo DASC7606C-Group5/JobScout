@@ -44,7 +44,6 @@ export function createRecommendationFixture(): RecommendationItem {
       employment_type: 'full-time',
       target_directions: ['Frontend development'],
     },
-    missing_skills: ['SQL'],
     preparation_suggestions: ['Add evidence of how you used React in a project.'],
     matching_reasons: [
       {
@@ -70,7 +69,8 @@ export function createRecommendationFixture(): RecommendationItem {
         profile_evidence: [],
       },
     ],
-    uncertainty_notices: ['The listing status has not been verified.'],
+    notices: [],
+    analysis_status: 'complete',
   }
 }
 
@@ -106,6 +106,7 @@ export function createSessionFixture(overrides: Partial<ScoutSession> = {}): Sco
         text: 'Please confirm the following search criteria.',
         question_ids: [],
         created_at: '2026-10-03T00:00:00Z',
+        responses: [],
       },
     ],
     search_summary: {
@@ -120,7 +121,7 @@ export function createSessionFixture(overrides: Partial<ScoutSession> = {}): Sco
     source_outcomes: [],
     recommendation: null,
     errors: [],
-    warnings: [],
+    notices: [],
     retryable: false,
     mode: 'replay',
     ...overrides,

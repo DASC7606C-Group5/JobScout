@@ -24,15 +24,12 @@ _TRANSIENT_STATUS = {408, 425, 429}
 
 
 class ModelServiceError(RuntimeError):
-    """Public error with only a fixed code/message, never upstream response text."""
+    """Internal provider error with a fixed code and message, never upstream response text."""
 
     def __init__(self, code: str = "model_output") -> None:
         self.code = code if code in _ERROR_MESSAGES else "model_output"
         self.message = _ERROR_MESSAGES[self.code]
         super().__init__(self.message)
-
-
-LLMServiceError = ModelServiceError
 
 
 class LLMProvider(Protocol):
@@ -43,9 +40,6 @@ class LLMProvider(Protocol):
         *,
         deadline: float | None = None,
     ) -> SchemaT: ...
-
-
-ModelProvider = LLMProvider
 
 
 class DeepSeekProvider:

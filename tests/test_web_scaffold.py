@@ -1,7 +1,7 @@
 """HTTP lifecycle tests with an injected, offline interrupt graph."""
 
 import time
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
@@ -37,7 +37,13 @@ def fixture_graph() -> Any:
     builder.add_edge(START, "prepare")
     builder.add_edge("prepare", "wait")
     builder.add_edge("wait", END)
-    return builder.compile(checkpointer=InMemorySaver())
+    compiled = builder.compile(checkpointer=InMemorySaver())
+
+    async def cleanup_session(session_id: str) -> None:
+        pass
+
+    cast(Any, compiled).cleanup_session = cleanup_session
+    return compiled
 
 
 def settled(client: TestClient, session_id: str) -> dict[str, Any]:

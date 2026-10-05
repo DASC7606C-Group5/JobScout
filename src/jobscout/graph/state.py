@@ -4,6 +4,7 @@ from typing import Annotated, Literal, NotRequired, TypedDict
 from jobscout.schemas.conversation import ConversationMessage, SearchSummary
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import JobPosting, SourceDocument
+from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
 from jobscout.schemas.search import ClarificationMessage, SearchRequest
@@ -38,7 +39,9 @@ class AgentState(TypedDict):
     recommendation: NotRequired[RecommendationResult | None]
     current_stage: NotRequired[WorkflowStage]
     errors: NotRequired[Annotated[list[WorkflowError], operator.add]]
+    source_errors: NotRequired[Annotated[list[WorkflowError], operator.add]]
     warnings: NotRequired[Annotated[list[str], operator.add]]
+    notices: NotRequired[Annotated[list[ApplicantNotice], operator.add]]
     revision: NotRequired[int]
     outcome: NotRequired[Literal["running", "paused", "completed", "failed"]]
     retryable: NotRequired[bool]

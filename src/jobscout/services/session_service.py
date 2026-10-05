@@ -2,7 +2,6 @@
 
 import asyncio
 import hashlib
-import inspect
 import json
 import logging
 from dataclasses import dataclass, field
@@ -12,15 +11,24 @@ from uuid import uuid4
 from langgraph.types import Command
 
 from jobscout.schemas.errors import WorkflowError
+from jobscout.schemas.profile import UserProfile
+from jobscout.schemas.recommendation import RecommendationResult
 from jobscout.schemas.session import SessionCreateRequest, SessionResponse, SessionResumeRequest
+from jobscout.services.notice_service import (
+    dedupe_notices,
+    finalize_recommendation,
+    public_error,
+    source_notices,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class SessionOperationError(ValueError):
-    def __init__(self, status: int, detail: str) -> None:
+    def __init__(self, status: int, detail: str, *, code: str = "invalid_input") -> None:
         self.status = status
         self.detail = detail
+        self.code = code
         super().__init__(detail)
 
 
@@ -61,7 +69,9 @@ class SessionService:
                 previous_fingerprint, session_id = previous
                 if fingerprint != previous_fingerprint:
                     raise SessionOperationError(
-                        409, "This request ID has already been used for different content."
+                        409,
+                        "This request ID has already been used for different content.",
+                        code="request_conflict",
                     )
                 record = self._get(session_id)
                 return self._response(record)
@@ -91,25 +101,41 @@ class SessionService:
             if previous:
                 if previous != fingerprint:
                     raise SessionOperationError(
-                        409, "This request ID has already been used for different content."
+                        409,
+                        "This request ID has already been used for different content.",
+                        code="request_conflict",
                     )
                 return self._response(record)
             if record.revision != payload.expected_revision:
                 raise SessionOperationError(
-                    409, "The session has been updated. Refresh and try again."
+                    409,
+                    "The session has been updated. Refresh and try again.",
+                    code="search_changed",
                 )
             if record.task is not None and not record.task.done():
                 raise SessionOperationError(
-                    409, "An operation is already in progress for this session."
+                    409,
+                    "An operation is already in progress for this session.",
+                    code="operation_in_progress",
                 )
             if record.outcome == "completed" and payload.action != "edit_conditions":
                 raise SessionOperationError(
-                    409, "Update your criteria before confirming a new search."
+                    409,
+                    "Update your criteria before confirming a new search.",
+                    code="search_completed",
                 )
             if record.outcome == "failed" and payload.action not in {"retry", "edit_conditions"}:
-                raise SessionOperationError(409, "Try again or update your criteria.")
+                raise SessionOperationError(
+                    409, "Try again or update your criteria.", code="search_not_retryable"
+                )
             if payload.action == "retry" and record.outcome != "failed":
-                raise SessionOperationError(409, "This session does not need to be retried.")
+                raise SessionOperationError(
+                    409, "This session does not need to be retried.", code="search_not_retryable"
+                )
+            if payload.action == "retry" and not record.state.get("retryable", True):
+                raise SessionOperationError(
+                    409, "This search cannot be retried.", code="search_not_retryable"
+                )
             self._validate_answers(record, payload)
             record.requests[payload.request_id] = fingerprint
             record.revision += 1
@@ -134,17 +160,14 @@ class SessionService:
                 record.state["recommendation"] = None
                 record.state["search_summary"] = None
             record.state["errors"] = []
+            record.state["notices"] = []
             self._start(record, next_input)
             return self._response(record)
 
     @staticmethod
     def _validate_answers(record: _Session, payload: SessionResumeRequest) -> None:
         questions = record.state.get("clarification_questions", [])
-        pending = {
-            (q.get("question_id") if isinstance(q, dict) else q.question_id): q
-            for q in questions
-            if (q.get("status") if isinstance(q, dict) else q.status) == "pending"
-        }
+        pending = {q.question_id: q for q in questions if q.status == "pending"}
         answered_ids = [answer.question_id for answer in payload.answers]
         submitted = [*answered_ids, *payload.skipped_question_ids]
         if len(submitted) != len(set(submitted)):
@@ -158,12 +181,11 @@ class SessionService:
                 )
         for question_id in payload.skipped_question_ids:
             question = pending[question_id]
-            if question.get("required") if isinstance(question, dict) else question.required:
+            if question.required:
                 raise SessionOperationError(422, "Required questions cannot be skipped.")
         for answer in payload.answers:
             question = pending[answer.question_id]
-            values = question if isinstance(question, dict) else question.model_dump()
-            control = values.get("control_type", "text")
+            control = question.control_type
             if control == "multiple_choice":
                 if not isinstance(answer.value, list):
                     raise SessionOperationError(
@@ -180,7 +202,7 @@ class SessionService:
                 raise SessionOperationError(
                     422, "The same option cannot be submitted more than once."
                 )
-            options = {option["id"] for option in values.get("options", [])}
+            options = {option.id for option in question.options}
             if control != "text" and any(value not in options for value in selected):
                 raise SessionOperationError(422, "The answer contains an invalid option.")
         allowed = {
@@ -217,14 +239,11 @@ class SessionService:
                 )
         if payload.action == "confirm_search" and record.outcome == "paused":
             summary = record.state.get("search_summary")
-            summary_data = (
-                summary
-                if isinstance(summary, dict)
-                else (summary.model_dump() if summary is not None else {})
-            )
-            if not summary_data.get("ready") or summary_data.get("revision") != record.revision:
+            if summary is None or not summary.ready or summary.revision != record.revision:
                 raise SessionOperationError(
-                    409, "Review and complete the current search summary first."
+                    409,
+                    "Review and complete the current search summary first.",
+                    code="search_changed",
                 )
 
     async def get(self, session_id: str) -> SessionResponse:
@@ -255,11 +274,7 @@ class SessionService:
         await self._cleanup_session(session_id)
 
     async def _cleanup_session(self, session_id: str) -> None:
-        cleanup = getattr(self.graph, "cleanup_session", None)
-        if cleanup is not None:
-            result = cleanup(session_id)
-            if inspect.isawaitable(result):
-                await result
+        await self.graph.cleanup_session(session_id)
 
     async def close(self) -> None:
         tasks = []
@@ -280,7 +295,9 @@ class SessionService:
     def _get(self, session_id: str) -> _Session:
         record = self.sessions.get(session_id)
         if record is None or record.deleted:
-            raise SessionOperationError(404, "This session does not exist or has expired.")
+            raise SessionOperationError(
+                404, "This session does not exist or has expired.", code="search_not_found"
+            )
         return record
 
     @staticmethod
@@ -320,10 +337,35 @@ class SessionService:
                     )
                 ]
                 record.state["current_stage"] = "failed"
+                record.state["retryable"] = True
                 record.outcome = "failed"
 
     def _response(self, record: _Session) -> SessionResponse:
         state = record.state
+        notices = dedupe_notices(
+            [
+                *state.get("notices", []),
+                *source_notices(state.get("source_outcomes", [])),
+            ]
+        )
+        recommendation = state.get("recommendation")
+        if recommendation is not None:
+            profile = state.get("confirmed_profile") or state.get("profile")
+            recommendation = finalize_recommendation(
+                RecommendationResult.model_validate(recommendation),
+                profile=UserProfile.model_validate(profile) if profile is not None else None,
+                notices=notices,
+            )
+            notices = recommendation.notices
+        notices = [notice for notice in notices if notice.scope != "job"]
+        retryable = record.outcome == "failed" and bool(state.get("retryable", True))
+        errors = [
+            public_error(
+                error.code,
+                retryable=retryable,
+            )
+            for error in state.get("errors", [])
+        ]
         return SessionResponse.model_validate(
             {
                 "session_id": record.session_id,
@@ -335,10 +377,10 @@ class SessionService:
                 "conversation": state.get("conversation", []),
                 "search_summary": state.get("search_summary"),
                 "source_outcomes": state.get("source_outcomes", []),
-                "recommendation": state.get("recommendation"),
-                "errors": state.get("errors", []),
-                "warnings": list(dict.fromkeys(state.get("warnings", []))),
-                "retryable": record.outcome == "failed",
+                "recommendation": recommendation,
+                "errors": errors,
+                "notices": notices,
+                "retryable": retryable,
                 "mode": self.mode,
             }
         )

@@ -1,3 +1,5 @@
+import { mkdir } from 'node:fs/promises'
+
 import { expect, test, type Page } from '@playwright/test'
 
 import type { ScoutSession } from '../../src/lib/contracts'
@@ -91,14 +93,43 @@ async function confirmAndVerifyResults(page: Page, id: string) {
     }
     for (const evidence of reason.profile_evidence) expect(description).toContain(evidence.excerpt)
   }
-  const article = page
-    .getByRole('article')
-    .filter({ has: page.getByRole('heading', { name: item.job.title, exact: true }) })
-  await article.getByText('Job details and preparation tips', { exact: true }).click()
+  await page.getByRole('button', { name: 'View job: ' + item.job.title, exact: true }).click()
+  const article = page.getByRole('article', { name: 'Job details', exact: true })
+  await article.getByText('View supporting evidence', { exact: true }).click()
   await expect(article.getByRole('link', { name: 'Check source' }).first()).toHaveAttribute(
     'href',
     /^https?:\/\//,
   )
+  const lastSupportedReason = item.matching_reasons
+    .filter((reason) => reason.job_evidence.length || reason.profile_evidence.length)
+    .at(-1)
+  if (lastSupportedReason)
+    await expect(
+      article.getByRole('heading', { name: lastSupportedReason.requirement, exact: true }).last(),
+    ).toBeVisible()
+  if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
+    await mkdir('.tools/review', { recursive: true })
+    await page.setViewportSize({ width: 1440, height: 1100 })
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.evaluate(() =>
+      Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => {}))),
+    )
+    await page.screenshot({
+      path: '.tools/review/replay-results-desktop.png',
+      fullPage: true,
+      animations: 'disabled',
+    })
+    await article.getByText('View supporting evidence', { exact: true }).click()
+    await page.evaluate(() =>
+      Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => {}))),
+    )
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.screenshot({
+      path: '.tools/review/replay-results-overview.png',
+      fullPage: true,
+      animations: 'disabled',
+    })
+  }
   await page.reload()
   await expect(page.getByRole('region', { name: 'Recommended jobs' })).toBeVisible()
   expect((await snapshot(page, id)).recommendation).toEqual(results.recommendation)

@@ -1,3 +1,5 @@
+import { ApplicantRequestError, applicantErrorMessage } from '../../lib/applicant-errors'
+import { SessionHttpError } from '../../lib/session-client'
 import { useScout } from '../../state/scout-context'
 import { useScoutSession } from '../../state/session-context'
 import { ClarificationForm } from '../clarification-form'
@@ -12,17 +14,21 @@ import { SearchFailure, SearchLoading } from './search-status'
 
 export function DiscoveryContent() {
   const { session, busy, error, retry, recovery } = useScoutSession()
+  const errorCode =
+    error instanceof ApplicantRequestError || error instanceof SessionHttpError
+      ? error.code
+      : 'request_failed'
   return (
     <>
       {error && (
         <div role="alert" className="mb-5 alert rounded-xl alert-soft text-sm alert-error">
           <Icon name="info" />
-          <span>{error.message}</span>
+          <span>{applicantErrorMessage(errorCode)}</span>
           <button className="btn btn-sm" onClick={retry}>
             {recovery === 'edit'
               ? 'Start over'
               : recovery === 'refresh'
-                ? 'Refresh session'
+                ? 'Reload search'
                 : recovery === 'correct'
                   ? 'Edit submission'
                   : 'Retry'}
@@ -35,22 +41,12 @@ export function DiscoveryContent() {
           <span>Replay demo</span>
         </output>
       )}
-      <SessionWarnings />
       {busy && session?.outcome !== 'running' && (
         <output className="mb-4 block text-sm">Working…</output>
       )}
       <SessionContent />
     </>
   )
-}
-
-function SessionWarnings() {
-  const { session } = useScoutSession()
-  const recommendationWarnings = new Set(session?.recommendation?.warnings ?? [])
-  const warnings = [...new Set(session?.warnings ?? [])].filter(
-    (warning) => !recommendationWarnings.has(warning),
-  )
-  return <ResultWarnings warnings={warnings} />
 }
 
 function SessionContent() {
@@ -86,33 +82,52 @@ function SessionContent() {
               )}
             </>
           )}
+          {session.notices.length > 0 && (
+            <div className="mt-5">
+              <ResultWarnings
+                notices={session.notices.filter((notice) => notice.scope !== 'job')}
+                onEdit={edit}
+                collapsed
+              />
+            </div>
+          )}
         </>
       )
     case 'failed':
       return (
         <>
-          <ConversationHistory session={session} />
-          <SearchFailure errors={session.errors} onRetry={retry} retryable={session.retryable} />
-          <SourceOutcomes outcomes={session.source_outcomes} />
+          <SearchFailure
+            errors={session.errors}
+            onRetry={retry}
+            onEdit={edit}
+            retryable={session.retryable}
+          />
+          <div className="mt-5 space-y-5">
+            <ResultWarnings
+              notices={session.notices.filter((notice) => notice.scope !== 'job')}
+              onEdit={edit}
+              collapsed
+            />
+            <SourceOutcomes outcomes={session.source_outcomes} />
+            <ConversationHistory session={session} collapsed />
+          </div>
         </>
       )
     case 'completed':
       return (
         <>
-          <ConversationHistory session={session} collapsed />
-          {session.recommendation?.introduction && (
-            <p className="card mb-5 border-base-300 bg-base-100 p-5 text-sm leading-7 card-border">
-              {session.recommendation.introduction}
-            </p>
-          )}
-          <SourceOutcomes outcomes={session.source_outcomes} />
           <Results
             key={session.session_id}
             result={session.recommendation}
+            notices={session.notices}
             saved={saved}
             onToggle={toggleSaved}
             onEdit={edit}
           />
+          <div className="mt-6 space-y-5">
+            <SourceOutcomes outcomes={session.source_outcomes} />
+            <ConversationHistory session={session} collapsed />
+          </div>
         </>
       )
   }

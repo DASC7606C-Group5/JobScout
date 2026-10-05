@@ -26,15 +26,6 @@ class FixtureWebClient:
         body: dict[str, object] | None = None,
         headers: dict[str, str] | None = None,
     ) -> WebPage:
-        return self.request(url, body=body, headers=headers)
-
-    def request(
-        self,
-        url: str,
-        *,
-        body: dict[str, object] | None = None,
-        headers: dict[str, str] | None = None,
-    ) -> WebPage:
         parts = urlsplit(url)
         if parts.path in self.data:
             value = self.data[parts.path]

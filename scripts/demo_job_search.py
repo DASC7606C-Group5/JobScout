@@ -1,6 +1,7 @@
 """Offline/live Group 4 demo. Run through the installed project environment."""
 
 import argparse
+import asyncio
 import json
 import sys
 import time
@@ -41,7 +42,7 @@ def main() -> int:
             )
             service = JobSearchService(
                 client=FixtureClient(fixtures),
-                web_client=FixtureWebClient(ROOT / "data/group4/mock_local_sources.json"),
+                async_web_client=FixtureWebClient(ROOT / "data/group4/mock_local_sources.json"),
                 max_pages=args.max_pages,
                 page_size=args.page_size,
                 candidate_limit=args.candidate_limit,
@@ -56,7 +57,7 @@ def main() -> int:
                 result_limit=args.result_limit,
                 detail_limit=args.detail_limit,
             )
-        result = service.search_many(requests)
+        result = asyncio.run(service.search_many_async(requests))
     except OSError, ValidationError, ValueError:
         # ValidationError can echo user input: do not print it or a traceback.
         result = SearchResult(

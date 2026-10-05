@@ -137,7 +137,7 @@ function SummaryFields({
 }
 
 export function SearchSummary({ summary }: { summary: Summary }) {
-  const { answer, busy, session } = useScoutSession()
+  const { answer, busy, session, refresh } = useScoutSession()
   const original = summaryDraft(summary.profile)
   const [formDraft, setFormDraft] = useSessionDraft('summary', { fields: original, message: '' })
   const { fields: draft, message } = formDraft
@@ -150,6 +150,7 @@ export function SearchSummary({ summary }: { summary: Summary }) {
     setFormDraft({ ...formDraft, fields: { ...draft, [key]: value } })
   return (
     <form
+      noValidate
       className="card border border-base-300 bg-base-100 p-5 sm:p-7"
       onSubmit={(event) => {
         event.preventDefault()
@@ -231,9 +232,12 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           </button>
         </div>
         {!current && (
-          <p className="text-xs text-base-content/65">
-            This summary is out of date. Refresh the session before confirming your search.
-          </p>
+          <div className="text-xs text-base-content/65">
+            <p>Your search has changed. Reload it before confirming these criteria.</p>
+            <button type="button" className="btn mt-2 btn-ghost btn-sm" onClick={refresh}>
+              Reload search
+            </button>
+          </div>
         )}
         {changed && (
           <p className="text-xs text-base-content/65">

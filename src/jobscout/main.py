@@ -7,11 +7,14 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from langgraph.checkpoint.memory import InMemorySaver
 
 from jobscout.api.resumes import router as resumes_router
 from jobscout.api.sessions import router as sessions_router
 from jobscout.database import database_lifespan
+from jobscout.services.notice_service import public_error
 from jobscout.services.session_service import SessionService
 
 
@@ -62,6 +65,20 @@ def create_app(
                             await result
 
     application = FastAPI(title="JobScout API", lifespan=lifespan)
+
+    @application.exception_handler(RequestValidationError)
+    async def invalid_request(_request: Any, _error: RequestValidationError) -> JSONResponse:
+        # Validation details can contain supplied input and private schema field names.
+        return JSONResponse(
+            status_code=422, content={"detail": public_error("invalid_input").model_dump()}
+        )
+
+    @application.exception_handler(Exception)
+    async def unavailable_service(_request: Any, _error: Exception) -> JSONResponse:
+        return JSONResponse(
+            status_code=500, content={"detail": public_error("service_unavailable").model_dump()}
+        )
+
     application.include_router(resumes_router)
     application.include_router(sessions_router)
     return application

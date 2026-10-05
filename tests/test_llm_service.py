@@ -13,7 +13,6 @@ from jobscout.config import Settings
 from jobscout.services.llm_service import (
     DeepSeekProvider,
     LLMProvider,
-    ModelProvider,
     ModelServiceError,
     get_llm_provider,
 )
@@ -125,8 +124,6 @@ def test_protocol_accepts_generic_fake_without_configuration() -> None:
         result = await fake.structured(AlternateAnswer, messages(), deadline=123.0)
         assert_type(result, AlternateAnswer)
         assert result.enabled
-        alias: ModelProvider = fake
-        assert alias is fake
 
     asyncio.run(scenario())
 

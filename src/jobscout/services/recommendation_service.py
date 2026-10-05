@@ -11,7 +11,9 @@ from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import FreshnessStatus, JobPosting
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult
+from jobscout.services.job_processing_service import _SKILL_LEXICON
 from jobscout.services.job_retrieval.local_sources import CITY_CODES
+from jobscout.services.notice_service import finalize_recommendation
 
 _SKILL_ALIASES = (
     ("javascript", "js"),
@@ -20,7 +22,15 @@ _SKILL_ALIASES = (
     ("kubernetes", "k8s"),
     ("excel", "microsoft excel"),
     ("power bi", "powerbi"),
-    ("machine learning", "机器学习"),
+    ("machine learning", "机器学习", "機器學習"),
+    ("deep learning", "深度学习", "深度學習"),
+    ("data analysis", "数据分析", "數據分析"),
+    ("responsive design", "responsive web design", "响应式设计", "響應式設計"),
+    ("api integration", "接口对接", "接口集成", "API 对接", "API 整合"),
+    ("rest api", "restful api", "rest apis", "restful apis"),
+    ("react", "react.js", "reactjs"),
+    ("vue", "vue.js", "vuejs"),
+    ("node.js", "nodejs"),
 )
 _EMPLOYMENT_ALIASES = {
     "internship": ("internship", "intern", "实习"),
@@ -55,7 +65,6 @@ class RecommendationError(ValueError):
 class _Candidate:
     item: RecommendationItem
     score: Fraction
-    warnings: tuple[str, ...]
 
 
 def _normalize(text: str) -> str:
@@ -83,7 +92,7 @@ def _mentions(text: str, phrase: str) -> bool:
 def _skill_key(skill: str) -> str:
     key = _normalize(skill)
     for aliases in _SKILL_ALIASES:
-        if key in aliases:
+        if key in {_normalize(alias) for alias in aliases}:
             return aliases[0]
     return key
 
@@ -103,6 +112,41 @@ def _skill_in_evidence(skill: str, evidence: Sequence[str]) -> bool:
     key = _skill_key(skill)
     aliases = next((group for group in _SKILL_ALIASES if key == group[0]), (key,))
     return any(_mentions(text, alias) for text in evidence for alias in aliases)
+
+
+def _atomic_skill(text: str) -> bool:
+    """Allow open-ended tool names, but do not treat requirement sentences as skills."""
+    value = text.strip()
+    return (
+        bool(value)
+        and len(value) <= 80
+        and len(value.split()) <= 6
+        and not bool(
+            re.search(
+                r"[,/;:!?，、。；：！？]|\.(?:\s|$)|\b(?:and|or|with|required|requires|years?|build|develop)\b|[和与及]|\d+\s*年",
+                value,
+                re.IGNORECASE,
+            )
+        )
+        and not bool(
+            re.search(
+                r"^(?:experience (?:using|with|in)\b|knowledge of\b|proficiency in\b|familiarity with\b|熟悉|掌握|具备|具有|精通|使用)",
+                value,
+                re.IGNORECASE,
+            )
+        )
+        and not _degree_level([value])
+    )
+
+
+def _capabilities(text: str, supplied: Sequence[str] = ()) -> list[str]:
+    """Find grounded terms; supplied unfamiliar names are as valid as known aliases."""
+    if _atomic_skill(text):
+        return [text.strip()]
+    candidates = [*supplied, *_SKILL_LEXICON, *(aliases[0] for aliases in _SKILL_ALIASES)]
+    return _unique_skills(
+        [term for term in candidates if _atomic_skill(term) and _skill_in_evidence(term, [text])]
+    )
 
 
 def _confirmed(profile: UserProfile, field: str) -> bool:
@@ -237,8 +281,14 @@ def _required_degree(job: JobPosting) -> int:
     )
 
 
-def _evaluate(profile: UserProfile, job: JobPosting, warnings: list[str]) -> _Candidate:
-    requirements = _unique_skills(job.required_skills)
+def _evaluate(profile: UserProfile, job: JobPosting) -> _Candidate:
+    requirements = _unique_skills(
+        [
+            capability
+            for requirement in job.required_skills
+            for capability in _capabilities(requirement, profile.skills)
+        ]
+    )
     user_skills = {_skill_key(skill) for skill in profile.skills if skill.strip()}
     missing = [skill for skill in requirements if _skill_key(skill) not in user_skills]
     evidence = [*profile.internships, *profile.projects]
@@ -247,59 +297,34 @@ def _evaluate(profile: UserProfile, job: JobPosting, warnings: list[str]) -> _Ca
     if requirements:
         score += 70 * Fraction(len(requirements) - len(missing), len(requirements))
         score += 20 * Fraction(len(relevant), len(requirements))
-    else:
-        warnings.append(
-            f"Job {job.job_id} has no structured skill requirements, so there is limited evidence for assessing the skills match."
-        )
 
+    supported = _unique_skills(
+        [*relevant, *(skill for skill in requirements if skill not in missing)]
+    )
     suggestions = [
-        f"Build your {skill} skills through study or practice, and prepare an exercise or project to demonstrate them."
-        for skill in missing
+        f"Choose one {skill} example and explain your decisions and results."
+        for skill in supported[:2]
     ]
-    if relevant:
-        suggestions.append(
-            f"Gather project or internship evidence related to {', '.join(relevant)}, and describe your responsibilities and results."
-        )
-    else:
-        suggestions.append(
-            "Prepare project or internship examples that relate to the job responsibilities, and describe your contributions and results."
-        )
 
     required_degree = _required_degree(job)
     if required_degree:
         if _degree_level(profile.education) >= required_degree:
             score += 10
+        elif profile.education:
             suggestions.append(
-                "List the education that meets the job’s education requirements on your resume."
-            )
-        else:
-            suggestions.append(
-                "Your current education information does not show that you meet the job’s education requirements. Verify your eligibility or equivalent experience before applying."
+                "Check whether the role accepts your qualification or equivalent experience."
             )
     if any(re.search(r"\d+\s*(?:years?|年)", text, re.IGNORECASE) for text in job.responsibilities):
         suggestions.append(
-            "Check the experience requirements in the job description. Time spent on projects does not automatically count as equivalent full-time work experience."
+            "Compare your employment history with the role's experience requirement."
         )
-    if job.freshness_status == FreshnessStatus.UNKNOWN:
-        warnings.append(
-            f"The status of job {job.job_id} is unknown. Check the source before applying."
-        )
-        suggestions.append("Visit the job source to confirm that applications are still open.")
-    if warnings:
-        suggestions.append(
-            "Verify any unknown details in the job listing before deciding whether to apply."
-        )
-    suggestions.append(
-        "Tailor your resume to the job responsibilities, prepare interview examples, and check the source link for the full application requirements."
-    )
     return _Candidate(
         item=RecommendationItem(
             job=job.model_copy(deep=True),
-            missing_skills=missing,
-            preparation_suggestions=suggestions,
+            preparation_suggestions=suggestions[:2],
+            analysis_status="partial" if requirements else "unavailable",
         ),
         score=score,
-        warnings=tuple(warnings),
     )
 
 
@@ -308,14 +333,14 @@ def recommend_jobs(
     jobs: Sequence[JobPosting],
     *,
     session_id: str,
-    warnings: Sequence[str] = (),
     now: datetime | None = None,
 ) -> RecommendationResult:
     """Return at most five jobs across all directions, without changing inputs.
 
     Known expired, off-direction and confirmed preference mismatches are excluded.
     Active jobs precede unknown jobs, then skill/background score and stable IDs
-    break ties. Scores stay internal. Upstream warnings are preserved in the result.
+    break ties. Scores stay internal; public notices are
+    derived from selected jobs and confirmed preferences.
     """
     if not session_id.strip():
         raise RecommendationError(
@@ -337,31 +362,18 @@ def recommend_jobs(
             "recommendation_invalid_time", "The generation time must include a time zone."
         )
     generated_at = generated_at.astimezone(UTC)
-    result_warnings = list(warnings)
-    for field in ("salary_range", "work_mode", "industry"):
-        if _confirmed(profile, field) and getattr(profile.preferences, field):
-            result_warnings.append(
-                f"Schema v1 cannot reliably verify the {field} preference. Check the original job description."
-            )
-
     candidates: list[_Candidate] = []
     seen_ids: set[str] = set()
-    excluded = 0
     for job in jobs:
         if job.job_id in seen_ids:
-            result_warnings.append(
-                f"Duplicate job ID {job.job_id}; later records were skipped. Merge their sources in the job processing module."
-            )
             continue
         seen_ids.add(job.job_id)
         if job.freshness_status == FreshnessStatus.EXPIRED or not _direction_matches(profile, job):
-            excluded += 1
             continue
-        eligible, job_warnings = _preference_check(profile, job)
+        eligible, _ = _preference_check(profile, job)
         if not eligible:
-            excluded += 1
             continue
-        candidates.append(_evaluate(profile, job, job_warnings))
+        candidates.append(_evaluate(profile, job))
     candidates.sort(
         key=lambda candidate: (
             candidate.item.job.freshness_status != FreshnessStatus.ACTIVE,
@@ -371,21 +383,11 @@ def recommend_jobs(
         )
     )
     selected = candidates[:5]
-    for candidate in selected:
-        result_warnings.extend(candidate.warnings)
-    if excluded == 1:
-        result_warnings.append(
-            "Excluded 1 job because it was expired, outside your selected directions, or conflicted with confirmed preferences."
-        )
-    elif excluded > 1:
-        result_warnings.append(
-            f"Excluded {excluded} jobs because they were expired, outside your selected directions, or conflicted with confirmed preferences."
-        )
-    if not selected:
-        result_warnings.append("No recommended jobs match the current criteria.")
-    return RecommendationResult(
-        session_id=session_id,
-        generated_at=generated_at,
-        jobs=[candidate.item for candidate in selected],
-        warnings=list(dict.fromkeys(result_warnings)),
+    return finalize_recommendation(
+        RecommendationResult(
+            session_id=session_id,
+            generated_at=generated_at,
+            jobs=[candidate.item for candidate in selected],
+        ),
+        profile=profile,
     )

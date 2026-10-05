@@ -1,17 +1,16 @@
 """Offline regression tests for the four selected website interfaces."""
 
+import asyncio
 import json
 from datetime import UTC, datetime
-from email.message import Message
-from http.client import IncompleteRead
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
 
+import httpx
 import pytest
 
 from jobscout.schemas.search import SearchRequest
+from jobscout.services.job_retrieval.async_transport import AsyncHttpWebClient
 from jobscout.services.job_retrieval.local_sources import (
     LocalAdapter,
     add_detail,
@@ -25,7 +24,7 @@ from jobscout.services.job_retrieval.local_sources import (
 )
 from jobscout.services.job_retrieval.mock_web import FixtureWebClient
 from jobscout.services.job_retrieval.models import RawJob, RetrievalFailure
-from jobscout.services.job_retrieval.web_transport import HttpWebClient, WebPage
+from jobscout.services.job_retrieval.web_transport import WebPage
 from jobscout.services.job_search_service import JobSearchService
 
 FIXTURE = Path(__file__).resolve().parents[1] / "data/group4/mock_local_sources.json"
@@ -37,8 +36,7 @@ def no_real_network(monkeypatch: pytest.MonkeyPatch) -> None:
     def blocked(*args: object, **kwargs: object) -> None:
         raise AssertionError("Offline tests must not use network")
 
-    monkeypatch.setattr("jobscout.services.job_retrieval.web_transport.urlopen", blocked)
-    monkeypatch.setattr("jobscout.services.job_retrieval.transport.urlopen", blocked)
+    monkeypatch.setattr("httpx.AsyncHTTPTransport.handle_async_request", blocked)
 
 
 def req(**updates: object) -> SearchRequest:
@@ -66,8 +64,10 @@ def raw(source: str = "jobsdb", **updates: object) -> RawJob:
 
 @pytest.mark.parametrize("source", ["zhaopin", "liepin", "shixiseng", "jobsdb"])
 def test_selected_source_fields_and_description(source: str) -> None:
-    result = JobSearchService(web_client=FixtureWebClient(FIXTURE)).search(
-        req(location="Hong Kong" if source == "jobsdb" else "上海", sources=[source])
+    result = asyncio.run(
+        JobSearchService(async_web_client=FixtureWebClient(FIXTURE)).search_many_async(
+            [req(location="Hong Kong" if source == "jobsdb" else "上海", sources=[source])]
+        )
     )
     assert not result.errors and len(result.raw_jobs) == 1
     job = result.raw_jobs[0]
@@ -78,8 +78,10 @@ def test_selected_source_fields_and_description(source: str) -> None:
 
 
 def test_multi_direction_search_serialization_and_routing() -> None:
-    result = JobSearchService(web_client=FixtureWebClient(FIXTURE)).search_many(
-        [req(), req(target_direction="Business Analyst"), req(location="Hong Kong")]
+    result = asyncio.run(
+        JobSearchService(async_web_client=FixtureWebClient(FIXTURE)).search_many_async(
+            [req(), req(target_direction="Business Analyst"), req(location="Hong Kong")]
+        )
     )
     assert not result.errors and len(result.raw_jobs) == 7
     assert {r.source for r in result.raw_jobs} == {"zhaopin", "liepin", "shixiseng", "jobsdb"}
@@ -190,7 +192,7 @@ def test_unknown_type_and_internship_are_not_fulltime() -> None:
 
 
 class FailingClient(FixtureWebClient):
-    def request(
+    async def request_async(
         self,
         url: str,
         *,
@@ -199,11 +201,13 @@ class FailingClient(FixtureWebClient):
     ) -> WebPage:
         if "zhaopin" in url:
             raise RetrievalFailure("SEARCH_TIMEOUT", "Synthetic timeout")
-        return super().request(url, body=body, headers=headers)
+        return await super().request_async(url, body=body, headers=headers)
 
 
 def test_one_source_failure_keeps_other_sources() -> None:
-    result = JobSearchService(web_client=FailingClient(FIXTURE)).search(req())
+    result = asyncio.run(
+        JobSearchService(async_web_client=FailingClient(FIXTURE)).search_many_async([req()])
+    )
     assert {j.source for j in result.raw_jobs} == {"liepin", "shixiseng"}
     assert result.errors[0].code == "SEARCH_TIMEOUT"
     assert [o.status for o in result.outcomes] == ["unavailable", "ok", "ok"]
@@ -213,7 +217,7 @@ class Pages:
     def __init__(self, pages: list[WebPage | RetrievalFailure]) -> None:
         self.pages = pages
 
-    def request(
+    async def request_async(
         self,
         url: str,
         *,
@@ -231,9 +235,11 @@ def test_pagination_failure_and_malformed_record_preserve_success() -> None:
         '{"code":200,"data":{"list":[null,{"name":"数据分析实习","jobId":1,"workType":"实习","workCity":"上海"}]}}',
         STAMP,
     )
-    result = LocalAdapter(
-        "zhaopin", Pages([page, RetrievalFailure("SEARCH_RATE_LIMIT", "limited")]), max_pages=2
-    ).search(req())
+    result = asyncio.run(
+        LocalAdapter(
+            "zhaopin", Pages([page, RetrievalFailure("SEARCH_RATE_LIMIT", "limited")]), max_pages=2
+        ).search_async(req())
+    )
     assert len(result.jobs) == 1
     assert [e.code for e in result.errors] == ["SEARCH_RESPONSE_FORMAT", "SEARCH_RATE_LIMIT"]
 
@@ -243,9 +249,11 @@ def test_detail_failure_retains_listing_excerpt_and_error() -> None:
         '{"data":[{"id":"1","title":"Analyst Intern","teaser":"excerpt","locations":[{"label":"Hong Kong","countryCode":"HK"}]}]}',
         STAMP,
     )
-    result = LocalAdapter(
-        "jobsdb", Pages([page, RetrievalFailure("SEARCH_AUTH", "denied")]), max_pages=1
-    ).search(req(location="Hong Kong"))
+    result = asyncio.run(
+        LocalAdapter(
+            "jobsdb", Pages([page, RetrievalFailure("SEARCH_AUTH", "denied")]), max_pages=1
+        ).search_async(req(location="Hong Kong"))
+    )
     assert result.jobs[0].description == "excerpt"
     assert result.jobs[0].raw_payload["description_is_excerpt"] is True
     assert result.errors[0].code == "SEARCH_AUTH"
@@ -254,37 +262,53 @@ def test_detail_failure_retains_listing_excerpt_and_error() -> None:
 @pytest.mark.parametrize(
     "failure, code, calls",
     [
-        (TimeoutError(), "SEARCH_TIMEOUT", 2),
-        (URLError("private"), "SEARCH_NETWORK", 2),
-        (IncompleteRead(b"private", 20), "SEARCH_NETWORK", 2),
-        (HTTPError("private", 429, "", Message(), None), "SEARCH_RATE_LIMIT", 1),
-        (HTTPError("private", 401, "", Message(), None), "SEARCH_AUTH", 1),
-        (HTTPError("private", 403, "", Message(), None), "SEARCH_AUTH", 1),
-        (HTTPError("private", 503, "", Message(), None), "SEARCH_HTTP", 2),
+        (httpx.ReadTimeout("private"), "SEARCH_TIMEOUT", 2),
+        (httpx.ConnectError("private"), "SEARCH_NETWORK", 2),
+        (httpx.RemoteProtocolError("private"), "SEARCH_NETWORK", 2),
+        (429, "SEARCH_RATE_LIMIT", 1),
+        (401, "SEARCH_AUTH", 1),
+        (403, "SEARCH_AUTH", 1),
+        (503, "SEARCH_HTTP", 2),
     ],
 )
-def test_web_transport_failure_and_retry_bounds(failure: Exception, code: str, calls: int) -> None:
-    with patch(
-        "jobscout.services.job_retrieval.web_transport.urlopen", side_effect=failure
-    ) as network:
-        with pytest.raises(RetrievalFailure) as exc:
-            HttpWebClient(sleep=lambda _: None).request("https://example.invalid")
+def test_web_transport_failure_and_retry_bounds(
+    failure: Exception | int, code: str, calls: int
+) -> None:
+    count = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal count
+        count += 1
+        if isinstance(failure, Exception):
+            raise failure
+        return httpx.Response(failure)
+
+    with pytest.raises(RetrievalFailure) as exc:
+        asyncio.run(
+            AsyncHttpWebClient(transport=httpx.MockTransport(respond), interval=0).request_async(
+                "https://example.invalid"
+            )
+        )
     assert exc.value.code == code and "private" not in str(exc.value)
-    assert network.call_count == calls
+    assert count == calls
 
 
 def test_cache_preserves_timestamp_and_distinguishes_queries() -> None:
-    response = MagicMock()
-    response.__enter__.return_value.read.return_value = b"{}"
-    response.__enter__.return_value.headers = Message()
-    with patch(
-        "jobscout.services.job_retrieval.web_transport.urlopen", return_value=response
-    ) as network:
-        client = HttpWebClient(sleep=lambda _: None)
-        first = client.request("https://example.invalid", body={"key": "a"})
-        second = client.request("https://example.invalid", body={"key": "a"})
-        client.request("https://example.invalid", body={"key": "b"})
-    assert network.call_count == 2 and second.cached and second.fetched_at == first.fetched_at
+    count = 0
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        nonlocal count
+        count += 1
+        return httpx.Response(200, json={})
+
+    async def scenario() -> None:
+        client = AsyncHttpWebClient(transport=httpx.MockTransport(respond), interval=0)
+        first = await client.request_async("https://example.invalid", body={"key": "a"})
+        second = await client.request_async("https://example.invalid", body={"key": "a"})
+        await client.request_async("https://example.invalid", body={"key": "b"})
+        assert count == 2 and second.cached and second.fetched_at == first.fetched_at
+
+    asyncio.run(scenario())
 
 
 def test_verification_response_is_not_normal_empty() -> None:
@@ -299,7 +323,9 @@ def test_shixiseng_filters_location_before_spending_detail_budget() -> None:
     listing = '<div class="intern-wrap" data-intern-id="1"><a href="/intern/1" title="实习&#xf015;">intern</a><span class="city">北京</span></div><div class="intern-wrap" data-intern-id="2"><a href="/intern/2" title="实习&#xf015;">intern</a><span class="city">上海</span></div>'
     detail = '<div class="new_job_name">数据分析实习生</div><div class="job_position">上海</div><div class="job_detail">数据分析 SQL</div>'
     client = Pages([WebPage(listing, STAMP), WebPage(detail, STAMP)])
-    result = LocalAdapter("shixiseng", client, max_pages=1, detail_limit=1).search(req())
+    result = asyncio.run(
+        LocalAdapter("shixiseng", client, max_pages=1, detail_limit=1).search_async(req())
+    )
     assert len(result.jobs) == 1 and result.jobs[0].source_job_id == "2"
     assert result.jobs[0].title and result.jobs[0].description
     assert not result.errors and not client.pages
@@ -308,9 +334,11 @@ def test_shixiseng_filters_location_before_spending_detail_budget() -> None:
 
 def test_shixiseng_does_not_pad_results_with_unreadable_titles() -> None:
     listing = '<div class="intern-wrap" data-intern-id="1"><a href="/intern/1" title="实习&#xf015;">intern</a><span class="city">上海</span></div>'
-    result = LocalAdapter(
-        "shixiseng", Pages([WebPage(listing, STAMP)]), max_pages=1, detail_limit=0
-    ).search(req())
+    result = asyncio.run(
+        LocalAdapter(
+            "shixiseng", Pages([WebPage(listing, STAMP)]), max_pages=1, detail_limit=0
+        ).search_async(req())
+    )
     assert not result.jobs and not result.errors
     assert any("unreadable-title" in w for w in result.warnings)
 
@@ -345,29 +373,36 @@ def test_explicit_keyword_evidence_requires_all_keywords() -> None:
 
 def test_low_relevance_complete_description_is_excluded() -> None:
     text = '{"code":200,"data":{"list":[{"name":"律师助理实习生","workCity":"上海","workType":"实习","jobDetailData":{"position":{"desc":{"description":"诉讼文书、法律研究"}}}}]}}'
-    result = LocalAdapter("zhaopin", Pages([WebPage(text, STAMP)]), max_pages=1).search(
-        req(target_direction="Business Analyst")
+    result = asyncio.run(
+        LocalAdapter("zhaopin", Pages([WebPage(text, STAMP)]), max_pages=1).search_async(
+            req(target_direction="Business Analyst")
+        )
     )
     assert not result.jobs and any("lexical keyword" in w for w in result.warnings)
 
 
 def test_batch_error_request_index_and_completeness_counts() -> None:
-    service = JobSearchService(web_client=FailingClient(FIXTURE), detail_limit=0)
-    result = service.search_many([req(), req(target_direction="Business Analyst")])
+    service = JobSearchService(async_web_client=FailingClient(FIXTURE), detail_limit=0)
+    result = asyncio.run(
+        service.search_many_async([req(), req(target_direction="Business Analyst")])
+    )
     assert [e.details["request_index"] for e in result.errors if e.details] == [0, 1]
     outcome = next(o for o in result.outcomes if o.source == "liepin")
     assert outcome.incomplete_count == outcome.returned_count == 1
 
 
 def test_unknown_http_charset_returns_safe_structured_failure() -> None:
-    response = MagicMock()
-    response.__enter__.return_value.read.return_value = b"{}"
-    headers = Message()
-    headers["Content-Type"] = "text/html; charset=unsupported-encoding"
-    response.__enter__.return_value.headers = headers
-    with patch("jobscout.services.job_retrieval.web_transport.urlopen", return_value=response):
-        with pytest.raises(RetrievalFailure) as exc:
-            HttpWebClient().request("https://example.invalid")
+    async def respond(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, content=b"{}", headers={"Content-Type": "text/html; charset=unsupported-encoding"}
+        )
+
+    with pytest.raises(RetrievalFailure) as exc:
+        asyncio.run(
+            AsyncHttpWebClient(transport=httpx.MockTransport(respond), interval=0).request_async(
+                "https://example.invalid"
+            )
+        )
     assert exc.value.code == "SEARCH_RESPONSE_FORMAT"
 
 

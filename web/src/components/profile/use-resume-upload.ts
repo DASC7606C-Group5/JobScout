@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useFormContext } from 'react-hook-form'
 
+import { ApplicantRequestError, applicantErrorMessage } from '../../lib/applicant-errors'
 import type { ProfileFormValues } from '../../lib/profile-form'
 import { readResume } from '../../lib/resume-client'
 
@@ -35,7 +36,9 @@ export function useResumeUpload(onReadingChange: (reading: boolean) => void) {
       if (id === readId.current)
         setError('root.resume', {
           message:
-            cause instanceof Error ? cause.message : 'Could not read the file. Please try again.',
+            cause instanceof ApplicantRequestError
+              ? cause.message
+              : applicantErrorMessage('invalid_file'),
         })
     }
     if (id !== readId.current) return
