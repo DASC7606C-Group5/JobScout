@@ -19,7 +19,7 @@ export function ResultFilters({
         {directions.map((value) => (
           <button
             key={value}
-            className={`btn rounded-lg border shadow-none btn-sm ${direction === value ? 'border-base-content bg-base-content text-base-100' : 'border-base-300 bg-base-100 font-normal text-base-content/65'}`}
+            className={`btn border shadow-none btn-sm ${direction === value ? 'border-base-content bg-base-content text-base-100' : 'border-base-300 bg-base-100 font-normal text-base-content/65'}`}
             aria-pressed={direction === value}
             onClick={() => onDirectionChange(value)}
           >
@@ -30,7 +30,7 @@ export function ResultFilters({
       </fieldset>
       <select
         aria-label="Filter by listing status"
-        className="select w-auto rounded-lg border border-base-300 bg-base-100 text-xs select-sm"
+        className="select w-auto border border-base-300 bg-base-100 text-xs select-sm"
         value={freshness}
         onChange={(event) => onFreshnessChange(event.target.value)}
       >

@@ -18,7 +18,7 @@ function Responses({ responses }: { responses: ConversationResponse[] }) {
                   {[...new Set(response.value)].map((value) => (
                     <span
                       key={value}
-                      className="badge h-auto max-w-full rounded-lg border-base-300 bg-base-100/70 py-1 text-left text-sm whitespace-normal"
+                      className="badge h-auto max-w-full border-base-300 bg-base-100/70 py-1 text-left text-sm whitespace-normal"
                     >
                       {value}
                     </span>
@@ -61,7 +61,7 @@ export function ConversationHistory({
             {message.role === 'user' ? 'You' : 'JobScout assistant'}
           </div>
           <div
-            className={`chat-bubble max-w-[92%] space-y-3 rounded-2xl p-4 text-base-content shadow-none sm:max-w-[85%] ${message.role === 'user' ? 'bg-primary/15' : 'bg-base-200/65'}`}
+            className={`chat-bubble max-w-[92%] space-y-3 p-4 text-base-content shadow-none sm:max-w-[85%] ${message.role === 'user' ? 'bg-primary/15' : 'bg-base-200/65'}`}
           >
             {message.text && (
               <p className="text-sm leading-7 break-words whitespace-pre-wrap">{message.text}</p>
@@ -73,7 +73,7 @@ export function ConversationHistory({
     </div>
   )
   return collapsed ? (
-    <details className="collapse-arrow collapse mb-5 rounded-xl border border-base-300 bg-base-100">
+    <details className="collapse-arrow collapse mb-5 border border-base-300 bg-base-100">
       <summary className="collapse-title text-sm font-semibold">View conversation history</summary>
       {history}
     </details>

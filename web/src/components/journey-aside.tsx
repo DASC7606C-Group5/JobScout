@@ -3,7 +3,7 @@ import { Icon } from './icon'
 export function JourneyAside() {
   return (
     <aside className="space-y-5">
-      <section className="overflow-hidden rounded-2xl border border-secondary/55 bg-secondary/20">
+      <section className="overflow-hidden rounded-box border border-secondary/55 bg-secondary/20">
         <div
           className="relative flex h-48 items-center justify-center overflow-hidden"
           aria-hidden="true"
@@ -14,14 +14,14 @@ export function JourneyAside() {
             <Icon name="sparkles" size={21} />
           </div>
           <div className="absolute bottom-8 left-10 size-3 rounded-full bg-accent" />
-          <div className="relative flex h-28 w-24 -rotate-12 flex-col gap-2 rounded-2xl border border-base-300 bg-base-100 p-4 shadow-sm">
+          <div className="relative flex h-28 w-24 -rotate-12 flex-col gap-2 rounded-box border border-base-300 bg-base-100 p-4 shadow-sm">
             <div className="flex size-9 items-center justify-center rounded-full bg-secondary/60">
               <Icon name="briefcase" size={19} />
             </div>
             <div className="mt-1 h-1.5 w-12 rounded-full bg-base-content/20" />
             <div className="h-1.5 w-9 rounded-full bg-base-content/10" />
           </div>
-          <div className="relative -ml-4 flex size-22 rotate-12 items-center justify-center rounded-2xl border-4 border-base-100 bg-primary/65 text-primary-content shadow-sm">
+          <div className="relative -ml-4 flex size-22 rotate-12 items-center justify-center rounded-box border-4 border-base-100 bg-primary/65 text-primary-content shadow-sm">
             <Icon name="compass" size={49} />
           </div>
           <div className="absolute right-13 bottom-7 flex size-7 items-center justify-center rounded-full bg-accent text-accent-content">

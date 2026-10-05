@@ -45,7 +45,7 @@ export function QuestionControl({
           <input
             id={id}
             aria-label={question.question}
-            className="input w-full rounded-xl border border-base-300 bg-base-200/25 text-sm sm:col-span-2"
+            className="input w-full border border-base-300 bg-base-200/25 text-sm sm:col-span-2"
             value={typeof value === 'string' ? value : ''}
             maxLength={2000}
             onChange={(event) => onChange(event.target.value)}
@@ -57,7 +57,7 @@ export function QuestionControl({
             return (
               <label
                 key={option.id}
-                className={`flex min-w-0 items-center gap-3 rounded-xl border p-3 text-sm transition-colors ${checked ? 'border-base-content/25 bg-base-200/65' : 'border-base-300 bg-base-100'} ${disabled || skipped ? 'cursor-default opacity-55' : 'cursor-pointer hover:bg-base-200/40'}`}
+                className={`flex min-w-0 items-center gap-3 rounded-selector border p-3 text-sm transition-colors ${checked ? 'border-base-content/25 bg-base-200/65' : 'border-base-300 bg-base-100'} ${disabled || skipped ? 'cursor-default opacity-55' : 'cursor-pointer hover:bg-base-200/40'}`}
               >
                 <input
                   type={multiple ? 'checkbox' : 'radio'}

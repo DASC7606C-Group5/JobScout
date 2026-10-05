@@ -21,7 +21,7 @@ export function SourceOutcomes({ outcomes }: { outcomes: SourceOutcome[] }) {
     ]),
   )
   return (
-    <details className="collapse-arrow collapse rounded-xl border border-base-300 bg-base-100">
+    <details className="collapse-arrow collapse border border-base-300 bg-base-100">
       <summary className="collapse-title text-sm font-medium">Sources and search coverage</summary>
       <div className="collapse-content">
         <ul className="divide-y divide-base-300 text-xs leading-6 text-base-content/70">

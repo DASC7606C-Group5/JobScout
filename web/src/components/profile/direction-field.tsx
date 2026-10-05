@@ -24,7 +24,7 @@ export function DirectionField() {
       <input
         id="directions"
         {...field}
-        className="input w-full rounded-xl border border-base-300 bg-base-200/25 text-sm"
+        className="input w-full border border-base-300 bg-base-200/25 text-sm"
         placeholder="For example: Frontend development, data analysis"
         maxLength={300}
         aria-invalid={fieldState.invalid}

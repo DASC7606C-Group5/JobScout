@@ -44,12 +44,12 @@ export function ResultWarnings({
     </div>
   )
   return collapsed ? (
-    <details className="collapse-arrow collapse rounded-xl border border-base-300 bg-base-100">
+    <details className="collapse-arrow collapse border border-base-300 bg-base-100">
       <summary className="collapse-title text-sm font-medium">About this search</summary>
       <div className="collapse-content">{content}</div>
     </details>
   ) : (
-    <aside aria-label="Important details" className="rounded-xl bg-base-200/60 p-4">
+    <aside aria-label="Important details" className="rounded-box bg-base-200/60 p-4">
       {content}
     </aside>
   )

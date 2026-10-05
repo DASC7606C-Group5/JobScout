@@ -14,7 +14,7 @@ export function ResultEmpty({ savedOnly, onEdit }: { savedOnly: boolean; onEdit:
           ? 'Save roles that interest you to compare them during this visit.'
           : 'Try another job direction or broaden your location preferences.'}
       </p>
-      <button className="btn mt-7 rounded-xl border-0 btn-primary" onClick={onEdit}>
+      <button className="btn mt-7 border-0 btn-primary" onClick={onEdit}>
         {savedOnly ? 'Explore opportunities' : 'Edit search criteria'}
         <Icon name="arrow" size={17} />
       </button>

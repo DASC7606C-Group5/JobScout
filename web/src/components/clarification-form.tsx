@@ -43,7 +43,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
       }}
     >
       <div className="flex items-start gap-3 border-b border-base-300 px-5 py-5 sm:px-7">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-secondary/45">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-box bg-secondary/45">
           <Icon name="sparkles" />
         </span>
         <div>
@@ -85,7 +85,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
           </label>
           <textarea
             id="conversation-message"
-            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none rounded-xl border border-base-300 bg-base-200/25 p-3 text-sm leading-6"
+            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 p-3 text-sm leading-6"
             value={message}
             onChange={(event) =>
               setDraft((previous) => ({ ...previous, message: event.target.value }))
@@ -95,13 +95,13 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
           />
         </div>
         {error && (
-          <p role="alert" className="alert rounded-xl alert-soft text-sm alert-error">
+          <p role="alert" className="alert alert-soft text-sm alert-error">
             {error}
           </p>
         )}
         <DraftStatus {...draft} />
         <div className="flex justify-end border-t border-base-300 pt-5">
-          <button className="btn min-w-40 rounded-xl border-0 btn-primary" type="submit">
+          <button className="btn min-w-40 border-0 btn-primary" type="submit">
             Send and continue
             <Icon name="arrow" size={18} />
           </button>

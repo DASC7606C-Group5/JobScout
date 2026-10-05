@@ -53,7 +53,7 @@ export function ProfileForm() {
         <div className="border-b border-base-300 px-5 py-5 sm:px-7">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <span className="flex size-10 items-center justify-center rounded-xl bg-secondary/45">
+              <span className="flex size-10 items-center justify-center rounded-box bg-secondary/45">
                 <Icon name="file" />
               </span>
               <div>
@@ -76,18 +76,14 @@ export function ProfileForm() {
           <DraftStatus {...draft} />
           <div id="profile-error" hidden={!error}>
             {error && (
-              <div className="alert rounded-xl alert-soft text-sm alert-error" role="alert">
+              <div className="alert alert-soft text-sm alert-error" role="alert">
                 <Icon name="info" size={18} />
                 {error}
               </div>
             )}
           </div>
           <div className="flex flex-wrap items-center justify-end gap-4 border-t border-base-300 pt-5">
-            <button
-              type="submit"
-              className="btn min-w-40 rounded-xl border-0 btn-primary"
-              disabled={reading}
-            >
+            <button type="submit" className="btn min-w-40 border-0 btn-primary" disabled={reading}>
               {reading ? 'Reading…' : 'Analyze and continue'}
               <Icon name="arrow" size={18} />
             </button>

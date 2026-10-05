@@ -34,7 +34,7 @@ export function ResumeField({
         disabled={reading}
         aria-label={resume ? `Remove resume: ${resume.name}` : 'Add a PDF, DOCX, or TXT resume'}
         aria-describedby="profile-error"
-        className={`group flex w-full cursor-pointer items-center gap-4 rounded-xl border border-dashed p-4 text-left transition-colors disabled:cursor-wait ${resume ? 'border-base-content/20 bg-base-200/20 hover:border-error hover:bg-error/10 hover:text-error focus-visible:border-error focus-visible:bg-error/10 focus-visible:text-error' : dragging ? 'border-primary-content bg-primary/15' : 'border-base-content/20 bg-base-200/20 hover:bg-base-200/45'}`}
+        className={`group flex w-full cursor-pointer items-center gap-4 rounded-field border border-dashed p-4 text-left transition-colors disabled:cursor-wait ${resume ? 'border-base-content/20 bg-base-200/20 hover:border-error hover:bg-error/10 hover:text-error focus-visible:border-error focus-visible:bg-error/10 focus-visible:text-error' : dragging ? 'border-primary-content bg-primary/15' : 'border-base-content/20 bg-base-200/20 hover:bg-base-200/45'}`}
         onClick={() => {
           if (resume) remove()
           else fileRef.current?.click()

@@ -117,7 +117,7 @@ function ResultItems({
   if (!hasJobs) return <ResultEmpty savedOnly={savedOnly} onEdit={onEdit} />
   if (!selected)
     return (
-      <div className="rounded-2xl border border-dashed border-base-300 py-12 text-center">
+      <div className="rounded-box border border-dashed border-base-300 py-12 text-center">
         <p className="text-sm text-base-content/65">No jobs match these filters.</p>
         <button className="btn mt-3 btn-ghost btn-sm" onClick={() => changeSearch({})}>
           Clear filters

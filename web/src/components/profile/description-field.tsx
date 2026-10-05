@@ -20,7 +20,7 @@ export function DescriptionField() {
       <textarea
         {...field}
         id="description"
-        className="textarea field-sizing-content max-h-96 min-h-36 w-full resize-none rounded-xl border border-base-300 bg-base-200/25 p-4 text-sm leading-7"
+        className="textarea field-sizing-content max-h-96 min-h-36 w-full resize-none border border-base-300 bg-base-200/25 p-4 text-sm leading-7"
         placeholder="Tell us about your education, skills, projects or internships, and what you’re looking for in your next role…"
         maxLength={10000}
         aria-describedby="description-hint profile-error"

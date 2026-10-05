@@ -34,7 +34,7 @@ export function PreferenceFields() {
           id="location"
           {...location}
           value={location.value ?? ''}
-          className="input w-full rounded-xl border border-base-300 bg-base-200/25 text-sm"
+          className="input w-full border border-base-300 bg-base-200/25 text-sm"
           placeholder="For example: Hong Kong, Shenzhen"
           maxLength={100}
           disabled={unrestricted.value}
@@ -59,7 +59,7 @@ export function PreferenceFields() {
           {...employment}
           value={employment.value ?? ''}
           disabled={employmentUnrestricted.value}
-          className="select w-full rounded-xl border border-base-300 bg-base-100 text-sm"
+          className="select w-full border border-base-300 bg-base-100 text-sm"
         >
           <option value="">Not sure yet — I’ll decide later</option>
           <option value="full-time">Full-time</option>
@@ -89,7 +89,7 @@ export function PreferenceFields() {
           id="salary"
           {...salary}
           value={salary.value ?? ''}
-          className="input w-full rounded-xl border border-base-300 bg-base-200/25 text-sm"
+          className="input w-full border border-base-300 bg-base-200/25 text-sm"
           placeholder="For example: HK$20,000–28,000 per month"
           maxLength={100}
         />
@@ -102,7 +102,7 @@ export function PreferenceFields() {
           id="work-mode"
           {...workMode}
           value={workMode.value ?? ''}
-          className="select w-full rounded-xl border border-base-300 bg-base-100 text-sm"
+          className="select w-full border border-base-300 bg-base-100 text-sm"
         >
           <option value="">No preference</option>
           <option value="onsite">On-site</option>

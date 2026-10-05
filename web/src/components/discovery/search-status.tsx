@@ -65,12 +65,12 @@ export function SearchFailure({
       )}
       <div className="mt-7 flex flex-wrap gap-3">
         {retryable && (
-          <button className="btn rounded-xl border-0 btn-primary" onClick={onRetry}>
+          <button className="btn border-0 btn-primary" onClick={onRetry}>
             Try again
             <Icon name="arrow" size={17} />
           </button>
         )}
-        <button className="btn rounded-xl" onClick={onEdit}>
+        <button className="btn" onClick={onEdit}>
           Edit search criteria
         </button>
       </div>

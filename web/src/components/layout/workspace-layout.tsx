@@ -147,7 +147,7 @@ export function WorkspaceLayout() {
       <div className="drawer-content min-w-0" inert={!desktop && mobileOpen ? true : undefined}>
         <a
           href="#main-content"
-          className="sr-only z-50 rounded-lg bg-base-content p-3 text-base-100 focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
+          className="sr-only z-50 rounded-field bg-base-content p-3 text-base-100 focus:not-sr-only focus:fixed focus:top-3 focus:left-3"
         >
           Skip to main content
         </a>

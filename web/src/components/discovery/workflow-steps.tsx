@@ -3,7 +3,7 @@ export function WorkflowSteps({ step }: { step: number }) {
   return (
     <ol
       aria-label="Job search steps"
-      className="mb-7 grid grid-cols-3 rounded-xl border border-base-300 bg-base-100 px-2 py-4 sm:px-5"
+      className="mb-7 grid grid-cols-3 rounded-box border border-base-300 bg-base-100 px-2 py-4 sm:px-5"
     >
       {['Tell us about yourself', 'Confirm your preferences', 'Explore opportunities'].map(
         (label, index) => (

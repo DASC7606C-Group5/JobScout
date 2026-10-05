@@ -131,11 +131,11 @@ export function Sidebar({
             to="/new"
             search={{}}
             onClick={beforeNavigate}
-            className="flex min-w-0 items-center gap-2.5 rounded-md is-drawer-close:tooltip is-drawer-close:tooltip-right"
+            className="flex min-w-0 items-center gap-2.5 rounded-field is-drawer-close:tooltip is-drawer-close:tooltip-right"
             data-tip="New search"
             aria-label="JobScout — New search"
           >
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/55 text-primary-content">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-box bg-primary/55 text-primary-content">
               <Icon name="compass" size={24} />
             </span>
             <span className="text-xl font-bold tracking-tight is-drawer-close:hidden">
@@ -460,9 +460,9 @@ function HistoryRow({
   const title = searchTitle(search)
   return (
     <li
-      className={`rounded-lg ${sessionId === search.session_id ? 'bg-primary/20 font-semibold focus-within:bg-primary/25 hover:bg-primary/25' : 'focus-within:bg-base-200 hover:bg-base-200'}`}
+      className={`rounded-field ${sessionId === search.session_id ? 'bg-primary/20 font-semibold focus-within:bg-primary/25 hover:bg-primary/25' : 'focus-within:bg-base-200 hover:bg-base-200'}`}
     >
-      <div className="flex min-w-0 items-stretch gap-0 rounded-lg p-0 hover:bg-transparent">
+      <div className="flex min-w-0 items-stretch gap-0 rounded-field p-0 hover:bg-transparent">
         <Link
           to="/searches/$sessionId"
           params={{ sessionId: search.session_id }}
@@ -470,7 +470,7 @@ function HistoryRow({
           onClick={beforeNavigate}
           data-session-id={search.session_id}
           aria-current={sessionId === search.session_id ? 'page' : undefined}
-          className="flex min-w-0 flex-1 flex-col items-start gap-1 rounded-lg bg-transparent px-3 py-2.5 hover:bg-transparent active:bg-transparent"
+          className="flex min-w-0 flex-1 flex-col items-start gap-1 rounded-field bg-transparent px-3 py-2.5 hover:bg-transparent active:bg-transparent"
         >
           <span className="line-clamp-2 text-xs leading-5">{title}</span>
           <span className="flex w-full items-center gap-1.5 text-[10px] font-normal text-base-content/65">

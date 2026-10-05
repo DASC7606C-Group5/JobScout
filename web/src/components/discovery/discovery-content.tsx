@@ -21,7 +21,7 @@ export function DiscoveryContent() {
   return (
     <>
       {error && (
-        <div role="alert" className="mb-5 alert rounded-xl alert-soft text-sm alert-error">
+        <div role="alert" className="mb-5 alert alert-soft text-sm alert-error">
           <Icon name="info" />
           <span>{applicantErrorMessage(errorCode)}</span>
           <button className="btn btn-sm" onClick={retry}>

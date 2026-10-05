@@ -29,7 +29,7 @@ export function JobCard({
         aria-label={`View job: ${job.title}`}
         aria-pressed={selected}
         onClick={onSelect}
-        className="w-full rounded-2xl p-5 text-left sm:p-6"
+        className="w-full rounded-box p-5 text-left sm:p-6"
       >
         <span className="text-xs text-base-content/60">{job.company}</span>
         <h3 className="mt-1 text-lg font-semibold tracking-tight break-words">{job.title}</h3>

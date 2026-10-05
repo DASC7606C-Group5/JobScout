@@ -65,7 +65,7 @@ function SummaryFields({
             {kind === 'array' ? (
               <textarea
                 id={id}
-                className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none rounded-xl border border-base-300 bg-base-200/25 text-sm leading-6"
+                className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 text-sm leading-6"
                 rows={key === 'target_directions' ? 2 : 3}
                 value={value}
                 readOnly={!editable}
@@ -79,7 +79,7 @@ function SummaryFields({
             ) : options ? (
               <select
                 id={id}
-                className="select w-full rounded-xl border border-base-300 bg-base-100 text-sm"
+                className="select w-full border border-base-300 bg-base-100 text-sm"
                 value={value}
                 disabled={!editable || unrestricted}
                 onChange={(event) => onChange(key, event.target.value)}
@@ -99,7 +99,7 @@ function SummaryFields({
             ) : (
               <input
                 id={id}
-                className="input w-full rounded-xl border border-base-300 bg-base-200/25 text-sm"
+                className="input w-full border border-base-300 bg-base-200/25 text-sm"
                 value={value}
                 readOnly={!editable}
                 disabled={unrestricted}
@@ -206,7 +206,7 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           />
         </fieldset>
         {summary.missing_fields.length > 0 && (
-          <output className="block rounded-xl bg-accent/25 p-3 text-sm">
+          <output className="block rounded-box bg-accent/25 p-3 text-sm">
             Still to confirm:
             {summary.missing_fields.map(profileFieldLabel).join(', ')}
           </output>
@@ -217,7 +217,7 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           </label>
           <textarea
             id="summary-message"
-            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none rounded-xl border border-base-300 bg-base-200/25 text-sm leading-6"
+            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 text-sm leading-6"
             value={message}
             onChange={(event) => setFormDraft({ ...formDraft, message: event.target.value })}
             maxLength={10000}
@@ -227,7 +227,7 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           <button
             type="submit"
             disabled={!changed || !current || Boolean(directionError)}
-            className="btn rounded-xl"
+            className="btn"
           >
             Save changes
           </button>
@@ -236,7 +236,7 @@ export function SearchSummary({ summary }: { summary: Summary }) {
             disabled={
               changed || !summary.ready || summary.confirmed || !current || Boolean(directionError)
             }
-            className="btn rounded-xl btn-primary"
+            className="btn btn-primary"
             onClick={() => {
               void answer({ action: 'confirm_search' })
             }}

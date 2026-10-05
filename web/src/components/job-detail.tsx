@@ -56,17 +56,12 @@ export function JobDetail({
       </div>
       <div className="sticky top-0 z-10 flex flex-wrap gap-3 border-b border-base-300 bg-base-100 p-5 sm:p-6">
         {links[0] && (
-          <a
-            className="btn rounded-xl btn-primary"
-            href={links[0]}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a className="btn btn-primary" href={links[0]} target="_blank" rel="noopener noreferrer">
             View job listing <Icon name="external" size={16} />
           </a>
         )}
         <button
-          className="btn rounded-xl"
+          className="btn"
           aria-label={`${saved ? 'Remove saved job' : 'Save job'}: ${job.title}`}
           aria-pressed={saved}
           onClick={onToggle}

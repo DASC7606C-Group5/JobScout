@@ -50,7 +50,7 @@ export function MatchingSourceQuotes({ reasons }: { reasons: MatchingReason[] })
   )
   if (!reasonsWithQuotes.length) return null
   return (
-    <details className="collapse-arrow collapse rounded-xl border border-base-300 bg-base-100">
+    <details className="collapse-arrow collapse border border-base-300 bg-base-100">
       <summary className="collapse-title text-sm font-medium">View source excerpts</summary>
       <div className="collapse-content space-y-5">
         {reasonsWithQuotes.map((reason) => (
