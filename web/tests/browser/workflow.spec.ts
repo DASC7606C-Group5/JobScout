@@ -357,8 +357,8 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
 async function openHistory(page: Page) {
   if (await page.getByRole('button', { name: 'Open sidebar', exact: true }).isVisible())
     await page.getByRole('button', { name: 'Open sidebar', exact: true }).click()
-  const history = page.getByRole('button', { name: 'Search history', exact: true })
-  if ((await history.getAttribute('aria-expanded')) === 'false') await history.click()
+  const expand = page.getByRole('button', { name: 'Expand sidebar', exact: true })
+  if (await expand.isVisible()) await expand.click()
 }
 async function returnToSearch(page: Page, id = 'session-1') {
   await openHistory(page)
@@ -1574,7 +1574,7 @@ test('desktop drawer remembers expansion and focuses the current search', async 
   await page.goto('/searches/session-1')
   const sidebar = page.locator('#workspace-sidebar')
   await expect(sidebar).toHaveCSS('width', '72px')
-  await page.getByRole('button', { name: 'Search history', exact: true }).click()
+  await page.getByRole('button', { name: 'Expand sidebar', exact: true }).click()
   await expect(sidebar).toHaveCSS('width', '288px')
   await expect(page.locator('[data-session-id="session-1"]')).toBeFocused()
   await page.reload()
@@ -1602,8 +1602,6 @@ test('sidebar toggling keeps its controls and document scroll position stable', 
     .getByRole('link', { name: 'New search', exact: true })
     .locator('svg')
   const initialIcon = await newSearchIcon.boundingBox()
-  const history = sidebar.getByRole('button', { name: 'Search history', exact: true })
-  const initialHistoryIcon = await history.locator('svg').first().boundingBox()
 
   for (let cycle = 0; cycle < 3; cycle += 1) {
     await toggle.click()
@@ -1611,38 +1609,12 @@ test('sidebar toggling keeps its controls and document scroll position stable', 
     await expect(sidebar).toHaveCSS('width', '288px')
     expect(await toggle.boundingBox()).toEqual(initialToggle)
     expect(await newSearchIcon.boundingBox()).toEqual(initialIcon)
-    expect(await history.locator('svg').first().boundingBox()).toEqual(initialHistoryIcon)
     expect(await page.evaluate(() => window.scrollY)).toBe(scrollY)
     await sidebar.getByText('Collapse sidebar', { exact: true }).click()
     await expect(sidebar).toHaveCSS('width', '72px')
     expect(await toggle.boundingBox()).toEqual(initialToggle)
     expect(await page.evaluate(() => window.scrollY)).toBe(scrollY)
   }
-})
-
-test('history disclosure stays available and can reopen its list from the compact sidebar', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  const state = await mockSessions(page)
-  state.seedSession(createSessionFixture())
-  await page.goto('/searches/session-1')
-  const history = page.getByRole('button', { name: 'Search history', exact: true })
-  const list = page.locator('#search-history')
-  await history.click()
-  await expect(list).toBeVisible()
-  await history.press('Enter')
-  await expect(list).toBeHidden()
-  await expect(history).toBeFocused()
-  await expect(history).toHaveAttribute('aria-expanded', 'false')
-  await expect(page).toHaveURL(/\/searches\/session-1$/)
-  await history.press('Enter')
-  await expect(list).toBeVisible()
-  await history.click()
-  await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click()
-  await history.click()
-  await expect(list).toBeVisible()
-  await expect(page.locator('[data-session-id="session-1"]')).toBeFocused()
 })
 
 test('mobile drawer isolates the page, traps focus and restores the trigger on Escape', async ({

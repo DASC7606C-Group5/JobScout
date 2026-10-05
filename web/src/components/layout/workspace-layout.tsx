@@ -65,13 +65,11 @@ export function WorkspaceLayout() {
     }
   }
 
-  function openHistory() {
-    if (open) {
-      historyFocusRequested.current = !focusDrawerTarget(sidebar.current, sessionId)
-    } else {
+  function toggleSidebar() {
+    if (!open) {
       historyFocusRequested.current = true
       setDrawerOpen(true)
-    }
+    } else setDrawerOpen(false)
   }
 
   useEffect(() => {
@@ -187,8 +185,7 @@ export function WorkspaceLayout() {
         sessionId={sessionId}
         expanded={open}
         mobile={!desktop}
-        onHistory={openHistory}
-        onToggleDrawer={() => setDrawerOpen(!open)}
+        onToggleDrawer={toggleSidebar}
         onNavigate={() => {
           if (!desktop) setMobileOpen(false)
         }}
