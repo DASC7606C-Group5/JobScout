@@ -15,21 +15,33 @@ const labels: Record<string, string> = {
 export function SourceOutcomes({ outcomes }: { outcomes: SourceOutcome[] }) {
   if (!outcomes.length) return null
   return (
-    <details className="mb-5 rounded-xl border border-base-300 bg-base-100 p-4">
-      <summary className="cursor-pointer text-sm">检索来源与覆盖情况</summary>
-      <ul className="mt-3 space-y-2 text-xs leading-6 text-base-content/70">
-        {sourceOutcomeRows(outcomes).map(({ key, outcome, count }) => (
-          <li key={key}>
-            {outcome.source} · {outcome.target_direction}：
-            {outcome.status === 'ok' && outcome.returned_count === 0
-              ? '检索成功，无结果'
-              : (labels[outcome.status] ?? outcome.status)}{' '}
-            · {outcome.returned_count} 个结果
-            {outcome.excerpt_count > 0 && ` · ${outcome.excerpt_count} 份仅有摘要`}
-            {count > 1 && ` · ${count} 次检索返回相同统计`}
-          </li>
-        ))}
-      </ul>
+    <details className="collapse-arrow collapse mb-5 rounded-xl border border-base-300 bg-base-100">
+      <summary className="collapse-title text-sm font-medium">检索来源与覆盖情况</summary>
+      <div className="collapse-content">
+        <ul className="divide-y divide-base-300 text-xs leading-6 text-base-content/70">
+          {sourceOutcomeRows(outcomes).map(({ key, outcome, count }) => (
+            <li key={key} className="py-3 first:pt-0 last:pb-0">
+              <div className="space-y-1 sm:flex sm:items-start sm:justify-between sm:gap-3 sm:space-y-0">
+                <p className="font-medium break-words text-base-content">
+                  {outcome.source} · {outcome.target_direction}：
+                </p>
+                <span className="badge h-auto shrink-0 py-1 text-xs badge-sm">
+                  {(outcome.status === 'ok' || outcome.status === 'success') &&
+                  outcome.returned_count === 0
+                    ? '检索成功，无结果'
+                    : (labels[outcome.status] ?? '检索状态待确认')}
+                </span>
+              </div>
+              <p className="mt-1">
+                {outcome.returned_count} 个结果
+                {outcome.excerpt_count > 0 && ` · ${outcome.excerpt_count} 份仅有摘要`}
+                {outcome.incomplete_count > 0 && ` · ${outcome.incomplete_count} 份信息待补充`}
+                {count > 1 && ` · ${count} 次检索返回相同统计`}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </div>
     </details>
   )
 }

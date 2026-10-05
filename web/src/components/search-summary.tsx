@@ -1,24 +1,156 @@
-import { useState } from 'react'
-
 import type { SearchSummary as Summary } from '../lib/contracts'
-import { summaryDraft, summaryFields, summaryUpdates } from '../lib/search-summary'
+import { profileFieldLabel } from '../lib/conversation'
+import {
+  summaryDirectionError,
+  summaryDraft,
+  summaryFields,
+  summaryUpdates,
+  type SummaryDraft,
+  type SummaryKey,
+} from '../lib/search-summary'
 import { useScoutSession } from '../state/session-context'
+import { useSessionDraft } from '../state/use-session-draft'
+
+const employmentOptions = [
+  ['full-time', '全职'],
+  ['internship', '实习'],
+  ['part-time', '兼职'],
+  ['contract', '合同制'],
+  ['freelance', '自由职业'],
+] as const
+const workModeOptions = [
+  ['onsite', '办公室'],
+  ['hybrid', '混合办公'],
+  ['remote', '远程'],
+] as const
+
+function SummaryFields({
+  fields,
+  draft,
+  editableFields,
+  onChange,
+  directionError,
+}: {
+  fields: (typeof summaryFields)[number][]
+  draft: SummaryDraft
+  editableFields: Set<string>
+  onChange: (key: SummaryKey, value: string | boolean) => void
+  directionError: string | null
+}) {
+  return (
+    <div className="grid gap-5 sm:grid-cols-2">
+      {fields.map(([key, label, kind]) => {
+        const editable = editableFields.has(key)
+        const id = `summary-${key}`
+        const unrestrictedKey =
+          key === 'preferences.location'
+            ? 'preferences.location_unrestricted'
+            : key === 'preferences.employment_type'
+              ? 'preferences.employment_type_unrestricted'
+              : null
+        const unrestricted = unrestrictedKey ? draft[unrestrictedKey] === true : false
+        const options =
+          key === 'preferences.employment_type'
+            ? employmentOptions
+            : key === 'preferences.work_mode'
+              ? workModeOptions
+              : null
+        const value = String(draft[key])
+        return (
+          <div key={key}>
+            <label htmlFor={id} className="mb-2 block text-sm">
+              {label}
+            </label>
+            {kind === 'array' ? (
+              <textarea
+                id={id}
+                className="textarea w-full resize-y rounded-xl border border-base-300 bg-base-200/25 text-sm leading-6"
+                rows={key === 'target_directions' ? 2 : 3}
+                value={value}
+                readOnly={!editable}
+                maxLength={10000}
+                aria-invalid={key === 'target_directions' && Boolean(directionError)}
+                aria-describedby={
+                  key === 'target_directions' ? 'summary-directions-hint' : undefined
+                }
+                onChange={(event) => onChange(key, event.target.value)}
+              />
+            ) : options ? (
+              <select
+                id={id}
+                className="select w-full rounded-xl border border-base-300 bg-base-100 text-sm"
+                value={value}
+                disabled={!editable || unrestricted}
+                onChange={(event) => onChange(key, event.target.value)}
+              >
+                <option value="">{unrestricted ? '不限' : '尚未填写'}</option>
+                {options.map(([option, optionLabel]) => (
+                  <option key={option} value={option}>
+                    {optionLabel}
+                  </option>
+                ))}
+                {value && !options.some(([option]) => option === value) && (
+                  <option value={value}>{value === 'unrestricted' ? '不限' : value}</option>
+                )}
+              </select>
+            ) : (
+              <input
+                id={id}
+                className="input w-full rounded-xl border border-base-300 bg-base-200/25 text-sm"
+                value={value}
+                readOnly={!editable}
+                disabled={unrestricted}
+                maxLength={10000}
+                onChange={(event) => onChange(key, event.target.value)}
+              />
+            )}
+            {key === 'target_directions' && (
+              <p
+                id="summary-directions-hint"
+                className={`mt-2 text-xs ${directionError ? 'text-error' : 'text-base-content/55'}`}
+              >
+                {directionError || '每行一项，也可使用逗号分隔。最多选择三个明确方向。'}
+              </p>
+            )}
+            {unrestrictedKey && (
+              <label className="mt-2.5 flex w-fit cursor-pointer items-center gap-2 text-xs text-base-content/65">
+                <input
+                  type="checkbox"
+                  className="checkbox checkbox-xs"
+                  checked={draft[unrestrictedKey] === true}
+                  disabled={!editableFields.has(unrestrictedKey)}
+                  onChange={(event) => onChange(unrestrictedKey, event.target.checked)}
+                />
+                {unrestrictedKey === 'preferences.location_unrestricted'
+                  ? '不限地点'
+                  : '不限工作类型'}
+              </label>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export function SearchSummary({ summary }: { summary: Summary }) {
   const { answer, busy, session } = useScoutSession()
   const original = summaryDraft(summary.profile)
-  const [draft, setDraft] = useState(original)
-  const [message, setMessage] = useState('')
+  const [formDraft, setFormDraft] = useSessionDraft('summary', { fields: original, message: '' })
+  const { fields: draft, message } = formDraft
   const updates = summaryUpdates(original, draft, summary.editable_fields)
   const changed = Object.keys(updates).length > 0 || Boolean(message.trim())
   const editableFields = new Set(summary.editable_fields)
   const current = summary.revision === session?.revision
+  const directionError = summaryDirectionError(draft)
+  const onChange = (key: SummaryKey, value: string | boolean) =>
+    setFormDraft({ ...formDraft, fields: { ...draft, [key]: value } })
   return (
     <form
       className="card border border-base-300 bg-base-100 p-5 sm:p-7"
       onSubmit={(event) => {
         event.preventDefault()
-        if (changed)
+        if (changed && current && !busy && !directionError)
           answer({ action: 'edit_conditions', profile_updates: updates, message: message.trim() })
       }}
     >
@@ -29,54 +161,37 @@ export function SearchSummary({ summary }: { summary: Summary }) {
       <p className="mt-2 text-xs text-base-content/60">
         每行一项，也可使用逗号分隔。保存修改后，请再次确认；确认前不会检索岗位。
       </p>
-      <fieldset disabled={busy} className="mt-6 min-w-0 space-y-5">
-        <div className="grid gap-4 sm:grid-cols-2">
-          {summaryFields.map(([key, label, kind]) => {
-            const editable = editableFields.has(key)
-            const id = `summary-${key}`
-            if (kind === 'boolean')
-              return (
-                <label key={key} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="checkbox checkbox-sm"
-                    checked={draft[key] === true}
-                    disabled={!editable}
-                    onChange={(event) => setDraft({ ...draft, [key]: event.target.checked })}
-                  />
-                  {label}
-                </label>
-              )
-            const unrestricted =
-              (key === 'preferences.location' &&
-                draft['preferences.location_unrestricted'] === true) ||
-              (key === 'preferences.employment_type' &&
-                draft['preferences.employment_type_unrestricted'] === true)
-            return (
-              <div key={key}>
-                <label htmlFor={id} className="mb-2 block text-sm">
-                  {label}
-                </label>
-                <textarea
-                  id={id}
-                  className="textarea w-full"
-                  rows={kind === 'array' ? 3 : 1}
-                  value={String(draft[key])}
-                  readOnly={!editable}
-                  disabled={unrestricted}
-                  maxLength={10000}
-                  onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
-                />
-              </div>
-            )
-          })}
-        </div>
+      <fieldset disabled={busy} className="mt-6 min-w-0 space-y-6">
+        <fieldset className="fieldset min-w-0 p-0">
+          <legend className="fieldset-legend pb-3 text-sm">个人经历</legend>
+          <SummaryFields
+            fields={summaryFields
+              .filter(([, , kind]) => kind === 'array')
+              .filter(([key]) => key !== 'target_directions')}
+            draft={draft}
+            editableFields={editableFields}
+            onChange={onChange}
+            directionError={directionError}
+          />
+        </fieldset>
+        <fieldset className="fieldset min-w-0 border-t border-base-300 p-0 pt-3">
+          <legend className="fieldset-legend pb-3 text-sm">搜索条件</legend>
+          <SummaryFields
+            fields={summaryFields.filter(
+              ([key, , kind]) =>
+                kind !== 'boolean' &&
+                (key === 'target_directions' || key.startsWith('preferences.')),
+            )}
+            draft={draft}
+            editableFields={editableFields}
+            onChange={onChange}
+            directionError={directionError}
+          />
+        </fieldset>
         {summary.missing_fields.length > 0 && (
           <output className="block rounded-xl bg-accent/25 p-3 text-sm">
             还需确认：
-            {summary.missing_fields
-              .map((key) => summaryFields.find(([field]) => field === key)?.[1] ?? key)
-              .join('、')}
+            {summary.missing_fields.map(profileFieldLabel).join('、')}
           </output>
         )}
         <div>
@@ -85,19 +200,25 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           </label>
           <textarea
             id="summary-message"
-            className="textarea w-full"
+            className="textarea min-h-24 w-full resize-y rounded-xl border border-base-300 bg-base-200/25 text-sm leading-6"
             value={message}
-            onChange={(event) => setMessage(event.target.value)}
+            onChange={(event) => setFormDraft({ ...formDraft, message: event.target.value })}
             maxLength={10000}
           />
         </div>
         <div className="flex flex-wrap gap-3 border-t border-base-300 pt-5">
-          <button type="submit" disabled={!changed} className="btn rounded-xl">
+          <button
+            type="submit"
+            disabled={!changed || !current || Boolean(directionError)}
+            className="btn rounded-xl"
+          >
             保存修改
           </button>
           <button
             type="button"
-            disabled={changed || !summary.ready || summary.confirmed || !current}
+            disabled={
+              changed || !summary.ready || summary.confirmed || !current || Boolean(directionError)
+            }
             className="btn rounded-xl btn-primary"
             onClick={() => answer({ action: 'confirm_search' })}
           >

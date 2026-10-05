@@ -8,12 +8,21 @@ from pydantic import BaseModel, ConfigDict, Field
 from jobscout.schemas.profile import UserProfile
 
 
+class ConversationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    value: str | list[str]
+    status: Literal["answered", "skipped"] = "answered"
+
+
 class ConversationMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message_id: str
     role: Literal["user", "assistant"]
     text: str
+    responses: list[ConversationResponse] = Field(default_factory=list)
     question_ids: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

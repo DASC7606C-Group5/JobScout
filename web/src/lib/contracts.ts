@@ -41,6 +41,13 @@ export interface ConversationMessage {
   text: string
   question_ids: string[]
   created_at: string
+  responses?: ConversationResponse[]
+}
+
+export interface ConversationResponse {
+  label: string
+  value: string | string[]
+  status: 'answered' | 'skipped'
 }
 
 export interface SearchSummary {

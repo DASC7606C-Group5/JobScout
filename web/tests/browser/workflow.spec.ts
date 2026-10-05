@@ -1,3 +1,5 @@
+import { mkdir } from 'node:fs/promises'
+
 import { expect, test, type Page } from '@playwright/test'
 
 import type {
@@ -438,4 +440,189 @@ test('empty result and source outage remain distinct without invented vacancies'
   ).toBeVisible()
   await expect(page.getByText('Liepin · 前端开发：访问受限', { exact: false })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'React Engineer' })).toHaveCount(0)
+})
+
+test('conversation renders structured and recovered answers without wire-format keys or JSON', async ({
+  page,
+}) => {
+  const fixture = createSessionFixture({
+    current_stage: 'clarify',
+    search_summary: null,
+    clarification_questions: [
+      { ...makeQuestion('location', 'text'), question: '你偏好的工作地点是？' },
+    ],
+    conversation: [
+      {
+        message_id: 'assistant-1',
+        role: 'assistant',
+        text: '你希望寻找哪些方向的职位？',
+        question_ids: [],
+        created_at: '2026-10-03T00:00:00Z',
+      },
+      {
+        message_id: 'legacy-user',
+        role: 'user',
+        text: "测试\ntarget_directions: ['技术/研发', '产品/项目']\npreferences.location: 不限\npreferences.employment_type: full-time",
+        question_ids: [],
+        created_at: '2026-10-03T00:00:00Z',
+      },
+      {
+        message_id: 'structured-user',
+        role: 'user',
+        text: '我希望有导师指导。',
+        question_ids: [],
+        created_at: '2026-10-03T00:00:00Z',
+        responses: [
+          { label: '求职方向', value: ['前端开发', '数据分析'], status: 'answered' },
+          { label: '工作地点', value: '香港', status: 'answered' },
+          { label: '行业偏好', value: '', status: 'skipped' },
+        ],
+      },
+    ],
+  })
+  await mockSessions(page, fixture)
+  await introduce(page)
+  const history = page.getByRole('log', { name: '对话记录' })
+  await expect(history).toContainText('求职方向')
+  await expect(history).toContainText('技术/研发')
+  await expect(history).toContainText('全职')
+  await expect(history).toContainText('我希望有导师指导。')
+  await expect(history).toContainText('已跳过（选填）')
+  await expect(history).not.toContainText('target_directions')
+  await expect(history).not.toContainText('preferences.')
+  await expect(history).not.toContainText("['")
+  await expect(history.locator('dl')).toHaveCount(2)
+  if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
+    await mkdir('.tools/review', { recursive: true })
+    await page.setViewportSize({ width: 1440, height: 1100 })
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.screenshot({
+      path: '.tools/review/conversation-desktop.png',
+      fullPage: true,
+      animations: 'disabled',
+    })
+    await page.setViewportSize({ width: 390, height: 900 })
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.screenshot({
+      path: '.tools/review/conversation-mobile.png',
+      fullPage: true,
+      animations: 'disabled',
+    })
+  }
+  await page.setViewportSize({ width: 390, height: 900 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+})
+
+test('clarification drafts preserve choices, skips and text across workspace navigation', async ({
+  page,
+}) => {
+  const state = await mockSessions(
+    page,
+    createSessionFixture({
+      current_stage: 'clarify',
+      search_summary: null,
+      clarification_questions: [
+        makeQuestion('single', 'single_choice'),
+        makeQuestion('multiple', 'multiple_choice'),
+        makeQuestion('optional', 'text', false),
+      ],
+    }),
+  )
+  await introduce(page)
+  await page.getByRole('radio', { name: '选项一' }).check()
+  await page.getByRole('checkbox', { name: '选项二', exact: true }).check()
+  await page.getByRole('checkbox', { name: '跳过此问题' }).check()
+  await page.getByLabel('补充或纠正', { exact: true }).fill('也接受深圳。')
+  await page.getByRole('link', { name: '收藏岗位', exact: false }).first().click()
+  await expect(page).toHaveURL(/\/saved$/)
+  await page.getByRole('link', { name: '发现机会', exact: true }).first().click()
+  await expect(page.getByRole('radio', { name: '选项一' })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: '选项二', exact: true })).toBeChecked()
+  await expect(page.getByRole('checkbox', { name: '跳过此问题' })).toBeChecked()
+  await expect(page.getByLabel('补充或纠正', { exact: true })).toHaveValue('也接受深圳。')
+  await page.getByRole('button', { name: '发送并继续' }).click()
+  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled()
+  expect(state.requests[0]).toMatchObject({
+    answers: [
+      { question_id: 'single', value: 'one-id' },
+      { question_id: 'multiple', value: ['two-id'] },
+    ],
+    skipped_question_ids: ['optional'],
+    message: '也接受深圳。',
+  })
+})
+
+test('direction choices enforce three selections without dropping user choices', async ({
+  page,
+}) => {
+  const question = {
+    ...makeQuestion('directions', 'multiple_choice'),
+    question: '你希望寻找哪些方向的职位？',
+    field: 'target_directions',
+    options: ['前端开发', '数据分析', '产品设计', '软件工程'].map((label, index) => ({
+      id: `direction-${index}`,
+      label,
+    })),
+  }
+  const state = await mockSessions(
+    page,
+    createSessionFixture({
+      current_stage: 'clarify',
+      search_summary: null,
+      clarification_questions: [question],
+    }),
+  )
+  await introduce(page)
+  for (const label of ['前端开发', '数据分析', '产品设计'])
+    await page.getByRole('checkbox', { name: label, exact: true }).check()
+  await expect(page.getByRole('checkbox', { name: '软件工程', exact: true })).toBeDisabled()
+  await expect(page.getByText('最多选择三个方向 · 已选择 3 / 3')).toBeVisible()
+  if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
+    await mkdir('.tools/review', { recursive: true })
+    await page.setViewportSize({ width: 1440, height: 1100 })
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.screenshot({
+      path: '.tools/review/clarification-desktop.png',
+      fullPage: true,
+      animations: 'disabled',
+    })
+    await page.setViewportSize({ width: 390, height: 900 })
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.screenshot({
+      path: '.tools/review/clarification-mobile.png',
+      fullPage: true,
+      animations: 'disabled',
+    })
+  }
+  await page.getByRole('checkbox', { name: '产品设计', exact: true }).uncheck()
+  await expect(page.getByRole('checkbox', { name: '软件工程', exact: true })).toBeEnabled()
+  expect(state.requests).toEqual([])
+})
+
+test('summary edits survive navigation, local overflow preserves entries and new revision clears message', async ({
+  page,
+}) => {
+  const state = await mockSessions(page)
+  await introduce(page)
+  const directions = page.getByLabel('求职方向（最多三个）', { exact: true })
+  await directions.fill('前端开发\n数据分析\n产品设计\n软件工程')
+  await expect(page.getByRole('button', { name: '保存修改' })).toBeDisabled()
+  await expect(directions).toHaveValue('前端开发\n数据分析\n产品设计\n软件工程')
+  await directions.fill('前端开发')
+  await page.getByLabel('技能', { exact: true }).fill('React\nSQL')
+  await page.getByLabel('补充或纠正搜索条件', { exact: true }).fill('希望有导师指导。')
+  await page.getByRole('link', { name: '收藏岗位', exact: false }).first().click()
+  await expect(page).toHaveURL(/\/saved$/)
+  await page.getByRole('link', { name: '发现机会', exact: true }).first().click()
+  await expect(page.getByLabel('技能', { exact: true })).toHaveValue('React\nSQL')
+  await expect(page.getByLabel('补充或纠正搜索条件', { exact: true })).toHaveValue(
+    '希望有导师指导。',
+  )
+  await page.getByRole('button', { name: '保存修改' }).click()
+  await expect(page.getByRole('button', { name: '确认并开始搜索' })).toBeEnabled()
+  await expect(page.getByLabel('补充或纠正搜索条件', { exact: true })).toHaveValue('')
+  expect(state.requests[0]?.profile_updates).toEqual({ skills: ['React', 'SQL'] })
+  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual(['jobscout.session_id'])
 })

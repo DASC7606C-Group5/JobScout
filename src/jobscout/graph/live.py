@@ -14,7 +14,7 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Overwrite, interrupt
 
 from jobscout.graph.state import AgentState
-from jobscout.schemas.conversation import ConversationMessage, SearchSummary
+from jobscout.schemas.conversation import ConversationMessage, ConversationResponse, SearchSummary
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import JobPosting, SourceDocument
 from jobscout.schemas.profile import UserProfile
@@ -79,6 +79,67 @@ _CONFIRM_MESSAGES = {
     "confirm search",
     "search now",
 }
+_FIELD_LABELS = {
+    "education": "教育背景",
+    "skills": "技能",
+    "internships": "实习经历",
+    "projects": "项目经历",
+    "target_directions": "求职方向",
+    "preferences.location": "工作地点",
+    "preferences.location_unrestricted": "工作地点",
+    "preferences.employment_type": "工作类型",
+    "preferences.employment_type_unrestricted": "工作类型",
+    "preferences.salary_range": "期望薪资",
+    "preferences.work_mode": "工作方式",
+    "preferences.industry": "行业偏好",
+}
+_PREFERENCE_LABELS = {
+    "preferences.employment_type": {
+        "full-time": "全职",
+        "part-time": "兼职",
+        "internship": "实习",
+        "contract": "合同制",
+        "freelance": "自由职业",
+        "unrestricted": "不限",
+    },
+    "preferences.work_mode": {
+        "onsite": "现场办公",
+        "on-site": "现场办公",
+        "hybrid": "混合办公",
+        "remote": "远程办公",
+        "unrestricted": "不限",
+    },
+}
+
+
+def _display_value(field: str, value: str | list[str] | bool | None) -> str | list[str]:
+    if isinstance(value, list):
+        return value if value else "未填写"
+    if isinstance(value, bool):
+        return "不限" if value else "按指定条件"
+    if value is None or not value.strip():
+        return "未填写"
+    return _PREFERENCE_LABELS.get(field, {}).get(value.casefold(), value)
+
+
+def _edited_responses(
+    request: SessionResumeRequest, profile: UserProfile
+) -> list[ConversationResponse]:
+    responses: list[ConversationResponse] = []
+    displayed: set[str] = set()
+    for field, value in request.profile_updates.items():
+        primary = field.removesuffix("_unrestricted")
+        if primary in displayed:
+            continue
+        displayed.add(primary)
+        if primary in {"preferences.location", "preferences.employment_type"}:
+            name = primary.removeprefix("preferences.")
+            unrestricted = getattr(profile.preferences, name + "_unrestricted")
+            value = "不限" if unrestricted else getattr(profile.preferences, name)
+        responses.append(
+            ConversationResponse(label=_FIELD_LABELS[field], value=_display_value(primary, value))
+        )
+    return responses
 
 
 class SearchService(Protocol):
@@ -195,6 +256,7 @@ def build_live_graph(
             "retrieval_seconds": 0.0,
             "operation_deadline": 0.0,
             "resume_payload": {},
+            "failed_resume_payload": None,
             "clarification_questions": [],
             "current_stage": "profile",
         }
@@ -217,6 +279,18 @@ def build_live_graph(
                     else state.get("optional_rounds", 0),
                 }
             )
+            failed_payload = state.get("failed_resume_payload")
+            if request.action == "retry" and failed_payload:
+                reset.update(
+                    {
+                        "resume_payload": {
+                            **failed_payload,
+                            "expected_revision": request.expected_revision,
+                        },
+                        "clarification_questions": state.get("clarification_questions", []),
+                        "optional_rounds": state.get("optional_rounds", 0),
+                    }
+                )
             return reset
         except Exception:
             failure = _failure("invalid_answer", "profile")
@@ -381,6 +455,7 @@ def build_live_graph(
             ):
                 raise ValueError("Unknown, duplicate or conflicting question IDs.")
             updates: list[ProfileChange] = []
+            responses: list[ConversationResponse] = []
             statuses: dict[str, tuple[ClarificationStatus, str | None]] = {}
             for answer in request.answers:
                 question = by_id[answer.question_id]
@@ -403,6 +478,12 @@ def build_live_graph(
                     statuses[question.question_id] = (
                         ClarificationStatus.ANSWERED,
                         ", ".join(values),
+                    )
+                    responses.append(
+                        ConversationResponse(
+                            label=question.question,
+                            value=_display_value(question.field, value),
+                        )
                     )
             # Apply free-text corrections after structured answers, then explicit editor patches.
             profile = apply_changes(profile, updates)
@@ -438,6 +519,11 @@ def build_live_graph(
                     suppressed.append(question.field)
                 if question.question_id in request.skipped_question_ids and not question.required:
                     statuses[question.question_id] = (ClarificationStatus.SKIPPED, None)
+                    responses.append(
+                        ConversationResponse(
+                            label=question.question, value="已跳过", status="skipped"
+                        )
+                    )
             questions = [
                 question.model_copy(
                     update={
@@ -457,6 +543,9 @@ def build_live_graph(
                     or ("确认搜索。" if is_confirm else "已提交回答或更新条件。"),
                 ),
             ]
+            history[-1] = history[-1].model_copy(
+                update={"responses": [*responses, *_edited_responses(request, profile)]}
+            )
             documents = list(state.get("profile_documents", []))
             evidence_text = "\n".join(
                 filter(
@@ -469,7 +558,6 @@ def build_live_graph(
                 )
             )
             if evidence_text:
-                history[-1] = history[-1].model_copy(update={"text": evidence_text})
                 documents.append(
                     SourceDocument(
                         document_id=f"profile:{state['session_id']}:answer:{request.request_id}",
@@ -492,6 +580,7 @@ def build_live_graph(
                 "profile": profile.model_copy(update={"missing_required_fields": remaining}),
                 "revision": accepted_revision,
                 "command": None,
+                "failed_resume_payload": None,
                 "conversation": history,
                 "profile_documents": documents,
                 "clarification_questions": questions,
@@ -545,6 +634,7 @@ def build_live_graph(
             return _failure(error.code, "clarify") | {
                 "revision": accepted_revision,
                 "command": None,
+                "failed_resume_payload": state.get("resume_payload"),
             }
         except Exception:
             return _failure("invalid_answer", "clarify") | {

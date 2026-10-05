@@ -1,7 +1,12 @@
 import { expect, test } from 'bun:test'
 
 import { createUserProfileFixture } from '../../tests/fixtures'
-import { summaryDraft, summaryFields, summaryUpdates } from './search-summary'
+import {
+  summaryDirectionError,
+  summaryDraft,
+  summaryFields,
+  summaryUpdates,
+} from './search-summary'
 
 const editable = summaryFields.map(([key]) => key)
 
@@ -36,4 +41,20 @@ test('unrestricted fields explicitly clear constrained values; noneditable field
     'preferences.employment_type': null,
   })
   expect(summaryUpdates(original, { ...original, skills: 'SQL' }, [])).toEqual({})
+})
+
+test('confirmation editing requires an explicit choice when the direction list exceeds three', () => {
+  const original = summaryDraft(createUserProfileFixture())
+  const draft = { ...original, target_directions: '前端开发\n数据分析，产品设计、项目管理' }
+  expect(summaryDirectionError(draft)).toBeTruthy()
+  expect(summaryUpdates(original, draft, editable).target_directions).toEqual([
+    '前端开发',
+    '数据分析',
+    '产品设计',
+    '项目管理',
+  ])
+  expect(
+    summaryDirectionError({ ...draft, target_directions: '前端开发\n数据分析，产品设计' }),
+  ).toBeNull()
+  expect(summaryDirectionError({ ...draft, target_directions: '前端开发\n前端开发' })).toBeNull()
 })

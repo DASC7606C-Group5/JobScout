@@ -1,4 +1,5 @@
 import type { ResumeSessionRequest, UserProfile } from './contracts'
+import { parseDirections } from './profile-form'
 
 export const summaryFields = [
   ['education', '教育背景', 'array'],
@@ -16,6 +17,12 @@ export const summaryFields = [
 ] as const
 export type SummaryKey = (typeof summaryFields)[number][0]
 export type SummaryDraft = Record<SummaryKey, string | boolean>
+
+export function summaryDirectionError(draft: SummaryDraft): string | null {
+  return parseDirections(String(draft.target_directions)).length > 3
+    ? '最多选择三个求职方向，请减少方向后再保存。'
+    : null
+}
 
 export function summaryDraft(profile: UserProfile): SummaryDraft {
   return Object.fromEntries(

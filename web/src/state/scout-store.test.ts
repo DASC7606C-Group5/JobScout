@@ -1,7 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 
-import { createProfileFixture, createRecommendationFixture } from '../../tests/fixtures'
+import {
+  createProfileFixture,
+  createRecommendationFixture,
+  createSessionFixture,
+} from '../../tests/fixtures'
 import type { UserProfile } from '../lib/contracts'
+import { summaryDraft } from '../lib/search-summary'
 import { createScoutStore } from './scout-store'
 
 describe('workspace state', () => {
@@ -60,5 +65,28 @@ describe('workspace state', () => {
     expect(store.getState().answers).toEqual({ 'preferences.work_mode': '远程' })
     store.getState().saveAnswers({})
     expect(store.getState().answers).toEqual({})
+  })
+
+  test('retains independent form drafts only within the current session revision', () => {
+    const store = createScoutStore()
+    const clarification = {
+      values: { role: ['frontend'] },
+      skipped: ['salary'],
+      message: '想在香港',
+    }
+    store.getState().saveSessionDraft('session-1:2', 'clarification', clarification)
+    clarification.values.role.push('backend')
+    expect(store.getState().sessionDrafts?.values.clarification?.values.role).toEqual(['frontend'])
+    const summary = { fields: summaryDraft(createSessionFixture().profile!), message: '补充条件' }
+    store.getState().saveSessionDraft('session-1:2', 'summary', summary)
+    expect(store.getState().sessionDrafts?.values.clarification?.message).toBe('想在香港')
+    expect(store.getState().sessionDrafts?.values.summary).toEqual(summary)
+    store.getState().saveSessionDraft('session-1:3', 'summary', summary)
+    expect(store.getState().sessionDrafts?.values.clarification).toBeUndefined()
+    store.getState().saveSessionDraft('session-2:3', 'clarification', clarification)
+    expect(store.getState().sessionDrafts?.values.summary).toBeUndefined()
+    store.getState().clearSessionDrafts()
+    expect(store.getState().sessionDrafts).toBeNull()
+    expect(createScoutStore().getState().sessionDrafts).toBeNull()
   })
 })

@@ -57,6 +57,7 @@ class AgentState(TypedDict):
     direct_edit_fields: NotRequired[list[str]]
     command: NotRequired[dict[str, object] | None]
     resume_payload: NotRequired[dict[str, object]]
+    failed_resume_payload: NotRequired[dict[str, object] | None]
     confirmed_profile: NotRequired[UserProfile | None]
     operation_deadline: NotRequired[float]
     retrieval_seconds: NotRequired[float]

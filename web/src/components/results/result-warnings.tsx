@@ -1,5 +1,3 @@
-import { Icon } from '../icon'
-
 const FALLBACK_WARNING_MARKER = '模型分析不可用或证据未通过核验；已使用确定性保守回退。'
 const MERGED_JOB_WARNING_MARKER = 'no responsibilities or required skills extracted.'
 
@@ -11,13 +9,15 @@ type WarningGroup = {
 function WarningGroup({ label, warnings }: WarningGroup) {
   if (!warnings.length) return null
   return (
-    <details className="mb-5 rounded-xl border border-accent/70 bg-accent/20 px-4 py-3 text-left text-xs leading-6 text-base-content/70">
-      <summary className="cursor-pointer select-none font-medium">
+    <details className="collapse-arrow collapse mb-5 rounded-xl border border-base-300 bg-base-100 text-left text-xs leading-6 text-base-content/70">
+      <summary className="collapse-title text-sm font-medium">
         {label}（{warnings.length} 条）
       </summary>
-      <div className="mt-3 space-y-2 border-t border-accent/40 pt-2">
+      <div className="collapse-content space-y-2">
         {warnings.map((warning) => (
-          <p key={warning}>{warning}</p>
+          <p key={warning} className="break-words">
+            {warning}
+          </p>
         ))}
       </div>
     </details>
@@ -32,7 +32,7 @@ export function ResultWarnings({ warnings }: { warnings: string[] }) {
   const sourceWarnings: string[] = []
   const otherWarnings: string[] = []
 
-  for (const warning of [...new Set(warnings)]) {
+  for (const warning of new Set(warnings)) {
     if (warning.includes(FALLBACK_WARNING_MARKER)) {
       fallbackWarnings.push(warning)
     } else if (warning.includes(MERGED_JOB_WARNING_MARKER)) {

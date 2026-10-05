@@ -17,6 +17,11 @@ from jobscout.services.profile_service import dedupe, parse_profile_input, split
 
 BACKGROUND_FIELDS = ("education", "skills", "internships", "projects")
 REQUIRED_FIELDS = ("target_directions", "preferences.location", "preferences.employment_type")
+_REQUIRED_QUESTIONS = {
+    "target_directions": "请选择最多三个明确的求职方向。",
+    "preferences.location": "请明确填写工作地点（香港、中国内地或不限）。",
+    "preferences.employment_type": "请明确填写工作类型（全职、实习、兼职、合同制、自由职业或不限）。",
+}
 OPTIONAL_FIELDS = (
     *BACKGROUND_FIELDS,
     "preferences.salary_range",
@@ -280,7 +285,8 @@ class ConversationService:
                 raise ModelServiceError("model_output")
             result.append(
                 ClarificationMessage(
-                    **item.model_dump(),
+                    **item.model_dump(exclude={"control_type"}),
+                    control_type=item.control_type if options else "text",
                     required=item.field in required,
                     question_id=f"q{turn}:{item.field}",
                 )
@@ -290,9 +296,7 @@ class ConversationService:
                 result.append(
                     ClarificationMessage(
                         field=field,
-                        question="请选择最多三个明确的求职方向。"
-                        if field == "target_directions"
-                        else f"请明确填写 {field}（或选择不限）。",
+                        question=_REQUIRED_QUESTIONS.get(field, "请补充此项求职条件。"),
                         reason="开始检索前需要确认此条件。",
                         question_id=f"q{turn}:{field}",
                     )

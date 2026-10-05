@@ -48,12 +48,12 @@ export function SearchFailure({
       <span className="mb-5 flex size-12 items-center justify-center rounded-full bg-accent/50 text-accent-content">
         <Icon name="info" size={24} />
       </span>
-      <h2 className="text-xl font-semibold">这次搜索遇到了一点问题</h2>
+      <h2 className="text-xl font-semibold">这一步遇到了一点问题</h2>
       {errors.map((error) => (
         <div key={`${error.code}-${error.stage}`} role="alert">
           <p className="mt-3 text-sm leading-7 text-base-content/65">{error.message}</p>
           <p className="mt-2 text-xs text-base-content/45">
-            {error.code} · {error.stage}
+            {stages[error.stage]?.replace(/^正在/, '') ?? '处理求职资料'}
           </p>
         </div>
       ))}

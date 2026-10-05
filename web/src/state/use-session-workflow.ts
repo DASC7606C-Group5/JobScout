@@ -46,6 +46,7 @@ export function useSessionWorkflow(store: ScoutStore, client: SessionClient) {
     onSuccess: (session, operation) => {
       // Abandoned operations cannot restore a deleted or replaced session.
       if (operation.generation !== generation.current) return
+      store.getState().clearSessionDrafts()
       rememberSessionId(session?.session_id ?? null)
       setSessionId(session?.session_id ?? null)
       if (session) queryClient.setQueryData(sessionKey(session.session_id), session)
@@ -103,6 +104,7 @@ export function useSessionWorkflow(store: ScoutStore, client: SessionClient) {
 
   function start(input: ScoutInput) {
     if (busy) return
+    store.getState().clearSessionDrafts()
     store.getState().saveAnswers({})
     execute({
       kind: 'start',
@@ -136,6 +138,7 @@ export function useSessionWorkflow(store: ScoutStore, client: SessionClient) {
     mutation.reset()
     rememberSessionId(null)
     setSessionId(null)
+    store.getState().clearSessionDrafts()
     store.getState().saveAnswers({})
     void queryClient.cancelQueries({ queryKey: sessionKey(sessionId), exact: true })
     queryClient.removeQueries({ queryKey: sessionKey(sessionId), exact: true })

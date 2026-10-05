@@ -23,7 +23,7 @@ export function parseDirections(value: string): string[] {
   return [
     ...new Set(
       value
-        .split(/[,，、]/)
+        .split(/[\n,，、]/)
         .map((part) => part.trim())
         .filter(Boolean),
     ),

@@ -20,6 +20,7 @@ from jobscout.schemas.recommendation import RecommendationResult
 from jobscout.schemas.search import SearchRequest
 from jobscout.services.conversation_service import (
     AnswerInterpretation,
+    ConversationService,
     ProfileExtraction,
     QuestionGeneration,
     SearchPhrasing,
@@ -276,6 +277,10 @@ def test_three_optional_rounds_and_skipped_fields_never_repeat() -> None:
             state = await graph.ainvoke(
                 resume(revision, skipped_question_ids=[question.question_id]), configuration()
             )
+            submitted = state["conversation"][-2]
+            assert submitted.responses[0].label == question.question
+            assert submitted.responses[0].status == "skipped"
+            assert submitted.responses[0].value == "已跳过"
         assert len(set(asked)) == 3
         assert state["current_stage"] == "confirm"
         assert state["optional_rounds"] == 3
@@ -888,7 +893,218 @@ def test_conflicts_require_confirmation_and_text_directions_are_split() -> None:
         assert state["profile"].target_directions == ["data analyst", "backend engineer"]
         assert not state["profile"].conflicts
         assert state["search_summary"].ready
-        assert "data analyst" in state["conversation"][-2].text
+        assert "data analyst, backend engineer" in state["conversation"][-2].responses[0].value
+
+    asyncio.run(scenario())
+
+
+def test_conversation_keeps_free_text_and_displays_choice_labels_without_evidence_fields() -> None:
+    class ChoiceProvider(FakeProvider):
+        async def structured[SchemaT: BaseModel](
+            self,
+            schema: type[SchemaT],
+            messages: list[dict[str, str]],
+            *,
+            deadline: float | None = None,
+        ) -> SchemaT:
+            if schema is QuestionGeneration:
+                return schema.model_validate(
+                    {
+                        "questions": [
+                            {
+                                "field": "target_directions",
+                                "question": "你希望寻找哪些方向的职位？",
+                                "reason": "确认求职方向",
+                                "control_type": "multiple_choice",
+                                "options": [
+                                    {"id": "data", "label": "数据分析师"},
+                                    {"id": "backend", "label": "后端工程师"},
+                                ],
+                            },
+                            {
+                                "field": "preferences.location",
+                                "question": "你偏好的工作地点是？",
+                                "reason": "确认工作地点",
+                                "control_type": "single_choice",
+                                "options": [{"id": "anywhere", "label": "不限"}],
+                            },
+                            {
+                                "field": "preferences.employment_type",
+                                "question": "你偏好的工作类型是？",
+                                "reason": "确认工作类型",
+                                "control_type": "single_choice",
+                                "options": [{"id": "full", "label": "全职"}],
+                            },
+                        ]
+                    }
+                )
+            return await super().structured(schema, messages, deadline=deadline)
+
+    async def scenario() -> None:
+        provider = ChoiceProvider()
+        provider.changes = [{"field": "skills", "value": ["SQL"], "mode": "merge"}]
+        graph, _, _, _ = setup(provider)
+        state = await graph.ainvoke(initial(target_directions=[], preferences={}), configuration())
+        questions = state["clarification_questions"]
+        values: list[str | list[str]] = [["data", "backend"], "anywhere", "full"]
+        state = await graph.ainvoke(
+            resume(
+                message="I also know SQL",
+                answers=[
+                    {"question_id": question.question_id, "value": value}
+                    for question, value in zip(questions, values, strict=True)
+                ],
+            ),
+            configuration(),
+        )
+        submitted = state["conversation"][-2]
+        assert submitted.text == "I also know SQL"
+        assert [response.model_dump() for response in submitted.responses] == [
+            {
+                "label": "你希望寻找哪些方向的职位？",
+                "value": ["数据分析师", "后端工程师"],
+                "status": "answered",
+            },
+            {"label": "你偏好的工作地点是？", "value": "不限", "status": "answered"},
+            {"label": "你偏好的工作类型是？", "value": "全职", "status": "answered"},
+        ]
+        assert "target_directions" not in submitted.model_dump_json()
+        assert "preferences.location" not in submitted.model_dump_json()
+        assert (
+            "target_directions: ['数据分析师', '后端工程师']" in state["profile_documents"][-1].text
+        )
+
+    asyncio.run(scenario())
+
+
+def test_edited_conditions_have_localized_values_and_one_response_per_preference() -> None:
+    async def scenario() -> None:
+        graph, _, _, _ = setup()
+        await graph.ainvoke(initial(), configuration())
+        state = await graph.ainvoke(
+            resume(
+                action="edit_conditions",
+                profile_updates={
+                    "preferences.employment_type": None,
+                    "preferences.employment_type_unrestricted": True,
+                    "preferences.location_unrestricted": False,
+                    "preferences.location": "Shanghai",
+                    "preferences.work_mode": "hybrid",
+                    "preferences.salary_range": None,
+                    "education": [],
+                    "target_directions": ["data analyst", "backend engineer"],
+                },
+            ),
+            configuration(),
+        )
+        submitted = state["conversation"][-2]
+        assert submitted.text == "已提交回答或更新条件。"
+        assert [(item.label, item.value) for item in submitted.responses] == [
+            ("工作类型", "不限"),
+            ("工作地点", "Shanghai"),
+            ("工作方式", "混合办公"),
+            ("期望薪资", "未填写"),
+            ("教育背景", "未填写"),
+            ("求职方向", ["data analyst", "backend engineer"]),
+        ]
+
+    asyncio.run(scenario())
+
+
+def test_required_question_fallbacks_are_readable_and_empty_choices_allow_text() -> None:
+    class EmptyChoiceProvider(FakeProvider):
+        async def structured[SchemaT: BaseModel](
+            self,
+            schema: type[SchemaT],
+            messages: list[dict[str, str]],
+            *,
+            deadline: float | None = None,
+        ) -> SchemaT:
+            return schema.model_validate(
+                {
+                    "questions": [
+                        {
+                            "field": "target_directions",
+                            "question": "你希望寻找哪些方向的职位？",
+                            "reason": "确认求职方向",
+                            "control_type": "multiple_choice",
+                            "options": [],
+                        }
+                    ]
+                }
+            )
+
+    async def scenario() -> None:
+        service = ConversationService(EmptyChoiceProvider())
+        fields = ["target_directions", "preferences.location", "preferences.employment_type"]
+        questions = await service.questions(UserProfile(profile_id="p"), fields, [], 1)
+        assert len(questions) == 3
+        assert questions[0].control_type == "text"
+        assert questions[1].question == "请明确填写工作地点（香港、中国内地或不限）。"
+        assert (
+            questions[2].question
+            == "请明确填写工作类型（全职、实习、兼职、合同制、自由职业或不限）。"
+        )
+        assert all(question.required for question in questions)
+        assert all("preferences." not in question.question for question in questions)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("retry_thread", ["s1", "s1:3"])
+def test_retry_replays_answers_after_interpretation_failure_without_duplicate_messages(
+    retry_thread: str,
+) -> None:
+    async def scenario() -> None:
+        provider = FakeProvider()
+        provider.changes = [{"field": "skills", "value": ["SQL"], "mode": "merge"}]
+        graph, _, _, _ = setup(provider)
+        state = await graph.ainvoke(initial(target_directions=[], preferences={}), configuration())
+        values = {
+            "target_directions": "data analyst",
+            "preferences.location": "Hong Kong",
+            "preferences.employment_type": "internship",
+        }
+        answers = [
+            {"question_id": question.question_id, "value": values[question.field]}
+            for question in state["clarification_questions"]
+        ]
+        history = state["conversation"]
+        provider.fail = "AnswerInterpretation"
+        failed = await graph.ainvoke(
+            resume(answers=answers, message="I also know SQL"), configuration()
+        )
+        assert failed["current_stage"] == "failed"
+        assert failed["conversation"] == history
+        assert failed["profile"].target_directions == []
+        provider.fail = None
+        retried = await graph.ainvoke(
+            {**failed, "command": resume(2, action="retry").resume, "revision": 3},
+            configuration(retry_thread),
+        )
+        assert retried["search_summary"].ready
+        assert retried["search_summary"].revision == 3
+        assert retried["profile"].target_directions == ["data analyst"]
+        assert retried["profile"].skills == ["Python", "SQL"]
+        submitted = [
+            message for message in retried["conversation"] if message.text == "I also know SQL"
+        ]
+        assert len(submitted) == 1
+        assert len(submitted[0].responses) == 3
+        assert (
+            len(
+                [
+                    document
+                    for document in retried["profile_documents"]
+                    if ":answer:" in document.document_id
+                ]
+            )
+            == 1
+        )
+        assert retried["failed_resume_payload"] is None
+        assert retried["errors"] == []
+        assert provider.calls.count("AnswerInterpretation") == 2
+        assert provider.calls.count("ProfileExtraction") == 1
 
     asyncio.run(scenario())
 

@@ -30,8 +30,9 @@ export function DiscoveryContent() {
         </div>
       )}
       {session?.mode === 'replay' && (
-        <output className="mb-4 block rounded-xl bg-accent/25 p-3 text-sm">
-          回放演示模式 · 合成资料与固定岗位，非实时检索
+        <output className="mb-4 alert border-base-300 bg-base-200/50 text-sm text-base-content">
+          <Icon name="info" size={18} />
+          <span>回放演示模式 · 合成资料与固定岗位，非实时检索</span>
         </output>
       )}
       <SessionWarnings />
@@ -100,7 +101,7 @@ function SessionContent() {
         <>
           <ConversationHistory session={session} collapsed />
           {session.recommendation?.introduction && (
-            <p className="mb-5 rounded-xl bg-base-100 p-5 text-sm leading-7">
+            <p className="card mb-5 border-base-300 bg-base-100 p-5 text-sm leading-7 card-border">
               {session.recommendation.introduction}
             </p>
           )}
