@@ -1,4 +1,4 @@
-"""Typed, injectable native async DeepSeek JSON provider."""
+"""Asynchronous DeepSeek JSON and tool calls with replaceable clients for tests."""
 
 import asyncio
 import json
@@ -56,7 +56,7 @@ class ToolCall(BaseModel):
 
 
 class ToolTurn(BaseModel):
-    """Native function calls only; model reasoning is never persisted or displayed."""
+    """Use the model's function-call interface; do not store or display its private reasoning."""
 
     calls: list[ToolCall] = Field(min_length=1, max_length=4)
 
@@ -438,7 +438,7 @@ class DeepSeekProvider:
 
 
 class ModelRouter:
-    """Semantic structured calls and decision tool calls share only their run counters."""
+    """Route JSON extraction and tool selection to separate models with shared usage counters."""
 
     def __init__(self, semantic: DeepSeekProvider, decision: DeepSeekProvider) -> None:
         self.semantic = semantic

@@ -1,4 +1,4 @@
-"""User profile contracts shared by profile, workflow, and recommendation modules."""
+"""Applicant background and search preferences used across the application."""
 
 from typing import Literal
 
@@ -9,7 +9,7 @@ WorkMode = Literal["remote", "hybrid", "onsite"]
 
 
 class LocationRef(BaseModel):
-    """A catalog identity, never an identifier invented by the language model."""
+    """A place and its catalog ID, looked up rather than invented by the model."""
 
     model_config = ConfigDict(extra="forbid")
 

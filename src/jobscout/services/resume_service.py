@@ -1,4 +1,4 @@
-"""Extract uploaded resume files into the existing name/text workflow contract."""
+"""Extract the name and text of uploaded resume files for profile creation."""
 
 from collections.abc import Iterator
 from io import BytesIO

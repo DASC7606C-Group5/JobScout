@@ -1,4 +1,4 @@
-"""Shared error contract for workflow and HTTP responses."""
+"""Error codes, messages and recovery actions used by services and HTTP responses."""
 
 from typing import Literal
 
@@ -15,7 +15,7 @@ class WorkflowError(BaseModel):
 
 
 class ApplicantError(BaseModel):
-    """Public recovery contract; internal stages and diagnostic details stay on the server."""
+    """User-facing error and next action; internal stages and details stay on the server."""
 
     model_config = ConfigDict(extra="forbid")
 

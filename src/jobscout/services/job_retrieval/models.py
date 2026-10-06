@@ -1,4 +1,4 @@
-"""Proposed raw output contract for Group 5 review."""
+"""Raw job records, search results and errors returned by source adapters."""
 
 from pydantic import AwareDatetime, BaseModel, Field, JsonValue
 

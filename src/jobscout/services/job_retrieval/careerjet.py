@@ -100,7 +100,7 @@ class CareerjetAdapter:
             )
         result.candidate_count += min(len(records), 10)
         result.warnings.append(
-            f"{self.name}: source-native location/employment filters; description is an excerpt, not guaranteed full JD; first page only."
+            f"{self.name}: used Careerjet's location and employment filters; descriptions may be excerpts; fetched only the first page."
         )
         if request.employment_type == "internship":
             result.warnings.append(

@@ -1,4 +1,4 @@
-"""Provider telemetry without prompts, credentials, or model reasoning."""
+"""Model call counts, token usage and timing; excludes prompts, credentials and reasoning."""
 
 from pydantic import BaseModel, ConfigDict, Field
 

@@ -1,9 +1,9 @@
 """Paired retrieval-policy evaluation on explicitly synthetic source snapshots.
 
-Both policies execute the production SearchAgent and JobAssessmentService with the
-same tools, profiles, budgets and isolated caches. Live mode uses real model calls
-for assessment/review in both arms and native decisions in the adaptive arm.
-Authored replay checks orchestration only; it is not model-quality evidence.
+Both strategies run SearchAgent and JobAssessmentService with the same tools, profiles
+and limits, using separate caches. Live mode calls real models to assess jobs in both
+strategies and choose tools in the adaptive strategy.
+Authored replay checks the sequence of tool calls only; it does not measure model quality.
 """
 
 from __future__ import annotations
@@ -593,18 +593,18 @@ async def evaluate(
         "provenance": dataset["provenance"],
         "model_quality_evidence": mode == "live",
         "metric_definitions": {
-            "precision_at_n": "Relevant, hard-condition-compliant returned matches divided by returned matches (not padded to the target); null when no matches.",
-            "relevant_recall": "Correct returned identities divided by relevant confirmed identities reachable in at least one nonblocked source snapshot.",
-            "citation_correctness": "Exact excerpt presence in the referenced original document only; this does not measure semantic entailment or claim correctness.",
+            "precision_at_n": "Returned jobs that are relevant and meet confirmed search criteria divided by all returned jobs; null when no jobs are returned.",
+            "relevant_recall": "Correct returned job IDs divided by relevant job IDs available in at least one accessible source snapshot.",
+            "citation_correctness": "Whether each exact quote appears in the document it cites; this does not check whether the quote supports the conclusion.",
             "display_limit_filled": "The visible shortlist fills the requested display limit; this measures quantity, not usefulness.",
-            "useful_results_count": "Visible relevant jobs without known hard-condition violations, including jobs labeled with unknown conditions.",
-            "visible_relevant_recall": "Useful visible identities divided by reachable useful identities, including pending jobs.",
+            "useful_results_count": "Displayed relevant jobs with no known conflict with confirmed search criteria, including jobs with unclear work conditions.",
+            "visible_relevant_recall": "Useful displayed job IDs divided by available useful job IDs, including pending jobs.",
             "analysis_completion_rate": "Visible jobs with complete personal analysis divided by all visible jobs; null for no results.",
-            "first_result_seconds": "Time until the first source-backed job can be displayed, before analysis if necessary.",
+            "first_result_seconds": "Time until the first job fetched from a source can be displayed, even if its analysis is not yet complete.",
             "first_analysis_seconds": "Time until the first visible job has complete or partial personal analysis.",
             "direction_coverage": "Confirmed requested directions represented by correct returned matches divided by requested directions.",
         },
-        "comparison": "Same production agent loop, assessment service, source snapshots, semantic and decision models, 12-decision and candidate budgets; isolated providers, catalog and caches. Fixed control searches two predetermined pages and never enriches details. Adaptive live arm uses native model tool decisions.",
+        "comparison": "Both strategies use the same search agent, assessment service, saved source responses, models, 12-tool-decision limit and job limit, with separate providers, catalogs and caches. The fixed strategy searches two predetermined pages without fetching job details. In adaptive live mode, the model chooses which tools to call.",
         "budget_seconds_per_run": budget,
         "pairs": await asyncio.gather(*(paired(case) for case in cases)),
     }

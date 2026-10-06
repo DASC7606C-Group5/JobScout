@@ -1,4 +1,4 @@
-"""Native asynchronous public HTTP reads; cancellation covers I/O and retry waits."""
+"""Fetch public HTTP data asynchronously; cancellation stops requests and retry waits."""
 
 import asyncio
 import json

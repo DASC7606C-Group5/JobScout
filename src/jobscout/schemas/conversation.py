@@ -1,4 +1,4 @@
-"""Conversation, summary and source quotation contracts owned by the application."""
+"""Messages, search summaries and source quotes returned by the application."""
 
 from datetime import UTC, datetime
 from typing import Literal

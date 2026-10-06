@@ -1,4 +1,4 @@
-"""Closed, typed search capabilities. Tool arguments never grant new authority."""
+"""Allowed search tools and their arguments. Calls cannot change confirmed search criteria."""
 
 from typing import Any, Literal
 
@@ -31,31 +31,31 @@ class FinishSearch(ToolArguments):
 
 
 class ToolRegistry:
-    """A single registry drives native function schemas and server-side validation."""
+    """Define tool names and arguments for model calls and server-side validation."""
 
     definitions: dict[str, tuple[type[BaseModel], str]] = {
         "lookup_locations": (
             LocationLookup,
-            "Look up trusted location names and identities; does not change confirmed conditions.",
+            "Find location names and IDs in the catalog; keep the confirmed search criteria.",
         ),
         "search_jobs": (
             SearchJobs,
             "Search one supported source with equivalent job phrasing and a page. "
-            "Direction, location identities, and employment types must come from confirmed conditions.",
+            "Desired role, location IDs, and employment types must come from confirmed search criteria.",
         ),
         "fetch_job_details": (
             CandidateSelection,
-            "Fetch fuller source evidence for existing job IDs. No arbitrary URLs are accepted.",
+            "Fetch fuller job descriptions for existing job IDs. No arbitrary URLs are accepted.",
         ),
         "assess_candidates": (
             CandidateSelection,
-            "Analyze existing jobs using original evidence. Keep useful vacancies and supported partial conclusions; "
-            "personal skills and experience guide ranking, not hiring eligibility.",
+            "Compare existing jobs with the applicant using source documents. Keep useful jobs even if some comparisons are incomplete; "
+            "use skills and experience to order recommendations, not decide whom an employer will hire.",
         ),
         "finish_search": (
             FinishSearch,
             "Deliver useful results with results_ready even below the display limit. "
-            "Use target_reached for a filled display limit or source_exhausted for exhausted queries.",
+            "Use target_reached when the display limit is filled or source_exhausted when no useful queries remain.",
         ),
     }
 

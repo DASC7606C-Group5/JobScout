@@ -52,7 +52,7 @@ class FixtureWebClient:
             else "Data Analyst"
         )
         if parts.path not in self.data:
-            # Emulate native keyword search over synthetic records, not live data.
+            # Simulate the website's keyword search over test records.
             value = json.loads(json.dumps(value))
             if isinstance(value, dict):
                 if "zhaopin" in parts.netloc:

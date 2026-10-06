@@ -1,14 +1,14 @@
 """Normalize raw jobs, deduplicate postings, and classify freshness.
 
-It converts raw retrieval records into the shared ``JobPosting`` contract,
+It converts raw retrieval records into ``JobPosting`` objects,
 retains source-specific documents and all matched directions,
 merges cross-source duplicates while preserving every source link, and marks
 each posting as ``active`` / ``expired`` / ``unknown``. Freshness is never
 guessed: without explicit source data a posting stays ``unknown``.
 
-Missing-field handling follows the contract decision confirmed on 2026-09-30:
+Missing fields are handled as follows:
 
-- records missing any contract-required field (``title``, ``company``,
+- records missing any required field (``title``, ``company``,
   ``source_url``, ``target_direction``, ``fetched_at``) are
   dropped with a warning — a posting without them cannot be constructed,
   displayed, or deduplicated reliably;
@@ -34,7 +34,7 @@ from pydantic import ValidationError
 from jobscout.schemas.job import FreshnessStatus, JobPosting, SourceDocument
 from jobscout.services.job_retrieval.employment import source_employment_label
 
-# Text fields the frozen JobPosting contract requires; a raw record missing
+# Text fields JobPosting requires; a raw record missing
 # any of them is dropped with a warning. ``fetched_at`` is also required but
 # validated separately because it must parse as a datetime.
 _REQUIRED_TEXT_FIELDS = ("title", "company", "source_url", "target_direction")
@@ -168,7 +168,7 @@ def _dedup_key_part(value: str | None) -> str:
 
 
 def _parse_responsibilities(raw: dict[str, Any], description: str | None) -> list[str]:
-    """Preserve structured source facts; semantic JD extraction occurs in assessment."""
+    """Keep the source's fields; the assessment model reads the full job description later."""
     return _dedupe_keep_order(_clean_str_list(raw.get("responsibilities")))
 
 
@@ -259,7 +259,7 @@ def process_jobs(
         A :class:`ProcessingResult` of unified ``JobPosting`` objects and
         data-quality warnings; unpacks as ``jobs, warnings``.
 
-    Records missing a contract-required field (``title``, ``company``,
+    Records missing a required field (``title``, ``company``,
     ``source_url``, ``target_direction`` or a parseable
     ``fetched_at``) are dropped with one warning per record. Missing optional
     fields (``salary``, ``posted_at``, ``expiry_at``) stay ``None`` with a

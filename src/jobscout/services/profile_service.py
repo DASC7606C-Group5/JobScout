@@ -1,7 +1,7 @@
 """Validate profile inputs and normalize explicit lists.
 
-ConversationService owns semantic extraction through its structured AI provider.
-These helpers validate the input contract without guessing facts from CV text.
+ConversationService asks the model to read the resume and description.
+These helpers check field types without guessing facts from resume text.
 """
 
 from collections.abc import Iterable, Mapping
@@ -18,7 +18,7 @@ class InputFormatError(ValueError):
 
 
 class ResumeFile(TypedDict):
-    """Resume payload as produced by the frontend input contract."""
+    """Resume name and extracted text sent by the frontend."""
 
     name: str
     text: str

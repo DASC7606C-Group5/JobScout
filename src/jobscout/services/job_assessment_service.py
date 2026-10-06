@@ -1,4 +1,4 @@
-"""Session-local, source-checked model understanding and deterministic ranking."""
+"""Read job details, check model claims against source quotes, and order jobs for each session."""
 
 import asyncio
 import hashlib
@@ -351,7 +351,7 @@ def _validate_matches(
                 facts[identity]["field"] != "internships" for identity in item.experience_fact_ids
             )
         ):
-            raise _InvalidAssessment("work duration requires employment evidence")
+            raise _InvalidAssessment("work duration requires work-history facts and source quotes")
         if (
             item.level == "strong"
             and requirement.minimum_experience_months is not None
@@ -713,7 +713,7 @@ class JobAssessmentService:
                     self.diagnostics[str(job_id)] = AssessmentDiagnostic(
                         code="invalid_analysis",
                         stage=str(payload.get("task")),
-                        detail="Some conclusions could not be supported by the supplied evidence; repair only those conclusions.",
+                        detail="The supplied documents do not support some conclusions; correct only those conclusions.",
                         retryable=True,
                     )
             except _InvalidAssessment as error:
@@ -851,7 +851,7 @@ class JobAssessmentService:
                     self.diagnostics[job.job_id] = AssessmentDiagnostic(
                         code="condition_mismatch",
                         stage="conditions",
-                        detail="Source evidence contradicts the confirmed direction, location or employment conditions.",
+                        detail="Job details conflict with the confirmed direction, location or employment conditions.",
                         retryable=False,
                     )
             else:

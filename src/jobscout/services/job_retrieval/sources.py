@@ -95,7 +95,7 @@ def map_job(source: str, record: dict[str, JsonValue], page: Page, direction: st
 
 
 def matches_request(job: RawJob, request: SearchRequest) -> bool:
-    """Reject only verified native contradictions; semantics are assessed after retrieval."""
+    """Reject known location, employment or work-mode mismatches; check unclear text later."""
     from jobscout.services.location_service import get_location_catalog, within
 
     query = plan_source_query(request, job.source)
@@ -152,7 +152,7 @@ class FeedAdapter:
         result = SourceResult() if result is None else result
         label = f"{self.name}/{request.target_direction}"
         result.warnings.append(
-            f"{label}: bounded feed; native contradictions excluded, uncertain conditions retained for semantic assessment."
+            f"{label}: fetched a limited set of jobs; known work-condition mismatches excluded, unclear conditions kept for model review."
         )
         if self.name == "remotive":
             result.warnings.append(
@@ -206,7 +206,7 @@ class FeedAdapter:
                     f"{label}: using cached page {number}, fetched_at={page.fetched_at.isoformat()}."
                 )
             remaining = self.candidate_limit - result.candidate_count
-            # Literal overlap is a bounded retrieval priority, never proof of relevance.
+            # Use shared keywords to prioritize fetching jobs, not to decide whether they fit.
             prioritized = sorted(
                 enumerate(records[:remaining]),
                 key=lambda indexed: (

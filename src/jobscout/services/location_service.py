@@ -1,4 +1,4 @@
-"""Trusted geography catalogs and hierarchy comparisons for semantic search."""
+"""Look up places in published directories and compare cities, districts and regions."""
 
 import asyncio
 import json
@@ -321,7 +321,7 @@ class LocationCatalog:
     async def source_location(
         self, location: LocationRef, source: str, *, deadline: float | None = None
     ) -> LocationRef:
-        """Return a catalog copy enriched with a verified native city parameter."""
+        """Return a catalog copy with the city's verified search parameter for this website."""
         trusted = self.resolve(location.id)
         if trusted is None or trusted.model_dump(exclude={"source_codes"}) != location.model_dump(
             exclude={"source_codes"}

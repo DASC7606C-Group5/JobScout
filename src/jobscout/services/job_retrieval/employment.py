@@ -1,4 +1,4 @@
-"""Normalize native source labels; open-ended wording remains available for analysis."""
+"""Map website employment labels to allowed types and keep unfamiliar text for model review."""
 
 from collections.abc import Mapping
 

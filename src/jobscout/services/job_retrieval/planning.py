@@ -1,4 +1,4 @@
-"""Deterministic planning; input remains the team's SearchRequest."""
+"""Choose sources and build query parameters from a SearchRequest."""
 
 import re
 from dataclasses import dataclass
@@ -15,7 +15,7 @@ REGIONAL_SOURCES = {"hk": ("jobsdb",), "cn": ("zhaopin", "liepin", "shixiseng")}
 
 
 def location_region(location: str | None) -> str | None:
-    """Use only cached directory facts; semantic parsing belongs to the model."""
+    """Look up the region in the cached place directory; let the model interpret free text."""
     from jobscout.services.location_service import get_location_catalog
 
     candidates = get_location_catalog().find(location or "")
@@ -52,12 +52,12 @@ def validate_request(request: SearchRequest) -> None:
 
 
 def plan_keywords(request: SearchRequest) -> list[str]:
-    """Preserve supplied phrases; baseline is the direction itself, without LLM expansion."""
+    """Use supplied keywords, or the desired role when no keywords are provided."""
     return list(request.keywords) if request.keywords else [request.target_direction.strip()]
 
 
 def select_sources(request: SearchRequest) -> list[str]:
-    """Explicit selection wins; otherwise route by supported geographic coverage."""
+    """Use requested sources, or choose sources that serve the requested region."""
     if request.sources:
         return list(dict.fromkeys(request.sources))
     if request.location_unrestricted:
@@ -98,8 +98,8 @@ def plan_source_query(
     validate_request(request)
     if source not in FEED_SOURCES:
         raise RetrievalFailure("SEARCH_UNKNOWN_SOURCE", "Unknown job source.")
-    # One bounded snapshot serves all directions. Neither feed documents native
-    # location/employment filters. Do not send invented query parameters.
+    # Reuse one limited set of fetched jobs for all desired roles. Neither feed documents
+    # location/employment query parameters. Do not send invented parameters.
     params: dict[str, str | int] = (
         {"limit": candidate_limit} if source == "remotive" else {"page": page}
     )

@@ -1,4 +1,4 @@
-"""Recommendation contracts consumed by the frontend."""
+"""Recommended jobs and their explanations returned to the frontend."""
 
 from datetime import datetime
 from typing import Literal

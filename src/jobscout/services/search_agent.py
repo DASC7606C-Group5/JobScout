@@ -1,4 +1,4 @@
-"""Bounded, feedback-driven search using native model tool calls."""
+"""Let the model choose search tools from their results, within time and call limits."""
 
 import asyncio
 import inspect

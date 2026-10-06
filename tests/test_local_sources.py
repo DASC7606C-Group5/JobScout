@@ -371,7 +371,9 @@ def test_shixiseng_does_not_pad_results_with_unreadable_titles() -> None:
         ).search_async(req())
     )
     assert not result.jobs and not result.errors
-    assert any("unreadable-title" in w for w in result.warnings)
+    assert {(notice.code, notice.source) for notice in result.notices} == {
+        ("coverage_limited", "shixiseng")
+    }
 
 
 def test_original_description_survives_retrieval_for_semantic_relevance_review() -> None:

@@ -1,4 +1,4 @@
-"""Demand-driven China/Hong Kong retrieval, source mapping and hard-filter checks.
+"""Search China/Hong Kong job websites and check location and employment preferences.
 
 These are website interfaces, not promised public developer APIs. No ranking,
 cross-source deduplication, skill extraction or vacancy expiry inference here.
@@ -35,7 +35,7 @@ HOSTS = {
 
 
 def source_keywords(request: SearchRequest, source: str) -> list[str]:
-    """Semantic query phrasing is supplied by the search agent."""
+    """Use the search keywords supplied by the agent."""
     return plan_keywords(request)
 
 
@@ -75,7 +75,8 @@ def build_search_plan(
         and source not in ref.source_codes
     ):
         raise RetrievalFailure(
-            "SEARCH_LOCATION_UNSUPPORTED", "The source has no verified native parameter mapping."
+            "SEARCH_LOCATION_UNSUPPORTED",
+            "No verified search parameter is available for this location on the source website.",
         )
     if (
         source == "shixiseng"
@@ -167,7 +168,7 @@ def build_search_plan(
             "sourcesystem": "houston",
             "locale": "en-HK",
         }
-        # Native documented-by-website work-type IDs; internship is not part-time.
+        # Work-type IDs documented by the website; internship is not part-time.
         worktype = {"full time": "242", "part time": "243", "contract": "244"}.get(
             normalized(request.employment_type)
         )
@@ -460,7 +461,7 @@ def passes_location(job: RawJob, request: SearchRequest) -> bool:
     if request.location_unrestricted or request.location_ref is None:
         return True
     actual = get_location_catalog().find(job.location or "")
-    # An unresolved source string is assessed later with its original evidence.
+    # An unresolved location is assessed later using the original job details.
     if len(actual) != 1:
         return True
     wanted = request.location_ref
@@ -488,8 +489,8 @@ def observed_employment_type(job: RawJob) -> str | None:
 
 
 def passes_filters(job: RawJob, request: SearchRequest) -> bool:
-    # Native work-hours labels and contract kinds can coexist (a full-time
-    # internship). The semantic assessment evaluates all supplied evidence.
+    # Work-hours labels and employment types can coexist (a full-time
+    # internship). The model considers all supplied job details.
     return passes_location(job, request)
 
 
@@ -551,7 +552,7 @@ class LocalAdapter:
         build_search_plan(request, self.name)
         label = f"{self.name}/{request.target_direction}"
         result.warnings.append(
-            f"{label}: demand-driven source search; confirmed location/type constraints checked locally. Relevance/ranking belongs to Group 6."
+            f"{label}: searched the website for requested roles; location and employment preferences checked locally. Jobs are compared and ordered during recommendation."
         )
         if request.salary_range:
             result.warnings.append(
@@ -693,7 +694,7 @@ class LocalAdapter:
             ):
                 result.notices.append(make_notice("coverage_limited", source=self.name))
                 result.warnings.append(
-                    f"{label}: retrieval bound reached; results are not exhaustive (pages={number}, candidates={result.candidate_count})."
+                    f"{label}: reached a page or job limit; more jobs may be available (pages={number}, candidates={result.candidate_count})."
                 )
                 break
         if detail_count >= self.detail_limit and self.name != "zhaopin":
@@ -702,11 +703,11 @@ class LocalAdapter:
             )
         if filtered:
             result.warnings.append(
-                f"{label}: excluded {filtered} candidates with mismatching/unknown hard filters."
+                f"{label}: excluded {filtered} jobs that did not pass the location or employment checks."
             )
         if unreadable:
             result.notices.append(make_notice("coverage_limited", source=self.name))
             result.warnings.append(
-                f"{label}: omitted {unreadable} unreadable-title cards after bounded detail retrieval; coverage is incomplete, increase detail_limit to request more details."
+                f"{label}: omitted {unreadable} jobs whose titles could not be read within the detail request limit; increase detail_limit to fetch more details."
             )
         return result

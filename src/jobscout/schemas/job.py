@@ -1,4 +1,4 @@
-"""Normalized job posting contract shared across retrieval and recommendation."""
+"""Job posting fields shared by search and recommendation services."""
 
 from datetime import datetime
 from enum import StrEnum

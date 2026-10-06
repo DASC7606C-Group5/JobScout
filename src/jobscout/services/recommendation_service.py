@@ -1,4 +1,4 @@
-"""Profile guards, candidate eligibility, and evidence-validation primitives."""
+"""Check search preferences, remove duplicate jobs, and validate the applicant's profile."""
 
 import unicodedata
 from collections.abc import Sequence
@@ -10,7 +10,7 @@ from jobscout.services.location_service import get_location_catalog, within
 
 
 class RecommendationError(ValueError):
-    """A Python exception carrying the shared workflow error contract."""
+    """A Python exception containing a WorkflowError code, message and stage."""
 
     def __init__(self, code: str, message: str) -> None:
         self.error = WorkflowError(code=code, message=message, stage="recommend")
@@ -43,7 +43,7 @@ def _job_employment_type(job: JobPosting) -> str | None:
 
 
 def _preference_check(profile: UserProfile, job: JobPosting) -> tuple[bool, list[str]]:
-    """Reject only explicit catalog/native facts; unresolved semantics await analysis."""
+    """Reject known location or employment mismatches; leave unclear details for model analysis."""
     warnings: list[str] = []
     preferences = profile.preferences
     condition = preferences.locations
@@ -88,11 +88,11 @@ def _direction_matches(profile: UserProfile, job: JobPosting) -> bool:
 
 
 def eligible_jobs(profile: UserProfile, jobs: Sequence[JobPosting]) -> list[JobPosting]:
-    """Return unique eligible vacancies before result-count checks and model analysis.
+    """Return distinct jobs that can proceed to model analysis.
 
-    Only confirmed hard constraints exclude candidates. Unknown conditions remain
-    eligible; normalized company/title/location and source URLs prevent duplicates
-    from inflating the candidate count. Input objects are not changed.
+    Exclude jobs that are expired or do not meet confirmed role, location or employment preferences.
+    Keep jobs with unclear work conditions. Normalize company/title/location and compare source URLs
+    to prevent duplicates from inflating the candidate count. Input objects are not changed.
     """
     selected: list[JobPosting] = []
     seen_ids: set[str] = set()

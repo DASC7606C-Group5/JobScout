@@ -1,4 +1,4 @@
-"""Shared asynchronous web transport contract and response data."""
+"""Interfaces and response types for asynchronous web requests."""
 
 from dataclasses import dataclass
 from datetime import datetime

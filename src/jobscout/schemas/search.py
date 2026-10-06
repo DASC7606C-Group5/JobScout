@@ -1,4 +1,4 @@
-"""Search and clarification contracts exchanged by workflow and API layers."""
+"""Search requests, results and follow-up questions passed through the API."""
 
 from enum import StrEnum
 from typing import Literal

@@ -110,7 +110,7 @@ def read_json(path: Path) -> JsonObject:
 def verify_baseline(root: Path = DATA) -> None:
     manifest = read_json(root / "manifest.json")
     if manifest["baseline"]["commit"] != BASELINE_COMMIT:
-        raise ValueError("Baseline commit provenance changed")
+        raise ValueError("The recorded baseline commit changed")
     report_path = root / "results" / "baseline.json"
     if hashlib.sha256(report_path.read_bytes()).hexdigest() != BASELINE_REPORT_SHA256:
         raise ValueError("Frozen baseline report checksum mismatch")
@@ -121,7 +121,7 @@ def verify_baseline(root: Path = DATA) -> None:
         or manifest["baseline"]["files"] != BASELINE_HASHES
         or report["dataset_sha256"] != manifest["dataset_sha256"]
     ):
-        raise ValueError("Frozen baseline report provenance mismatch")
+        raise ValueError("The saved baseline report does not match its recorded commit")
 
 
 def _references_valid(
@@ -291,7 +291,7 @@ def ranking_metrics(case: ProfileCase, result: RecommendationResult) -> JsonObje
 
 
 def baseline_report(dataset: Dataset) -> JsonObject:
-    """Read the historical result without executing an obsolete application contract."""
+    """Read the saved result without running the older application code."""
     verify_baseline()
     report = read_json(DATA / "results" / "baseline.json")
     jobs = {row.job.job_id: row.job for row in dataset.vacancies}

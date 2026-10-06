@@ -1,4 +1,4 @@
-"""Model language interpretation with server-owned location identities."""
+"""Interpret search preferences with the model and look up location IDs on the server."""
 
 import json
 
