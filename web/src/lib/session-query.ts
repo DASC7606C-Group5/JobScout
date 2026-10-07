@@ -43,9 +43,6 @@ export function sessionQueryOptions(client: SessionClient, sessionId: string | n
     },
     enabled: sessionId !== null,
     staleTime: 30_000,
-    refetchInterval: (query) =>
-      query.state.status !== 'error' && query.state.data?.outcome === 'running' ? 1000 : false,
-    refetchIntervalInBackground: true,
     refetchOnWindowFocus: false,
     networkMode: 'always',
     retry: (failureCount, error) =>

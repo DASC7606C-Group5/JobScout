@@ -13,6 +13,7 @@ import type {
 import { SessionHttpError } from '../lib/session-client'
 import { latestSessionSnapshot, sessionKey, sessionQueryOptions } from '../lib/session-query'
 import { discardSessionDrafts, flushPendingDrafts } from './draft-navigation'
+import { useSessionStream } from './use-session-stream'
 import { historyKey } from './workspace-queries'
 
 type Command = (
@@ -132,6 +133,7 @@ export function useSessionWorkflow(
     enabled: sessionId !== null && !command.pending,
   })
   const session = query.data ?? null
+  const stream = useSessionStream(client, session, command.pending, query.error)
   const pending = preparing === origin || command.pending || query.isFetching
   const busy = pending || session?.outcome === 'running'
   const canEdit =
@@ -139,7 +141,7 @@ export function useSessionWorkflow(
     preparing !== origin &&
     !command.pending &&
     (session?.outcome !== 'running' || Boolean(session.run_id))
-  const error = command.error ?? query.error
+  const error = command.error ?? stream.error
   const recovery = recoveryFor(error)
   const outcome = session?.outcome
   useEffect(() => {
@@ -202,6 +204,7 @@ export function useSessionWorkflow(
   function refresh() {
     if (!sessionId || pending) return
     mutation.reset()
+    stream.retry()
     void query.refetch()
   }
 
@@ -221,7 +224,7 @@ export function useSessionWorkflow(
 
   function retry() {
     if (pending) return
-    if (recovery === 'refresh' || query.isError) refresh()
+    if (recovery === 'refresh' || stream.error) refresh()
     else if (recovery === 'correct') mutation.reset()
     else if (command.error && previous.current.has(key)) execute(previous.current.get(key)!)
     else if (session?.outcome === 'failed' && session.retryable) void answer({ action: 'retry' })

@@ -14,6 +14,12 @@ import type {
   SearchOptions,
 } from '../../src/lib/contracts'
 import { createRecommendationFixture, createSessionFixture } from '../fixtures'
+import { startSessionEvents } from './session-events-server'
+
+const eventServers: Awaited<ReturnType<typeof startSessionEvents>>[] = []
+test.afterEach(async () => {
+  await Promise.all(eventServers.splice(0).map((server) => server.close()))
+})
 
 const makeQuestion = (
   question_id: string,
@@ -46,7 +52,6 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
   const deleted: string[] = []
   let getCount = 0
   let createCount = 0
-  const getTimes: number[] = []
   const requests: ResumeSessionRequest[] = []
   const stopRequests: StopSessionRequest[] = []
   const createBodies: Record<string, unknown>[] = []
@@ -55,13 +60,16 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
   let conflict = false
   let failDraft = false
   let conflictDraft = false
-  let runningPolls = 0
-  let finish = snapshot
+  const events = await startSessionEvents((id) => sessions.get(id))
+  eventServers.push(events)
+  let completion: ReturnType<typeof setTimeout> | undefined
+  page.on('close', () => clearTimeout(completion))
   function store(session: ScoutSession) {
     sessions.set(session.session_id, structuredClone(session))
     const index = order.indexOf(session.session_id)
     if (index >= 0) order.splice(index, 1)
     order.unshift(session.session_id)
+    events.publish(session)
   }
   function summary(session: ScoutSession): SessionSummary {
     return {
@@ -157,9 +165,14 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
       return
     }
     const id = path.split('/')[2]
+    if (path.endsWith('/events')) {
+      await route.continue({ url: `${events.origin}${url.pathname}` })
+      return
+    }
     if (method === 'DELETE') {
       deleted.push(id!)
       sessions.delete(id!)
+      events.disconnect(id!)
       const index = order.indexOf(id!)
       if (index >= 0) order.splice(index, 1)
       for (const key of drafts.keys()) if (key.startsWith(`/sessions/${id}/`)) drafts.delete(key)
@@ -168,17 +181,12 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
     }
     if (method === 'GET') {
       getCount += 1
-      getTimes.push(Date.now())
       if (!sessions.has(id!)) {
         await route.fulfill({
           status: 404,
           json: { detail: { code: 'search_not_found', action: 'start_new_search' } },
         })
         return
-      }
-      if (id === snapshot.session_id && runningPolls > 0 && --runningPolls === 0) {
-        snapshot = structuredClone(finish)
-        sessions.set(id, snapshot)
       }
       await route.fulfill({ json: sessions.get(id!) })
       return
@@ -217,7 +225,7 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
         progress: { ...snapshot.progress, retrieval_stopped: true },
         stop_reason: 'user_stopped',
       }
-      runningPolls = 0
+      clearTimeout(completion)
       store(snapshot)
       await route.fulfill({ json: snapshot })
       return
@@ -247,7 +255,7 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
     }
     const revision = snapshot.revision + 1
     if (body.action === 'confirm_search') {
-      finish = {
+      const finish: ScoutSession = {
         ...snapshot,
         outcome: 'completed',
         current_stage: 'completed',
@@ -268,7 +276,7 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
         current_stage: 'search',
         run_id: `run-${revision}`,
       }
-      runningPolls = 2
+      completion = setTimeout(() => store(finish), 150)
     } else {
       const profile = structuredClone(snapshot.profile ?? createSessionFixture().profile)!
       if (body.search_options) profile.search_options = body.search_options
@@ -317,7 +325,7 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
     requests,
     stopRequests,
     createBodies,
-    getTimes,
+    events,
     draftRequests,
     historyRequests,
     deleted,
@@ -348,12 +356,7 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
     conflictNext: () => {
       conflict = true
     },
-    runFor: (polls: number, final: ScoutSession) => {
-      snapshot = { ...snapshot, outcome: 'running', current_stage: 'extract' }
-      if (sessions.has(snapshot.session_id)) sessions.set(snapshot.session_id, snapshot)
-      runningPolls = polls
-      finish = final
-    },
+    publish: store,
   }
 }
 
@@ -628,11 +631,11 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
   finished.stop_reason = 'user_stopped'
   finished.progress = { ...finished.progress, sequence: 4, retrieval_stopped: true }
   finished.recommendation!.pending_jobs[0]!.review_status = 'reviewed'
-  state.runFor(1, finished)
+  state.publish(finished)
   await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toContainText(
     'Reviewed',
   )
-  expect(state.getCount()).toBeGreaterThan(reads)
+  expect(state.getCount()).toBe(reads)
   await page.getByRole('button', { name: 'View job: Pending Engineer' }).click()
   await expect(page).toHaveURL(/job=pending-job/)
   await expect(page.getByRole('heading', { name: 'Pending Engineer', exact: true })).toBeVisible()
@@ -724,7 +727,7 @@ test('final results preserve an open job and saved selection from an early previ
   better.job = { ...better.job, job_id: 'better-engineer', title: 'Better Engineer' }
   improved.recommendation!.jobs = [better, ...improved.recommendation!.jobs.slice(1)]
   improved.progress.analyzed_count = 26
-  state.runFor(1, improved)
+  state.publish(improved)
   await expect(
     page.getByRole('button', { name: 'View job: Better Engineer', exact: true }),
   ).toHaveCount(0)
@@ -738,7 +741,7 @@ test('final results preserve an open job and saved selection from an early previ
   finished.outcome = 'completed'
   finished.current_stage = 'completed'
   finished.stop_reason = 'results_ready'
-  state.runFor(1, finished)
+  state.publish(finished)
   await expect(
     page.getByRole('button', { name: 'View job: Better Engineer', exact: true }),
   ).toBeVisible()
@@ -821,7 +824,7 @@ test('screening activity archives rejected jobs and automatically reveals comple
   reviewed.progress.activity[0]!.recommendation_fit = 'recommended'
   reviewed.progress.activity[6]!.status = 'excluded'
   reviewed.progress.activity[6]!.sequence = 2
-  state.runFor(1, reviewed)
+  state.publish(reviewed)
   await expect(recent.locator('[data-job-id="excluded-role"]')).toHaveAttribute(
     'data-status',
     'excluded',
@@ -842,7 +845,7 @@ test('screening activity archives rejected jobs and automatically reveals comple
   const completed = structuredClone(reviewed)
   completed.outcome = 'completed'
   completed.current_stage = 'completed'
-  state.runFor(1, completed)
+  state.publish(completed)
   await expect(
     page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
   ).toBeVisible()
@@ -982,8 +985,7 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
   expect(state.requests[1]?.profile_updates).toEqual({ skills: ['React', 'TypeScript'] })
   await page.getByRole('button', { name: 'Confirm and search' }).click()
   await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
-  expect(state.getTimes.length).toBe(2)
-  expect(state.getTimes[1]! - state.getTimes[0]!).toBeGreaterThanOrEqual(850)
+  expect(state.getCount()).toBe(0)
   const count = state.getCount()
   await page.waitForTimeout(1300)
   expect(state.getCount()).toBe(count)
@@ -1038,18 +1040,84 @@ test('network retry reuses create request ID; 409 refreshes instead of replaying
   expect(state.requests[1]?.request_id).not.toBe(state.requests[0]?.request_id)
 })
 
-test('reload recovers by ID; running polls once a second and delete prevents restoration', async ({
+test('SSE reconnects to current progress without polling and closes on navigation and completion', async ({
   page,
 }) => {
-  const state = await mockSessions(page)
-  state.runFor(50, createSessionFixture())
+  const running = createSessionFixture({
+    outcome: 'running',
+    current_stage: 'search',
+    run_id: 'run-sse',
+  })
+  running.progress.activity = [
+    {
+      sequence: 1,
+      job_id: 'sse-candidate',
+      title: 'Streamed role',
+      company: 'Example',
+      location: 'Remote',
+      status: 'found',
+      recommendation_fit: 'unknown',
+    },
+  ]
+  const state = await mockSessions(page, running)
+  state.seedSession(running)
+  await page.goto('/searches/session-1')
+  const row = page.locator('[data-job-id="sse-candidate"]')
+  await expect(row).toHaveAttribute('data-status', 'found')
+  await expect.poll(state.events.active).toBe(1)
+  const reads = state.getCount()
+  const reviewed = structuredClone(running)
+  reviewed.progress.sequence = 2
+  reviewed.progress.activity[0]!.sequence = 2
+  reviewed.progress.activity[0]!.status = 'reviewing'
+  state.publish(reviewed)
+  await expect(row).toHaveAttribute('data-status', 'reviewing')
+  await page.waitForTimeout(1300)
+  expect(state.getCount()).toBe(reads)
+  const connected = state.events.connections.length
+  state.events.disconnect('session-1')
+  reviewed.progress.sequence = 3
+  reviewed.progress.activity[0]!.status = 'reviewed'
+  reviewed.progress.activity[0]!.recommendation_fit = 'recommended'
+  state.publish(reviewed)
+  await expect.poll(() => state.events.connections.length).toBeGreaterThan(connected)
+  await expect(row).toHaveAttribute('data-status', 'reviewed')
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
+  await expect.poll(state.events.active).toBe(0)
+  await returnToSearch(page)
+  await expect.poll(state.events.active).toBe(1)
+  const final = {
+    ...reviewed,
+    outcome: 'completed' as const,
+    current_stage: 'completed',
+    recommendation: resultSession().recommendation,
+  }
+  state.publish(final)
+  await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
+  await expect.poll(state.events.active).toBe(0)
+  const connections = state.events.connections.length
+  await page.waitForTimeout(400)
+  expect(state.events.connections.length).toBe(connections)
+})
+
+test('reload recovers the stream by ID and delete prevents restoration', async ({ page }) => {
+  const state = await mockSessions(
+    page,
+    createSessionFixture({ outcome: 'running', current_stage: 'extract' }),
+  )
   await introduce(page)
   await expect(page.getByRole('heading', { name: 'Reviewing your experience' })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Reviewing your experience' })).toBeVisible()
   expect(state.createCount()).toBe(1)
+  await expect.poll(state.events.active).toBe(1)
+  const reads = state.getCount()
+  await page.waitForTimeout(1300)
+  expect(state.getCount()).toBe(reads)
   await deleteSearch(page)
   await expect(page.getByRole('button', { name: 'Analyze and continue' })).toBeVisible()
+  await expect.poll(state.events.active).toBe(0)
   const count = state.getCount()
   await page.waitForTimeout(1300)
   expect(state.getCount()).toBe(count)

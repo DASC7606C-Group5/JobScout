@@ -148,7 +148,9 @@ for (const complete of [true, false]) {
     const id = await createFromForm(page, complete)
     try {
       if (!complete) {
-        await expect(page.getByRole('heading', { name: 'Tell us a little more' })).toBeVisible({
+        await expect(
+          page.getByRole('heading', { name: 'Tell us a little more', exact: true }),
+        ).toBeVisible({
           timeout: 15_000,
         })
         await page.getByRole('checkbox', { name: 'Data Analyst', exact: true }).check()

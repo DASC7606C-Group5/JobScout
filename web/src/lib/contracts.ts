@@ -303,6 +303,13 @@ export interface ScoutSession {
 export interface SessionClient {
   start: (input: CreateSessionRequest, signal?: AbortSignal) => Promise<ScoutSession>
   get: (sessionId: string, signal?: AbortSignal) => Promise<ScoutSession>
+  subscribe: (
+    sessionId: string,
+    handlers: {
+      onSnapshot: (session: ScoutSession) => void
+      onError: (error: Error) => void
+    },
+  ) => () => void
   answer: (
     sessionId: string,
     request: ResumeSessionRequest,

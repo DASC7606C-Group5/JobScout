@@ -1,8 +1,11 @@
 """HTTP routes expose accepted snapshots; operations run outside request lifetimes."""
 
+import asyncio
+from collections.abc import AsyncIterator
 from typing import cast
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 
 from jobscout.schemas.session import (
     SessionCreateRequest,
@@ -50,6 +53,38 @@ async def get_session(request: Request, session_id: str) -> SessionResponse:
         return await _service(request).get(session_id)
     except SessionOperationError as error:
         raise HTTPException(error.status, public_error(error.code).model_dump()) from error
+
+
+@router.get("/sessions/{session_id}/events")
+async def session_events(request: Request, session_id: str) -> StreamingResponse:
+    service = _service(request)
+    try:
+        queue = await service.subscribe(session_id)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
+
+    async def events() -> AsyncIterator[str]:
+        try:
+            yield "retry: 1500\n\n"
+            while True:
+                try:
+                    snapshot = await asyncio.wait_for(queue.get(), timeout=15)
+                except TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+                if snapshot is None:
+                    return
+                yield f"event: snapshot\ndata: {snapshot.model_dump_json()}\n\n"
+                if snapshot.outcome != "running":
+                    return
+        finally:
+            service.unsubscribe(session_id, queue)
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post(

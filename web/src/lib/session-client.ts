@@ -6,6 +6,7 @@ import {
   type ApplicantErrorCode,
 } from './applicant-errors'
 import type { SessionClient } from './contracts'
+import { subscribeToSession } from './session-events'
 import { isSessionResponse } from './session-response'
 
 export class SessionHttpError extends Error {
@@ -67,6 +68,7 @@ export function createSessionClient(
   return {
     start: (input, signal) => session('/sessions', 'POST', input, signal),
     get: (id, signal) => session(pathFor(id), 'GET', undefined, signal),
+    subscribe: (id, handlers) => subscribeToSession(`${base}${pathFor(id)}/events`, id, handlers),
     answer: (id, request, signal) => session(`${pathFor(id)}/resume`, 'POST', request, signal),
     stop: (id, request, signal) => session(`${pathFor(id)}/stop`, 'POST', request, signal),
     delete: async (id, signal) => {

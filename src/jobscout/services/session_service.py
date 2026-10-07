@@ -117,6 +117,39 @@ class SessionService:
         self.creation_requests: dict[str, tuple[str, str]] = {}
         self.lock = asyncio.Lock()
         self.closing = False
+        self.subscribers: dict[str, set[asyncio.Queue[SessionResponse | None]]] = {}
+
+    async def subscribe(self, session_id: str) -> asyncio.Queue[SessionResponse | None]:
+        """Register and capture the current snapshot under the same lock as updates."""
+        async with self.lock:
+            record = self._get(session_id)
+            if self.closing:
+                raise SessionOperationError(503, "Service is closing.", code="service_unavailable")
+            queue: asyncio.Queue[SessionResponse | None] = asyncio.Queue(maxsize=16)
+            queue.put_nowait(self._response(record).model_copy(deep=True))
+            self.subscribers.setdefault(session_id, set()).add(queue)
+            return queue
+
+    def unsubscribe(self, session_id: str, queue: asyncio.Queue[SessionResponse | None]) -> None:
+        listeners = self.subscribers.get(session_id)
+        if listeners is not None:
+            listeners.discard(queue)
+            if not listeners:
+                self.subscribers.pop(session_id, None)
+
+    def _notify(self, record: _Session) -> None:
+        listeners = self.subscribers.get(record.session_id)
+        if not listeners:
+            return
+        snapshot = (
+            None if record.deleted or self.closing else self._response(record).model_copy(deep=True)
+        )
+        for queue in listeners:
+            # Slow readers recover to the latest state without delaying the search.
+            if queue.full() or snapshot is None:
+                while not queue.empty():
+                    queue.get_nowait()
+            queue.put_nowait(snapshot)
 
     async def open(self) -> None:
         """Recover checkpoints without invoking providers or restarting accepted work."""
@@ -379,6 +412,7 @@ class SessionService:
             if previous_task is not None:
                 previous_task.cancel()
             self._start(record, next_input, previous_task=previous_task)
+            self._notify(record)
             return self._response(record)
 
     @staticmethod
@@ -499,6 +533,7 @@ class SessionService:
                 record.updated_at = previous_updated_at
                 raise
             record.stop_event.set()
+            self._notify(record)
             response = self._response(record)
         return response
 
@@ -577,6 +612,7 @@ class SessionService:
             except Exception:
                 record.state = previous
                 raise
+            self._notify(record)
 
     async def history(
         self, *, cursor: str | None = None, limit: int = 20
@@ -647,6 +683,7 @@ class SessionService:
                 record.deleted = previous_deleted
                 record.state = previous_state
                 raise
+            self._notify(record)
             task = record.task
             if task is not None:
                 task.cancel()
@@ -668,6 +705,7 @@ class SessionService:
         self.closing = True
         tasks = []
         for record in self.sessions.values():
+            self._notify(record)
             if record.task is not None:
                 record.task.cancel()
                 tasks.append(record.task)
@@ -684,6 +722,7 @@ class SessionService:
             await self._cleanup_session(record.session_id)
         self.sessions.clear()
         self.creation_requests.clear()
+        self.subscribers.clear()
 
     def _get(self, session_id: str) -> _Session:
         record = self.sessions.get(session_id)
@@ -754,6 +793,7 @@ class SessionService:
                 if record.outcome in {"paused", "completed"}:
                     record.state.pop("accepted_resume", None)
                 await self._persist(record)
+                self._notify(record)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -787,6 +827,7 @@ class SessionService:
                 record.outcome = "failed"
                 self._retain_accepted_command(record)
                 await self._persist(record)
+                self._notify(record)
 
     def _response(self, record: _Session) -> SessionResponse:
         state = record.state
