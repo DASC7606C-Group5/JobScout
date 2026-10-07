@@ -50,7 +50,7 @@ export function ConversationHistory({
     <div
       role="log"
       aria-label="Conversation history"
-      className={`space-y-4 ${collapsed ? 'collapse-content px-5 sm:px-7' : 'p-5 sm:p-7'}`}
+      className={`space-y-4 ${collapsed ? 'collapse-content px-5 sm:px-6' : 'p-5 sm:p-6'}`}
     >
       {messages.map((message) => (
         <div
@@ -78,8 +78,8 @@ export function ConversationHistory({
       {history}
     </details>
   ) : (
-    <section className="card mb-5 border border-base-300 bg-base-100 shadow-sm">
-      <h2 className="flex items-center gap-2 border-b border-base-300 px-5 py-4 text-sm font-semibold sm:px-7">
+    <section className="card mb-5 border border-base-300 bg-base-100">
+      <h2 className="flex items-center gap-2 border-b border-base-300 p-5 text-sm font-semibold sm:p-6">
         <Icon name="sparkles" size={16} />
         Conversation
       </h2>

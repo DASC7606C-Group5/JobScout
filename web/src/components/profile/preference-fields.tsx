@@ -110,7 +110,7 @@ export function PreferenceFields() {
           value={workMode.value ?? ''}
           className="select w-full border border-base-300 bg-base-100 text-sm"
         >
-          <option value="">No preference</option>
+          <option value="">Not provided</option>
           <option value="onsite">On-site</option>
           <option value="hybrid">Hybrid</option>
           <option value="remote">Remote</option>

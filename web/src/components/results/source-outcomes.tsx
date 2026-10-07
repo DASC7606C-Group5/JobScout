@@ -24,10 +24,10 @@ export function SourceOutcomes({ outcomes }: { outcomes: SourceOutcome[] }) {
   return (
     <details className="collapse-arrow collapse border border-base-300 bg-base-100">
       <summary className="collapse-title text-sm font-medium">Sources and search coverage</summary>
-      <div className="collapse-content">
+      <div className="collapse-content px-0">
         <ul className="divide-y divide-base-300 text-xs leading-6 text-base-content/70">
           {[...rows].map(([key, outcome]) => (
-            <li key={key} className="py-3 first:pt-0 last:pb-0">
+            <li key={key} className="px-4 py-3 first:pt-0 last:pb-0">
               <div className="space-y-1 sm:flex sm:items-start sm:justify-between sm:gap-3 sm:space-y-0">
                 <p className="font-medium break-words text-base-content">
                   {sourceLabel(outcome.source)} · {outcome.target_direction}

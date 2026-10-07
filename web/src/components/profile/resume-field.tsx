@@ -13,7 +13,10 @@ export function ResumeField({
   reading: boolean
   onReadingChange: (reading: boolean) => void
 }) {
-  const { control } = useFormContext<ProfileFormValues>()
+  const {
+    control,
+    formState: { errors },
+  } = useFormContext<ProfileFormValues>()
   const resume = useWatch({ control, name: 'resume' })
   const [dragging, setDragging] = useState(false)
   const { fileRef, attach, remove } = useResumeUpload(onReadingChange)
@@ -29,78 +32,70 @@ export function ResumeField({
           void attach(event.target.files?.[0])
         }}
       />
-      <button
-        type="button"
-        disabled={reading}
-        aria-label={resume ? `Remove resume: ${resume.name}` : 'Add a PDF, DOCX, or TXT resume'}
-        aria-describedby="profile-error"
-        className={`group flex w-full cursor-pointer items-center gap-4 rounded-field border border-dashed p-4 text-left transition-colors disabled:cursor-wait ${resume ? 'border-base-content/20 bg-base-200/20 hover:border-error hover:bg-error/10 hover:text-error focus-visible:border-error focus-visible:bg-error/10 focus-visible:text-error' : dragging ? 'border-primary-content bg-primary/15' : 'border-base-content/20 bg-base-200/20 hover:bg-base-200/45'}`}
-        onClick={() => {
-          if (resume) remove()
-          else fileRef.current?.click()
-        }}
-        onDragOver={(event) => {
-          event.preventDefault()
-          if (!resume && !reading) setDragging(true)
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          event.preventDefault()
-          setDragging(false)
-          if (!resume && !reading) void attach(event.dataTransfer.files[0])
-        }}
-      >
-        <span
-          className={`flex size-10 shrink-0 items-center justify-center rounded-full bg-base-100 transition-colors ${resume ? 'group-hover:bg-error/10 group-focus-visible:bg-error/10' : ''}`}
+      {resume ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-field border border-base-300 px-6 py-4">
+          <Icon name="file" className="shrink-0 text-primary-content" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium break-all">{resume.name}</p>
+            <output className="mt-1 block text-xs text-base-content/65">
+              {reading ? 'Parsing resume…' : 'Resume added'}
+            </output>
+          </div>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={reading}
+              onClick={() => fileRef.current?.click()}
+            >
+              Replace
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              disabled={reading}
+              aria-label={`Remove resume: ${resume.name}`}
+              onClick={remove}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          disabled={reading}
+          aria-label="Add a PDF, DOCX, or TXT resume"
+          aria-describedby="resume-error"
+          className={`flex w-full items-center gap-3 rounded-field border border-dashed px-6 py-4 text-left disabled:cursor-wait ${dragging ? 'border-primary-content bg-primary/15' : 'border-base-content/20 hover:bg-base-200/45'}`}
+          onClick={() => fileRef.current?.click()}
+          onDragOver={(event) => {
+            event.preventDefault()
+            if (!reading) setDragging(true)
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault()
+            setDragging(false)
+            if (!reading) void attach(event.dataTransfer.files[0])
+          }}
         >
-          {resume ? (
-            <>
-              <Icon name="file" className="group-hover:hidden group-focus-visible:hidden" />
-              <Icon name="close" className="hidden group-hover:block group-focus-visible:block" />
-            </>
-          ) : (
-            <Icon name="upload" />
-          )}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">
-            {reading ? (
-              'Parsing resume…'
-            ) : resume ? (
-              <>
-                <span className="block truncate group-hover:hidden group-focus-visible:hidden">
-                  {resume.name}
-                </span>
-                <span className="hidden group-hover:block group-focus-visible:block">
-                  Remove resume
-                </span>
-              </>
-            ) : (
-              'Add a resume or drop it here'
-            )}
+          <Icon name="upload" className="shrink-0" />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">
+              {reading ? 'Parsing resume…' : 'Add a resume or drop it here'}
+            </span>
+            <span className="mt-1 block text-xs text-base-content/65">
+              PDF / DOCX / TXT · Up to 10 MB
+            </span>
           </span>
-          <span
-            className={`mt-1 block truncate text-xs text-base-content/55 ${resume ? 'group-hover:text-error group-focus-visible:text-error' : ''}`}
-          >
-            {resume ? (
-              <>
-                <span className="group-hover:hidden group-focus-visible:hidden">Resume added</span>
-                <span className="hidden truncate group-hover:block group-focus-visible:block">
-                  {resume.name}
-                </span>
-              </>
-            ) : (
-              'PDF / DOCX / TXT · Up to 10 MB · Optional'
-            )}
-          </span>
-        </span>
-        {resume && (
-          <Icon
-            name="check"
-            className="shrink-0 text-primary-content group-hover:hidden group-focus-visible:hidden"
-          />
-        )}
-      </button>
+        </button>
+      )}
+      {errors.root?.resume && (
+        <p id="resume-error" role="alert" className="mt-2 text-sm text-error">
+          {errors.root.resume.message}
+        </p>
+      )}
     </div>
   )
 }

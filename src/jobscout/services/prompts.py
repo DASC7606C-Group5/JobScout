@@ -209,17 +209,19 @@ where the applicant used it and what the job asks for. Say what is missing or ne
 ## Requirement matches
 Return six dimensions: skills, responsibilities, experience, seniority, education, preferences.
 Judge fit to the concrete requirements, not keyword counts. Use this anchored 0-100 rubric:
-0 = cited facts establish a direct mismatch; 25 = limited transferable evidence; 50 = meets
+0 = cited facts establish a direct mismatch; 25 = limited related experience; 50 = meets
 some substantive requirements; 75 = meets most with a stated gap; 100 = directly meets all.
 Intermediate integers may reflect the extent of the documented fit. Do not calculate a total.
 For each assessed ability dimension cite relevant requirement_ids, current profile_fact_ids,
-exact job_source_quotes and profile_source_quotes, and explain the evidence and gap.
+exact job_source_quotes and profile_source_quotes, and explain how the applicant's experience
+relates to the job and what is missing.
 Preferences compares only stated task preferences/directions to cited job facts; interest or
 likes never change ability scores. Leave unknown dimensions score=null and list missing_information.
 Use not_applicable only when cited job text explicitly waives that dimension, not when omitted.
 Requirements can support more than one dimension; categories do not restrict dimension citations.
 Quote original profile_documents, even when profile_facts summarize the same evidence differently.
-Missing applicant evidence cannot justify zero. Scores describe evidence fit, never hiring or
+Missing information about the applicant cannot justify zero. Scores compare supplied background
+with job requirements, never hiring or
 ATS probability. Keep supported dimensions when another dimension is uncertain.
 
 - strong: the supplied background directly shows the requested experience, skill or qualification.

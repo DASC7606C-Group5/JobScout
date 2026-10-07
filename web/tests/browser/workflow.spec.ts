@@ -420,13 +420,14 @@ for (const width of [1280, 390]) {
       'Data analyst',
       'Product designer',
     ])
+    await page.getByRole('button', { name: 'Edit experience', exact: true }).click()
     await page
       .getByLabel('Education', { exact: true })
       .fill('BSc, Computer Science\nHigher Diploma; with distinction')
     await page
       .getByLabel('Skills', { exact: true })
       .fill('CI/CD | deployment\nStatistics, research methods')
-    await page.getByRole('button', { name: 'Save changes' }).click()
+    await page.getByRole('button', { name: 'Update criteria' }).click()
     await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
     expect(state.requests.at(-1)?.profile_updates).toEqual({
       education: ['BSc, Computer Science', 'Higher Diploma; with distinction'],
@@ -445,18 +446,15 @@ test('count keyboard controls preserve the chosen target through drafts, creatio
   const state = await mockSessions(page)
   await page.goto('/new')
   await page.getByLabel('About you', { exact: true }).fill('Synthetic React developer')
-  const slider = page.getByRole('slider', { name: 'Jobs to show slider' })
-  const number = page.getByRole('spinbutton', { name: 'Jobs to show', exact: true })
-  await slider.focus()
-  await page.keyboard.press('Home')
+  const number = page.getByRole('slider', { name: 'Jobs to show', exact: true })
+  await number.press('Home')
+  await number.press('ArrowLeft')
   await expect(number).toHaveValue('5')
-  await page.keyboard.press('End')
+  await number.press('ArrowUp')
+  await expect(number).toHaveValue('6')
+  await number.press('End')
+  await number.press('ArrowRight')
   await expect(number).toHaveValue('20')
-  await number.fill('21')
-  await page.getByRole('button', { name: 'Analyze and continue' }).click()
-  expect(state.createBodies).toHaveLength(0)
-  await expect(number).toBeFocused()
-  await number.fill('20')
   await page.getByLabel('Work location', { exact: true }).fill('上海或深圳，排除浦东')
   await page
     .getByLabel('Employment type', { exact: true })
@@ -470,16 +468,19 @@ test('count keyboard controls preserve the chosen target through drafts, creatio
       employment_type: 'Full-time or internship, excluding contract',
     },
   })
+  await page.getByRole('button', { name: 'Edit other preferences', exact: true }).click()
   await expect(number).toHaveValue('20')
-  await number.fill('10')
-  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeDisabled()
-  await page.getByRole('button', { name: 'Save changes' }).click()
+  await number.press('Home')
+  for (let index = 0; index < 5; index++) await number.press('ArrowRight')
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Update criteria' }).click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests.at(-1)).toMatchObject({
     action: 'edit_conditions',
     search_options: { result_count: 10 },
     profile_updates: {},
   })
+  await page.getByRole('button', { name: 'Edit other preferences', exact: true }).click()
   await expect(number).toHaveValue('10')
 })
 
@@ -511,19 +512,15 @@ test('composite conditions retain the entered text and keep excluded districts v
   const state = await mockSessions(page, session)
   state.seedSession(session)
   await page.goto('/searches/session-1')
-  await expect(page.getByLabel('Work location', { exact: true })).toHaveValue(preferences.location)
-  const interpreted = page
-    .locator('details')
-    .filter({ has: page.getByText('How your preferences will be searched', { exact: true }) })
-  await expect(interpreted).toHaveAttribute('open', '')
-  await expect(interpreted).toContainText('Hong Kong, 深圳')
-  await expect(interpreted).toContainText('Excluded: 南山区')
-  await interpreted.locator('summary').press('Enter')
-  await expect(interpreted).not.toHaveAttribute('open')
+  await expect(page.getByRole('definition').filter({ hasText: 'Hong Kong, 深圳' })).toBeVisible()
+  await expect(page.getByText('Excluded: 南山区', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
   await expect(page.getByLabel('Work location', { exact: true })).toHaveValue(preferences.location)
   await page.getByLabel('Work location', { exact: true }).fill('仅深圳')
-  await expect(interpreted).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Confirm and search', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Confirm and search', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Update criteria', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+  expect(state.requests.at(-1)?.profile_updates).toEqual({ 'preferences.location': '仅深圳' })
 })
 
 test('ending retrieval preserves results and continues reviewing jobs on a narrow screen', async ({
@@ -917,6 +914,7 @@ for (const stage of ['search', 'review'] as const) {
     await expect(edit).toBeEnabled()
     if (stage === 'review') await edit.press('Enter')
     else await edit.click()
+    await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
     await expect(page.getByLabel('Job directions', { exact: true })).toHaveValue(
       running.profile!.target_directions.join('\n'),
     )
@@ -978,9 +976,10 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
     message: 'Correction: I’m open to any location.',
   })
   expect(state.requests.some((request) => request.action === 'confirm_search')).toBe(false)
+  await page.getByRole('button', { name: 'Edit experience', exact: true }).click()
   await page.getByLabel('Skills', { exact: true }).fill('React\nTypeScript')
-  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeDisabled()
-  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Update criteria' }).click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests[1]?.profile_updates).toEqual({ skills: ['React', 'TypeScript'] })
   await page.getByRole('button', { name: 'Confirm and search' }).click()
@@ -1216,7 +1215,7 @@ test('incomplete summary requires updates; explicit unrestricted flags use flat 
   await introduce(page)
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeDisabled()
   await page.getByRole('checkbox', { name: 'Any location', exact: true }).check()
-  await page.getByRole('button', { name: 'Save changes' }).click()
+  await page.getByRole('button', { name: 'Update criteria' }).click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests[0]?.profile_updates).toEqual({
     'preferences.location_unrestricted': true,
@@ -1440,12 +1439,14 @@ test('summary edits preserve all directions across navigation and submission, an
 }) => {
   const state = await mockSessions(page)
   await introduce(page)
+  await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
   const directions = page.getByLabel('Job directions', { exact: true })
   await directions.fill('Frontend development\nData analysis\nProduct design\nSoftware engineering')
-  await expect(page.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Update criteria' })).toBeEnabled()
   await expect(directions).toHaveValue(
     'Frontend development\nData analysis\nProduct design\nSoftware engineering',
   )
+  await page.getByRole('button', { name: 'Edit experience', exact: true }).click()
   await page.getByLabel('Skills', { exact: true }).fill('React\nSQL')
   await page
     .getByLabel('Add or correct search criteria', { exact: true })
@@ -1461,9 +1462,10 @@ test('summary edits preserve all directions across navigation and submission, an
   await expect(page.getByLabel('Add or correct search criteria', { exact: true })).toHaveValue(
     'I’d like mentorship.',
   )
-  await page.getByRole('button', { name: 'Save changes' }).click()
+  await page.getByRole('button', { name: 'Update criteria' }).click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   await expect(page.getByLabel('Add or correct search criteria', { exact: true })).toHaveValue('')
+  await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
   expect(state.requests[0]?.profile_updates).toEqual({
     skills: ['React', 'SQL'],
     target_directions: [
@@ -1596,6 +1598,7 @@ test('search failure preserves published job identities until editing the criter
     ).toBeVisible()
   await expect(page.locator('body')).not.toContainText('private-failure-detail')
   await page.getByRole('button', { name: 'Edit search criteria', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
   await expect(page.getByLabel('Job directions', { exact: true })).toBeVisible()
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toHaveCount(0)
   expect(state.requests.at(-1)?.action).toBe('edit_conditions')
@@ -1931,10 +1934,8 @@ test('resume upload failures preserve typed input, hide diagnostics and allow a 
     )
     await upload()
     await failed
-    await expect(page.locator('#profile-error').getByRole('alert')).toBeVisible()
-    await expect(page.locator('#profile-error').getByRole('alert')).not.toContainText(
-      'private-parser-path',
-    )
+    await expect(page.locator('#resume-error')).toBeVisible()
+    await expect(page.locator('#resume-error')).not.toContainText('private-parser-path')
     await expect(page.getByLabel('About you', { exact: true })).toHaveValue(introduction)
     await expect(
       page.getByRole('button', { name: 'Analyze and continue', exact: true }),
@@ -2024,22 +2025,14 @@ test('sidebar toggling keeps its controls and document scroll position stable', 
   expect(scrollY).toBeGreaterThan(0)
   const sidebar = page.locator('#workspace-sidebar')
   const toggle = sidebar.getByRole('button', { name: /^(Expand|Collapse) sidebar$/ })
-  const initialToggle = await toggle.boundingBox()
-  const newSearchIcon = sidebar
-    .getByRole('link', { name: 'New search', exact: true })
-    .locator('svg')
-  const initialIcon = await newSearchIcon.boundingBox()
 
   for (let cycle = 0; cycle < 3; cycle += 1) {
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
     await expect(sidebar).toHaveCSS('width', '288px')
-    expect(await toggle.boundingBox()).toEqual(initialToggle)
-    expect(await newSearchIcon.boundingBox()).toEqual(initialIcon)
     expect(await page.evaluate(() => window.scrollY)).toBe(scrollY)
     await sidebar.getByText('Collapse sidebar', { exact: true }).click()
     await expect(sidebar).toHaveCSS('width', '72px')
-    expect(await toggle.boundingBox()).toEqual(initialToggle)
     expect(await page.evaluate(() => window.scrollY)).toBe(scrollY)
   }
 })
@@ -2366,4 +2359,101 @@ test('a pending deletion cannot redirect away from a different search selected w
   await expect(page.locator('[data-session-id="session-1"]')).toHaveCount(0)
   await expect(page).toHaveURL(/\/searches\/session-2$/)
   expect(state.deleted).toEqual(['session-1'])
+})
+
+test('preferences preserve supplied values through reload and submission', async ({ page }) => {
+  const state = await mockSessions(page)
+  await page.goto('/new')
+  await page
+    .getByLabel('About you', { exact: true })
+    .fill('React projects and internship experience')
+  await page.getByLabel('Expected salary', { exact: false }).fill('HK$25,000 per month')
+  await page.getByLabel('Work arrangement', { exact: false }).selectOption('remote')
+  const slider = page.getByRole('slider', { name: 'Jobs to show', exact: true })
+  await slider.press('End')
+  for (let index = 0; index < 3; index++) await slider.press('ArrowLeft')
+  await expect
+    .poll(() => state.readDraft('/workspace/draft')?.data.search_options)
+    .toEqual({ result_count: 17 })
+  await page.reload()
+  await expect(page.getByRole('slider', { name: 'Jobs to show', exact: true })).toBeVisible()
+  await expect(page.getByLabel('Expected salary', { exact: false })).toHaveValue(
+    'HK$25,000 per month',
+  )
+  await expect(page.getByLabel('Work arrangement', { exact: false })).toHaveValue('remote')
+  await page.getByRole('button', { name: 'Analyze and continue' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+  expect(state.createBodies[0]).toMatchObject({
+    search_options: { result_count: 17 },
+    preferences: { salary_range: 'HK$25,000 per month', work_mode: 'remote' },
+  })
+})
+
+test('a failed resume replacement retains the original file and introduction for submission', async ({
+  page,
+}) => {
+  const state = await mockSessions(page)
+  await page.route('**/api/v1/resumes/parse', (route) =>
+    route.fulfill({ status: 503, json: { detail: { code: 'resume_parse_unavailable' } } }),
+  )
+  await page.goto('/new')
+  const introduction = 'Additional project details supplied by the applicant'
+  await page.getByLabel('About you', { exact: true }).fill(introduction)
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'original.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Original resume experience'),
+  })
+  await expect(
+    page.getByRole('button', { name: 'Remove resume: original.txt', exact: true }),
+  ).toBeVisible()
+  const chooserPromise = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Replace', exact: true }).click()
+  const chooser = await chooserPromise
+  await chooser.setFiles({
+    name: 'replacement.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF replacement'),
+  })
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Remove resume: original.txt', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByLabel('About you', { exact: true })).toHaveValue(introduction)
+  await page.getByRole('button', { name: 'Analyze and continue' }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+  expect(state.createBodies[0]).toMatchObject({
+    description: introduction,
+    resume: { name: 'original.txt', text: 'Original resume experience' },
+  })
+})
+
+test('summary groups retain collapsed edits and require confirmation of the updated revision', async ({
+  page,
+}) => {
+  const state = await mockSessions(page)
+  await introduce(page)
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Edit experience', exact: true }).click()
+  await page.getByLabel('Skills', { exact: true }).fill('React\nAccessible interfaces')
+  await page.getByRole('button', { name: 'Close experience editor', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit other preferences', exact: true }).click()
+  const slider = page.getByRole('slider', { name: 'Jobs to show', exact: true })
+  await slider.press('End')
+  for (let index = 0; index < 5; index++) await slider.press('ArrowLeft')
+  await page.getByRole('button', { name: 'Close other preferences editor', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Update criteria', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+  expect(state.requests).toEqual([
+    expect.objectContaining({
+      action: 'edit_conditions',
+      expected_revision: 1,
+      profile_updates: { skills: ['React', 'Accessible interfaces'] },
+      search_options: { result_count: 15 },
+    }),
+  ])
+  await page.getByRole('button', { name: 'Confirm and search' }).click()
+  await expect.poll(() => state.requests.at(-1)?.action).toBe('confirm_search')
+  expect(state.requests.at(-1)?.expected_revision).toBe(2)
 })

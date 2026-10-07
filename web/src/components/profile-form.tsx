@@ -17,11 +17,7 @@ export function ProfileForm() {
   const { setValue: saveDraft } = draft
   const { start, busy } = useScoutSession()
   const form = useForm<ProfileFormValues>({ values: draft.value })
-  const {
-    subscribe,
-    handleSubmit,
-    formState: { errors },
-  } = form
+  const { subscribe, handleSubmit } = form
   const [reading, setReading] = useState(false)
   useEffect(
     () =>
@@ -31,13 +27,12 @@ export function ProfileForm() {
       }),
     [subscribe, saveDraft],
   )
-  const error = errors.description?.message || errors.root?.resume?.message
 
   return (
     <FormProvider {...form}>
       <form
         noValidate
-        className="card border border-base-300 bg-base-100 shadow-sm"
+        className="card border border-base-300 bg-base-100"
         onCompositionStart={draft.onCompositionStart}
         onCompositionEnd={draft.onCompositionEnd}
         onSubmit={(event) => {
@@ -45,44 +40,31 @@ export function ProfileForm() {
             event.preventDefault()
             return
           }
-          void handleSubmit((values) => {
-            void start(toScoutInput(values))
-          })(event)
+          void handleSubmit(
+            (values) => {
+              void start(toScoutInput(values))
+            },
+            () => {
+              requestAnimationFrame(() => {
+                document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+              })
+            },
+          )(event)
         }}
       >
-        <div className="border-b border-base-300 px-5 py-5 sm:px-7">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="flex size-10 items-center justify-center rounded-box bg-secondary/45">
-                <Icon name="file" />
-              </span>
-              <div>
-                <h2 className="text-lg font-semibold">Let’s get to know you</h2>
-                <p className="mt-1 text-xs text-base-content/60">
-                  Your experience is a great place to start.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
         <fieldset
           disabled={reading || busy || draft.status === 'loading'}
-          className="min-w-0 space-y-6 p-5 sm:p-7"
+          className="min-w-0 space-y-5 p-5 sm:space-y-6 sm:p-6"
         >
-          <DescriptionField />
+          <div>
+            <h2 className="text-sm font-semibold">Your experience</h2>
+          </div>
           <ResumeField reading={reading} onReadingChange={setReading} />
+          <DescriptionField />
           <DirectionField />
           <PreferenceFields />
-          <DraftStatus {...draft} />
-          <div id="profile-error" hidden={!error}>
-            {error && (
-              <div className="alert alert-soft text-sm alert-error" role="alert">
-                <Icon name="info" size={18} />
-                {error}
-              </div>
-            )}
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-4 border-t border-base-300 pt-5">
+          <div className="-mx-5 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 px-5 pt-5 sm:-mx-6 sm:px-6 sm:pt-6">
+            <DraftStatus {...draft} />
             <button type="submit" className="btn min-w-40 border-0 btn-primary" disabled={reading}>
               {reading ? 'Reading…' : 'Analyze and continue'}
               <Icon name="arrow" size={18} />

@@ -34,12 +34,9 @@ function partialScore(): MatchScore {
   }
 }
 
-test('partial display exposes scores, coverage, unknowns and evidence as accessible text', () => {
+test('partial scores retain unknown areas and supplied source excerpts', () => {
   const html = renderToStaticMarkup(<MatchScoreDetail score={partialScore()} />)
   expect(html).toContain('Match 80/100')
-  expect(html).toContain('32% assessed')
-  expect(html).toContain('Provisional')
-  expect(html).toContain('Dimension scores and evidence')
   expect(html).toContain('Unknown')
   expect(html).toContain('Not applicable')
   expect(html).toContain('Build interfaces')

@@ -46,11 +46,7 @@ function SavedPage() {
     )
   return (
     <>
-      <PageHeading
-        eyebrow="SAVED JOBS"
-        title={`${saved.length} ${saved.length === 1 ? 'job' : 'jobs'} saved`}
-        description="Review and compare your saved jobs."
-      />
+      <PageHeading title={`${saved.length} ${saved.length === 1 ? 'job' : 'jobs'} saved`} />
       {query.isError && (
         <div className="mb-5 alert alert-warning" role="alert">
           <span>Saved jobs could not be refreshed. Showing the last loaded list.</span>

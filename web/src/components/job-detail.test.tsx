@@ -37,6 +37,7 @@ test('detail retains supplied facts and quotes and excludes notices for discarde
   )
   expect(html).toContain(item.job.description)
   expect(html).toContain(item.matching_reasons[0]!.profile_source_quotes[0]!.excerpt)
+  expect(html).toContain(item.matching_reasons[1]!.explanation)
   expect(html).not.toContain('discarded-notice-sentinel')
   expect(html.split(notice.message)).toHaveLength(2)
   expect(html).toContain(`href="${item.job.source_url}"`)
@@ -47,6 +48,7 @@ test('unavailable analysis retains job facts but does not display unsupported ma
   item.analysis_status = 'unavailable'
   item.preparation_suggestions = ['unsupported-preparation-sentinel']
   item.matching_reasons[0]!.explanation = 'unsupported-match-sentinel'
+  item.matching_reasons[1]!.explanation = 'unsupported-missing-sentinel'
   const html = renderToStaticMarkup(
     <JobDetail
       item={item}
@@ -61,6 +63,7 @@ test('unavailable analysis retains job facts but does not display unsupported ma
   expect(html).toContain(item.job.description)
   expect(html).not.toContain('unsupported-preparation-sentinel')
   expect(html).not.toContain('unsupported-match-sentinel')
+  expect(html).not.toContain('unsupported-missing-sentinel')
 })
 
 test('workflow failure presents safe recovery instead of private error content', () => {

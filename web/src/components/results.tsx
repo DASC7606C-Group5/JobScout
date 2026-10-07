@@ -90,10 +90,8 @@ function FilterControls({ jobs, selection }: { jobs: RecommendationItem[]; selec
           })
         }
         count={jobs.length}
+        filteredCount={filtered.length}
       />
-      <p className="mb-4 text-xs text-base-content/55" aria-live="polite">
-        Showing {filtered.length} {filtered.length === 1 ? 'job' : 'jobs'}
-      </p>
     </div>
   )
 }
@@ -138,7 +136,7 @@ function ResultItems({
     )
   return (
     <div className="grid items-start gap-6 min-[1100px]:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-      <div className={`space-y-4 ${detailOpen ? 'hidden min-[1100px]:block' : ''}`}>
+      <div className={`min-w-0 space-y-3 ${detailOpen ? 'hidden min-[1100px]:block' : ''}`}>
         {filtered.map((item) => (
           <JobCard
             key={item.job.job_id}

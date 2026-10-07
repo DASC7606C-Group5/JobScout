@@ -188,10 +188,16 @@
 }
 
 @utility textarea {
-  @apply px-6 py-4;
+  @apply block px-6 py-4;
+}
+
+@utility input {
+  @apply px-6;
 }
 
 @utility select {
+  @apply pl-6;
+
   /* Popup surfaces must not inherit a translucent trigger background. */
   &::picker(select),
   & select::picker(select) {

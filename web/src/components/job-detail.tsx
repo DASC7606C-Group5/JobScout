@@ -53,7 +53,7 @@ export function JobDetail({
         <h2
           ref={headingRef}
           tabIndex={-1}
-          className="mt-2 text-2xl font-semibold tracking-tight break-words outline-none"
+          className="mt-2 text-xl font-semibold tracking-tight wrap-anywhere outline-none sm:text-2xl"
         >
           {job.title}
         </h2>
@@ -62,7 +62,7 @@ export function JobDetail({
         </p>
         <p className="mt-4 text-lg font-semibold">{job.salary || 'Salary not provided'}</p>
       </div>
-      <div className="sticky top-0 z-10 flex flex-wrap gap-3 border-b border-base-300 bg-base-100 p-5 sm:p-6">
+      <div className="sticky top-0 z-10 flex flex-wrap gap-2 border-b border-base-300 bg-base-100 p-5 sm:p-6">
         {links[0] && (
           <a className="btn btn-primary" href={links[0]} target="_blank" rel="noopener noreferrer">
             View job listing <Icon name="external" size={16} />
@@ -78,24 +78,28 @@ export function JobDetail({
           {saved ? 'Saved' : 'Save job'}
         </button>
       </div>
-      <div className="space-y-6 p-5 text-sm leading-6 sm:p-6">
+      <div className="space-y-5 p-5 text-sm leading-6 sm:space-y-6 sm:p-6">
         <JobMatch item={item} />
         <MatchScoreDetail score={item.match_score} />
+        <ResultWarnings
+          notices={jobNotices}
+          listingUrl={links[0]}
+          undocumented={(item.analysis_status === 'unavailable' ? [] : item.matching_reasons)
+            .filter((reason) => reason.level === 'not_documented')
+            .map((reason) => reason.explanation)}
+        />
         <Responsibilities job={job} />
         <Preparation item={item} />
-        <ResultWarnings notices={jobNotices} listingUrl={links[0]} />
         <MatchingSourceQuotes reasons={item.matching_reasons} />
-        <ListingMetadata job={job} links={links} />
       </div>
+      <ListingMetadata job={job} links={links} />
     </article>
   )
 }
 
 function JobMatch({ item }: { item: RecommendationItem }) {
   if (item.analysis_status === 'unavailable') return null
-  const reasons = item.matching_reasons
-    .filter((reason) => reason.level !== 'not_documented')
-    .slice(0, 3)
+  const reasons = item.matching_reasons.filter((reason) => reason.level !== 'not_documented')
   if (!reasons.length && !item.recommendation_reason) return null
   return (
     <section>
@@ -135,9 +139,7 @@ function Responsibilities({ job }: { job: JobPosting }) {
 
 function Preparation({ item }: { item: RecommendationItem }) {
   if (item.analysis_status === 'unavailable') return null
-  const suggestions = [
-    ...new Set(item.preparation_suggestions.filter((value) => value.trim())),
-  ].slice(0, 2)
+  const suggestions = [...new Set(item.preparation_suggestions.filter((value) => value.trim()))]
   if (!suggestions.length) return null
   return (
     <section>
@@ -153,7 +155,7 @@ function Preparation({ item }: { item: RecommendationItem }) {
 
 function ListingMetadata({ job, links }: { job: JobPosting; links: string[] }) {
   return (
-    <div className="border-t border-base-300 pt-4 text-xs text-base-content/60">
+    <div className="border-t border-base-300 p-5 text-xs leading-6 text-base-content/60 sm:p-6">
       <p>
         {sourceLabel(job.source)} · Retrieved {dateLabel(job.fetched_at)}
       </p>

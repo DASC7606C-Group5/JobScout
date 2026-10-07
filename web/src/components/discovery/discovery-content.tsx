@@ -6,6 +6,7 @@ import { ClarificationForm } from '../clarification-form'
 import { ConversationHistory } from '../conversation-history'
 import { Icon } from '../icon'
 import { ProfileForm } from '../profile-form'
+import { ProfileSummary } from '../profile/profile-summary'
 import { Results } from '../results'
 import { SourceOutcomes } from '../results/source-outcomes'
 import { SearchSummary } from '../search-summary'
@@ -34,12 +35,6 @@ export function DiscoveryContent() {
                   : 'Retry'}
           </button>
         </div>
-      )}
-      {session?.mode === 'replay' && (
-        <output className="mb-4 alert border-base-300 bg-base-200/50 text-sm text-base-content">
-          <Icon name="info" size={18} />
-          <span>Replay demo</span>
-        </output>
       )}
       {busy && session?.outcome !== 'running' && (
         <output className="mb-4 block text-sm">Working…</output>
@@ -85,7 +80,6 @@ function SessionContent() {
     case 'paused':
       return (
         <>
-          <ConversationHistory session={session} collapsed />
           {session.current_stage === 'confirm' && session.search_summary ? (
             <SearchSummary
               key={`${session.session_id}-${session.revision}`}
@@ -97,16 +91,16 @@ function SessionContent() {
                 key={`${session.session_id}-${session.revision}`}
                 questions={session.clarification_questions}
               />
-              {session.search_summary && (
+              {session.profile && (
                 <div className="mt-5">
-                  <SearchSummary
-                    key={`${session.session_id}-${session.revision}`}
-                    summary={session.search_summary}
-                  />
+                  <ProfileSummary profile={session.profile} />
                 </div>
               )}
             </>
           )}
+          <div className="mt-5">
+            <ConversationHistory session={session} collapsed />
+          </div>
         </>
       )
     case 'failed':

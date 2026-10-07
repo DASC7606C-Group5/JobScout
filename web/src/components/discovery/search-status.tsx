@@ -4,17 +4,13 @@ import { searchPresentation } from '../../lib/search-presentation'
 import { Icon } from '../icon'
 
 export function SearchLoading({ session }: { session: ScoutSession }) {
-  const { heading, phase } = searchPresentation(session)
+  const { phase } = searchPresentation(session)
   return (
-    <section
-      className="card mb-6 border border-base-300 bg-base-100 p-5 sm:p-6"
-      aria-label="Search progress"
-    >
+    <section className="mb-5 py-3" aria-label="Search progress">
       <div className="flex items-center gap-4" aria-live="polite">
         <span className="loading loading-spinner text-primary-content" aria-hidden="true" />
         <div>
-          <h2 className="text-lg font-semibold sm:text-xl">{heading}</h2>
-          <p className="mt-1 text-sm text-base-content/65">
+          <p className="text-sm text-base-content/65">
             {phase === 'profile'
               ? 'Checking your experience and preferences.'
               : 'Getting ready to find jobs.'}

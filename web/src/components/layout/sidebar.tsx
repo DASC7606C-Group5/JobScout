@@ -297,13 +297,15 @@ function HistoryMenu({
       id="search-history"
       hidden={hidden}
       aria-labelledby="search-history-heading"
-      className="@container min-h-0 flex-1 px-3 pt-4 pb-5 is-drawer-close:hidden"
+      className="@container min-h-0 flex-1 px-3 py-5 is-drawer-close:hidden"
     >
       <div className="-mx-3 h-full overflow-y-auto pl-3">
         {current && (
-          <div className="mb-4 w-[100cqw]">
-            <h2 className="px-3 text-[11px] font-semibold text-base-content/55">Current search</h2>
-            <ul className="mt-2 flex w-full flex-col gap-1.5">
+          <div className="mb-1.5 w-[100cqw]">
+            <h2 className="px-3 pb-4 text-[11px] font-semibold text-base-content/55">
+              Current search
+            </h2>
+            <ul className="flex w-full flex-col gap-1.5">
               <HistoryRow
                 search={current}
                 sessionId={sessionId}
@@ -318,7 +320,7 @@ function HistoryMenu({
           ref={historyHeading}
           tabIndex={-1}
           data-history-heading
-          className="w-[100cqw] px-3 text-[11px] font-medium text-base-content/50"
+          className="sr-only"
         >
           Recent searches
         </h2>
@@ -329,14 +331,14 @@ function HistoryMenu({
           </output>
         )}
         {!history.isPending && searches.length === 0 && !history.isError && (
-          <div className="w-[100cqw] px-3 py-5 text-xs leading-5 text-base-content/60">
+          <div className="w-[100cqw] px-3 text-xs leading-5 text-base-content/60">
             <p className="font-medium text-base-content/75">
               A place to pick up where you left off.
             </p>
             <p className="mt-1">Start a search and find it here next time.</p>
           </div>
         )}
-        <ul className="mt-2 flex w-[100cqw] flex-col gap-1.5">
+        <ul className="flex w-[100cqw] flex-col gap-1.5">
           {searches.map((search) => (
             <HistoryRow
               key={search.session_id}
@@ -469,9 +471,9 @@ function HistoryRow({
         aria-current={sessionId === search.session_id ? 'page' : undefined}
         className="block min-w-0 rounded-box px-3.5 py-3 outline-offset-[-2px] active:bg-base-200/40"
       >
-        <span className="block text-[13px] leading-5 font-medium break-words">{search.title}</span>
+        <span className="block text-sm leading-5 font-medium wrap-anywhere">{search.title}</span>
         {search.location && (
-          <span className="mt-0.5 block text-[11px] leading-4 break-words text-base-content/60">
+          <span className="mt-0.5 block text-xs leading-4 wrap-anywhere text-base-content/65">
             {search.location}
           </span>
         )}

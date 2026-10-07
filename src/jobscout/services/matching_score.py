@@ -111,7 +111,9 @@ def build_match_score(
         if not valid:
             row = DimensionAssessment(
                 id=identity,
-                missing_information=["The dimension needs verifiable current evidence."],
+                missing_information=[
+                    "More detail from your profile or the job listing is needed to compare this area."
+                ],
             )
             incomplete = True
         background = {

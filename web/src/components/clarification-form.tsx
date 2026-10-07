@@ -23,7 +23,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
   return (
     <form
       noValidate
-      className="card border border-base-300 bg-base-100 shadow-sm"
+      className="card border border-base-300 bg-base-100"
       onCompositionStart={draft.onCompositionStart}
       onCompositionEnd={draft.onCompositionEnd}
       onSubmit={(event) => {
@@ -37,20 +37,9 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
         void answer({ answers, message: message.trim(), skipped_question_ids: skipped })
       }}
     >
-      <div className="flex items-start gap-3 border-b border-base-300 px-5 py-5 sm:px-7">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-box bg-secondary/45">
-          <Icon name="sparkles" />
-        </span>
-        <div>
-          <h2 className="text-lg font-semibold">Tell us a little more</h2>
-          <p className="mt-1 text-xs leading-6 text-base-content/60">
-            Answer the questions or add to or correct the information you already shared.
-          </p>
-        </div>
-      </div>
       <fieldset
         disabled={busy || draft.status === 'loading'}
-        className="min-w-0 space-y-6 p-5 sm:p-7"
+        className="min-w-0 space-y-5 p-5 sm:space-y-6 sm:p-6"
       >
         {pending.map((question) => (
           <QuestionControl
@@ -74,7 +63,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
             }
           />
         ))}
-        <div className="border-t border-base-300 pt-6">
+        <div>
           <label htmlFor="conversation-message" className="mb-2 block text-sm font-medium">
             Add a note or correction
           </label>
@@ -94,8 +83,8 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
             {error}
           </p>
         )}
-        <DraftStatus {...draft} />
-        <div className="flex justify-end border-t border-base-300 pt-5">
+        <div className="-mx-5 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 px-5 pt-5 sm:-mx-6 sm:px-6 sm:pt-6">
+          <DraftStatus {...draft} />
           <button className="btn min-w-40 border-0 btn-primary" type="submit">
             Send and continue
             <Icon name="arrow" size={18} />
