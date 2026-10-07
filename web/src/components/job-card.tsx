@@ -1,6 +1,7 @@
 import type { RecommendationItem } from '../lib/contracts'
 import { Icon } from './icon'
 import { JobReviewStatus } from './job-review-status'
+import { MatchScoreBadge } from './match-score'
 
 export function JobCard({
   item,
@@ -39,6 +40,7 @@ export function JobCard({
           <JobReviewStatus item={item} active={reviewActive} />
         </span>
         <h3 className="mt-1 text-lg font-semibold tracking-tight break-words">{job.title}</h3>
+        <MatchScoreBadge score={item.match_score} />
         <span className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/65">
           <span>{job.location}</span>
           {job.employment_type && <span>{job.employment_type}</span>}

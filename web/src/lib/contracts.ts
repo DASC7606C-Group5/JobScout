@@ -1,4 +1,5 @@
 // Mirrors src/jobscout/schemas. Keep wire-format field names intact.
+import type { MatchScore } from './matching-contracts'
 export type EmploymentType = 'full-time' | 'part-time' | 'internship' | 'contract' | 'freelance'
 export type WorkMode = 'remote' | 'hybrid' | 'onsite'
 
@@ -164,6 +165,7 @@ export interface JobPosting {
 }
 
 export interface RecommendationItem {
+  match_score: MatchScore | null
   job: JobPosting
   preparation_suggestions: string[]
   matching_reasons: MatchingReason[]

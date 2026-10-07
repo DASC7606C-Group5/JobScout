@@ -5,6 +5,7 @@ import type { ApplicantNotice, JobPosting, RecommendationItem } from '../lib/con
 import { dateLabel, safeSourceUrl, sourceLabel } from '../lib/job-display'
 import { Icon } from './icon'
 import { JobReviewStatus } from './job-review-status'
+import { MatchScoreDetail } from './match-score'
 import { MatchingSourceQuotes } from './matching-source-quotes'
 import { ResultWarnings } from './results/result-warnings'
 
@@ -79,6 +80,7 @@ export function JobDetail({
       </div>
       <div className="space-y-6 p-5 text-sm leading-6 sm:p-6">
         <JobMatch item={item} />
+        <MatchScoreDetail score={item.match_score} />
         <Responsibilities job={job} />
         <Preparation item={item} />
         <ResultWarnings notices={jobNotices} listingUrl={links[0]} />

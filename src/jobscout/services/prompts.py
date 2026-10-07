@@ -162,6 +162,8 @@ does not tell you its duties. Never invent source facts or missing requirements.
   within each job.
   Only skill requirements have skill_terms. For education, preserve accepted alternatives in
   qualification_options. Set minimum_experience_months only for an explicit minimum duration.
+  Extract actual duties as responsibility and stated autonomy or leadership as seniority.
+  Keep preference requirements separate from ability requirements.
 - locations and employment: quote the actual work location and employment type when stated.
   Keep a stated district rather than replacing it with the city. An employer's headquarters is
   not automatically the work site; missing employment type is not automatically full-time.
@@ -205,6 +207,19 @@ Use plain English in applicant-facing explanations. Name the relevant skill, tas
 where the applicant used it and what the job asks for. Say what is missing or needs checking.
 
 ## Requirement matches
+Return six dimensions: skills, responsibilities, experience, seniority, education, preferences.
+Judge fit to the concrete requirements, not keyword counts. Use this anchored 0-100 rubric:
+0 = cited facts establish a direct mismatch; 25 = limited transferable evidence; 50 = meets
+some substantive requirements; 75 = meets most with a stated gap; 100 = directly meets all.
+Intermediate integers may reflect the extent of the documented fit. Do not calculate a total.
+For each assessed ability dimension cite all its requirement_ids, current profile_fact_ids,
+exact job_source_quotes and profile_source_quotes, and explain the evidence and gap.
+Preferences compares only stated task preferences/directions to cited job facts; interest or
+likes never change ability scores. Leave unknown dimensions score=null and list missing_information.
+Use not_applicable only when cited job text explicitly waives that dimension, not when omitted.
+Missing applicant evidence cannot justify zero. Scores describe evidence fit, never hiring or
+ATS probability. Keep supported dimensions when another dimension is uncertain.
+
 - strong: the supplied background directly shows the requested experience, skill or qualification.
 - partial: the supplied background meets part of the stated requirement; explain the remaining part.
 - related_experience: the applicant has used a related skill or done related work; explain how
