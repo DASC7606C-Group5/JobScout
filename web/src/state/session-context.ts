@@ -2,7 +2,11 @@ import { createContext, useContext } from 'react'
 
 import type { useSessionWorkflow } from './use-session-workflow'
 
-export const SessionContext = createContext<ReturnType<typeof useSessionWorkflow> | null>(null)
+type SessionContextValue = Omit<ReturnType<typeof useSessionWorkflow>, 'edit'> & {
+  edit: () => void
+}
+
+export const SessionContext = createContext<SessionContextValue | null>(null)
 
 export function useScoutSession() {
   const session = useContext(SessionContext)

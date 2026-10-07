@@ -1121,6 +1121,83 @@ test('partially analyzed jobs stay useful without inventing an unknown search co
   await expect(page.locator('body')).not.toContainText('0 jobs to explore')
 })
 
+for (const outcome of ['running', 'completed'] as const) {
+  test(`canceling criteria edits preserves a ${outcome} search`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 })
+    const session = resultSession()
+    session.outcome = outcome
+    session.current_stage = outcome === 'running' ? 'search' : 'completed'
+    session.run_id = 'original-run'
+    const state = await mockSessions(page, session)
+    state.seedSession(session)
+    await page.goto('/searches/session-1?job=test-job-1')
+    const edit = page.getByRole('button', { name: 'Edit criteria', exact: true })
+    const dialog = page.getByRole('dialog', { name: 'Edit search criteria?', exact: true })
+    const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true })
+    for (const dismiss of ['cancel', 'escape', 'backdrop'] as const) {
+      await edit.click()
+      await expect(dialog).toBeVisible()
+      await expect(cancel).toBeFocused()
+      if (dismiss === 'cancel') {
+        await captureResults(page, `edit-criteria-confirmation-${outcome}`)
+        await cancel.click()
+      } else if (dismiss === 'escape') await page.keyboard.press('Escape')
+      else
+        await dialog
+          .getByRole('button', { name: 'Close confirmation', exact: true })
+          .click({ position: { x: 5, y: 5 } })
+      await expect(dialog).toBeHidden()
+      await expect(edit).toBeFocused()
+      await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
+      await expect(page).toHaveURL('/searches/session-1?job=test-job-1')
+      expect(state.requests).toEqual([])
+      expect(state.stopRequests).toEqual([])
+      expect(state.createCount()).toBe(0)
+    }
+  })
+}
+
+test('criteria confirmation prevents duplicate edits and lets a failed request be retried', async ({
+  page,
+}) => {
+  const session = resultSession()
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/v1/sessions/session-1/resume', async (route) => {
+    await gate
+    await route.fallback()
+  })
+  state.dropNextAnswer()
+  await page.goto('/searches/session-1')
+  await page.getByRole('button', { name: 'Edit criteria', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Edit search criteria?', exact: true })
+  const confirm = dialog.getByRole('button', { name: 'Continue editing', exact: true })
+  await confirm.click()
+  await expect(confirm).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeDisabled()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeVisible()
+  release()
+  await expect(confirm).toBeEnabled()
+  await expect(dialog).toBeVisible()
+  expect(state.requests).toHaveLength(1)
+  await confirm.click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
+  expect(state.requests.map((request) => request.action)).toEqual([
+    'edit_conditions',
+    'edit_conditions',
+  ])
+  expect(state.requests.every((request) => request.expected_revision === session.revision)).toBe(
+    true,
+  )
+  expect(state.createCount()).toBe(0)
+})
+
 for (const stage of ['search', 'review'] as const) {
   test(`edit criteria interrupts ${stage} and preserves the same session`, async ({ page }) => {
     if (stage === 'review') await page.setViewportSize({ width: 390, height: 844 })
@@ -1139,6 +1216,8 @@ for (const stage of ['search', 'review'] as const) {
     await expect(edit).toBeEnabled()
     if (stage === 'review') await edit.press('Enter')
     else await edit.click()
+    expect(state.requests).toEqual([])
+    await page.getByRole('button', { name: 'Continue editing', exact: true }).click()
     await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
     await expect(page.getByLabel('Job interests', { exact: true })).toHaveValue(
       running.profile!.target_directions.join('\n'),
@@ -1224,6 +1303,7 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
     .getByRole('region', { name: 'Search criteria', exact: true })
     .getByRole('button', { name: 'Edit criteria', exact: true })
     .click()
+  await page.getByRole('button', { name: 'Continue editing', exact: true }).click()
   await expect(
     page.getByRole('heading', { name: 'Review your profile and search criteria' }),
   ).toBeVisible()
@@ -1757,9 +1837,6 @@ async function captureResults(page: Page, name: string) {
   if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS !== '1') return
   await mkdir('.tools/review', { recursive: true })
   await page.evaluate(() => window.scrollTo(0, 0))
-  await page.evaluate(() =>
-    Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => {}))),
-  )
   await page.screenshot({
     path: `.tools/review/${name}.png`,
     fullPage: true,
@@ -1928,6 +2005,9 @@ test.describe('search criteria on touch screens', () => {
       await expect(panel).toBeHidden()
     }
     await page.getByRole('button', { name: 'Edit criteria', exact: true }).tap()
+    expect(state.requests).toEqual([])
+    await captureResults(page, 'edit-criteria-confirmation-mobile')
+    await page.getByRole('button', { name: 'Continue editing', exact: true }).tap()
     await expect(
       page.getByRole('heading', { name: 'Review your profile and search criteria', exact: true }),
     ).toBeVisible()
@@ -1964,7 +2044,11 @@ test('search failure preserves published job identities until editing the criter
       page.getByRole('button', { name: `View job: ${item.job.title}`, exact: true }),
     ).toBeVisible()
   await expect(page.locator('body')).not.toContainText('private-failure-detail')
-  await page.getByRole('button', { name: 'Edit search criteria', exact: true }).first().click()
+  await page
+    .getByRole('alert')
+    .getByRole('button', { name: 'Edit search criteria', exact: true })
+    .click()
+  await page.getByRole('button', { name: 'Continue editing', exact: true }).click()
   await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
   await expect(page.getByLabel('Job interests', { exact: true })).toBeVisible()
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toHaveCount(0)
@@ -2285,6 +2369,7 @@ test('empty completed search offers recovery without inventing jobs', async ({ p
   ).toBeVisible()
   await captureResults(page, 'results-empty')
   await page.getByRole('button', { name: 'Edit search criteria', exact: true }).last().click()
+  await page.getByRole('button', { name: 'Continue editing', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests.at(-1)?.action).toBe('edit_conditions')
 })
@@ -2335,6 +2420,7 @@ test('invalid selected deep links recover to the list and service failure allows
   await expect(page.locator('body')).not.toContainText('SOURCE_CONFIG_MISSING')
   await captureResults(page, 'search-service-failure')
   await page.getByRole('button', { name: 'Edit search criteria', exact: true }).last().click()
+  await page.getByRole('button', { name: 'Continue editing', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests.at(-1)?.action).toBe('edit_conditions')
 })
