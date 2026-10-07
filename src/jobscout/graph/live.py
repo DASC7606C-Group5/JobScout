@@ -3,7 +3,7 @@
 import asyncio
 import inspect
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 from uuid import uuid4
@@ -20,7 +20,7 @@ from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import JobPosting, SourceDocument
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
-from jobscout.schemas.search import ClarificationStatus, SearchRequest
+from jobscout.schemas.search import ClarificationStatus
 from jobscout.schemas.session import SessionResumeRequest
 from jobscout.services.conversation_service import (
     BACKGROUND_FIELDS,
@@ -32,7 +32,6 @@ from jobscout.services.conversation_service import (
     profile_documents,
 )
 from jobscout.services.job_assessment_service import JobAssessmentService
-from jobscout.services.job_retrieval.models import SearchResult
 from jobscout.services.job_search_service import JobSearchService
 from jobscout.services.llm_service import LLMProvider, ModelServiceError
 from jobscout.services.notice_service import (
@@ -40,7 +39,7 @@ from jobscout.services.notice_service import (
     source_notices,
 )
 from jobscout.services.profile_service import dedupe
-from jobscout.services.search_agent import SearchAgent
+from jobscout.services.search_agent import SearchAgent, SearchService
 
 OPERATION_SECONDS = 300.0
 logger = logging.getLogger(__name__)
@@ -134,12 +133,6 @@ def _edited_responses(
     return responses
 
 
-class SearchService(Protocol):
-    async def search_many_async(
-        self, requests: Sequence[SearchRequest], *, timeout: float = 60
-    ) -> SearchResult: ...
-
-
 class AssessmentService(Protocol):
     async def begin_search(self, search_id: str) -> None: ...
 
@@ -156,6 +149,9 @@ class AssessmentService(Protocol):
         profile_documents: dict[str, str],
         session_id: str,
         deadline: float | None = None,
+        *,
+        on_batch: Callable[[RecommendationResult], Awaitable[None]] | None = None,
+        repair_feedback: dict[str, str] | None = None,
     ) -> RecommendationResult: ...
 
 
@@ -241,15 +237,10 @@ def build_live_graph(
             "recommendation": None,
             "search_summary": None,
             "confirmed_profile": None,
-            "assessment": None,
             "source_outcomes": [],
-            "search_requests": [],
-            "raw_jobs": [],
             "normalized_jobs": [],
-            "analysis_jobs": [],
             "analyzed_job_ids": [],
             "retrieval_round": 0,
-            "retrieval_seconds": 0.0,
             "operation_deadline": 0.0,
             "run_id": None,
             "progress": {},
@@ -336,11 +327,8 @@ def build_live_graph(
                 "question_turn": state.get("question_turn", 0),
                 "direct_edit_fields": [],
                 "source_outcomes": [],
-                "raw_jobs": [],
                 "normalized_jobs": [],
-                "analysis_jobs": [],
                 "analyzed_job_ids": [],
-                "retrieval_seconds": 0.0,
                 "retrieval_round": 0,
             }
         except asyncio.CancelledError:
@@ -650,11 +638,8 @@ def build_live_graph(
                             editable_fields=list(EDITABLE_FIELDS),
                         ),
                         "operation_deadline": asyncio.get_running_loop().time() + OPERATION_SECONDS,
-                        "retrieval_seconds": 0.0,
                         "retrieval_round": 0,
-                        "raw_jobs": [],
                         "normalized_jobs": [],
-                        "analysis_jobs": [],
                         "analyzed_job_ids": [],
                         "source_outcomes": [],
                         "current_stage": "plan",

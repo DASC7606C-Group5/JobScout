@@ -1,7 +1,7 @@
 """Offline production graph tests: waits, confirmation, limits and session isolation."""
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -124,13 +124,19 @@ class FakeAssessment:
         profile_documents: dict[str, str],
         session_id: str,
         deadline: float | None = None,
+        *,
+        on_batch: Callable[[RecommendationResult], Awaitable[None]] | None = None,
+        repair_feedback: dict[str, str] | None = None,
     ) -> RecommendationResult:
         self.calls.append((session_id, jobs, profile_documents, deadline))
-        return RecommendationResult(
+        result = RecommendationResult(
             session_id=session_id,
             generated_at=datetime.now(UTC),
             jobs=[RecommendationItem(job=job, recommendation_fit="possible") for job in jobs],
         )
+        if on_batch is not None:
+            await on_batch(result)
+        return result
 
 
 def initial(**overrides: Any) -> AgentState:

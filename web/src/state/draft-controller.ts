@@ -1,5 +1,5 @@
+import { SessionHttpError } from '../lib/api-client'
 import type { DraftResponse, SaveDraftRequest } from '../lib/contracts'
-import { SessionHttpError } from '../lib/session-client'
 
 export type DraftStatus = 'loading' | 'saved' | 'unsaved' | 'saving' | 'error' | 'conflict'
 

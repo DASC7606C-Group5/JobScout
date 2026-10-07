@@ -1,9 +1,11 @@
 import { expect, test } from 'bun:test'
 
 import { renderToStaticMarkup } from 'react-dom/server'
+import { is } from 'valibot'
 
 import { createMatchScoreFixture } from '../../tests/fixtures'
-import { dimensionLabels, isMatchScore } from '../lib/matching-contracts'
+import { vMatchScore } from '../lib/api-schemas'
+import { dimensionLabels } from '../lib/matching-contracts'
 import { MatchRadar, MatchScoreSummary, MatchScoreValue } from './match-score'
 
 test('each dimension retains its score status and explanation for accessible inspection', () => {
@@ -67,8 +69,8 @@ test('an assessed zero stays numeric and only six assessed axes form a complete 
 
 test('wire contract rejects missing axes and numeric unknowns before display', () => {
   const score = createMatchScoreFixture()
-  expect(isMatchScore(score)).toBe(true)
-  expect(isMatchScore({ ...score, dimensions: score.dimensions.slice(1) })).toBe(false)
+  expect(is(vMatchScore, score)).toBe(true)
+  expect(is(vMatchScore, { ...score, dimensions: score.dimensions.slice(1) })).toBe(false)
   score.dimensions[1]!.score = 0
-  expect(isMatchScore(score)).toBe(false)
+  expect(is(vMatchScore, score)).toBe(false)
 })

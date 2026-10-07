@@ -84,12 +84,9 @@ def select_sources(request: SearchRequest) -> list[str]:
 
 @dataclass(frozen=True)
 class SourceQuery:
-    source: str
     params: dict[str, str | int]
     keywords: tuple[str, ...]
-    location: str | None
     employment_type: str
-    work_mode: str | None
 
 
 def plan_source_query(
@@ -104,12 +101,9 @@ def plan_source_query(
         {"limit": candidate_limit} if source == "remotive" else {"page": page}
     )
     return SourceQuery(
-        source,
         params,
         tuple(plan_keywords(request)),
-        request.location,
         normalized(request.employment_type),
-        request.work_mode,
     )
 
 

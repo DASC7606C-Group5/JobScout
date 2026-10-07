@@ -1,7 +1,6 @@
 """Let the model choose search tools from their results, within time and call limits."""
 
 import asyncio
-import inspect
 import json
 import logging
 from collections.abc import Awaitable, Callable, Sequence
@@ -669,26 +668,20 @@ class SearchAgent:
                     "analysis_completed", "Finished comparing a job with your experience."
                 )
 
-        kwargs: dict[str, Any] = {"deadline": self.deadline}
-        parameters = inspect.signature(self.assessment.assess).parameters
-        if "on_batch" in parameters:
-            kwargs["on_batch"] = accept_batch
-        if "repair_feedback" in parameters:
-            kwargs["repair_feedback"] = {
-                **{
-                    job.job_id: f"{issue.stage}: {issue.detail}"
-                    for job in selected
-                    if (issue := self.analysis_diagnostics.get(job.job_id)) is not None
-                    and issue.retryable
-                },
-            }
         try:
             result = await self.assessment.assess(
                 self.profile.model_copy(deep=True),
                 selected,
                 self.profile_documents,
                 self.session_id,
-                **kwargs,
+                deadline=self.deadline,
+                on_batch=accept_batch,
+                repair_feedback={
+                    job.job_id: f"{issue.stage}: {issue.detail}"
+                    for job in selected
+                    if (issue := self.analysis_diagnostics.get(job.job_id)) is not None
+                    and issue.retryable
+                },
             )
         except Exception:
             for job in selected:

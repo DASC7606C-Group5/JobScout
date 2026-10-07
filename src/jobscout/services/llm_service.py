@@ -487,14 +487,6 @@ class ModelRouter:
         self.decision = decision
 
     @property
-    def model(self) -> str:
-        return self.semantic.model
-
-    @property
-    def models(self) -> dict[str, str]:
-        return {"semantic": self.semantic.model, "decision": self.decision.model}
-
-    @property
     def cache_identity(self) -> tuple[str, str, str, bool]:
         return self.semantic.cache_identity
 
@@ -540,14 +532,6 @@ class ModelRouter:
 
 def get_llm_provider(settings: Settings | None = None) -> ModelRouter:
     active_settings = settings or get_settings()
-    if any(
-        provider not in {"deepseek", "openai", "openai_compatible"}
-        for provider in (
-            active_settings.llm_semantic_provider,
-            active_settings.llm_decision_provider,
-        )
-    ):
-        raise ModelServiceError("model_configuration")
     return ModelRouter(
         LangChainModelProvider(active_settings, role="semantic"),
         LangChainModelProvider(active_settings, role="decision"),

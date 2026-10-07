@@ -24,7 +24,7 @@ from jobscout.schemas.job import JobPosting, SourceDocument
 from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
-from jobscout.schemas.search import ClarificationMessage, SearchRequest
+from jobscout.schemas.search import ClarificationMessage
 from jobscout.schemas.session import (
     SessionCreateRequest,
     SessionResponse,
@@ -87,7 +87,6 @@ def _restore_state(state: dict[str, Any]) -> dict[str, Any]:
         "profile": UserProfile,
         "confirmed_profile": UserProfile,
         "recommendation": RecommendationResult,
-        "assessment": RecommendationResult,
         "search_summary": SearchSummary,
         "progress": SearchProgress,
     }
@@ -99,9 +98,7 @@ def _restore_state(state: dict[str, Any]) -> dict[str, Any]:
         "notices": ApplicantNotice,
         "source_outcomes": SourceOutcome,
         "profile_documents": SourceDocument,
-        "search_requests": SearchRequest,
         "normalized_jobs": JobPosting,
-        "analysis_jobs": JobPosting,
     }
     restored = dict(state)
     for key, model in models.items():

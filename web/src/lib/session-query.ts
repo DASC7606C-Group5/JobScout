@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query'
 
+import { SessionHttpError } from './api-client'
 import type { ScoutSession, SessionClient } from './contracts'
-import { SessionHttpError } from './session-client'
 
 export const sessionKey = (sessionId: string | null) => ['sessions', sessionId] as const
 

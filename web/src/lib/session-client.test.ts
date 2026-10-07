@@ -6,9 +6,10 @@ import {
   createRecommendationFixture,
   createSessionFixture,
 } from '../../tests/fixtures'
+import { SessionHttpError } from './api-client'
 import type { ResumeSessionRequest } from './contracts'
 import { toScoutInput } from './profile-form'
-import { createSessionClient, SessionHttpError } from './session-client'
+import { createSessionClient } from './session-client'
 
 const input = { ...toScoutInput(createProfileFixture()), request_id: 'create-1' }
 const completed = createSessionFixture({

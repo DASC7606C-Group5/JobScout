@@ -1,9 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 
+import { SessionHttpError } from '../lib/api-client'
 import { ApplicantRequestError } from '../lib/applicant-errors'
 import type { ScoutSession, SessionClient } from '../lib/contracts'
-import { SessionHttpError } from '../lib/session-client'
 import { latestSessionSnapshot, sessionKey, sessionQueryOptions } from '../lib/session-query'
 
 export function useSessionStream(

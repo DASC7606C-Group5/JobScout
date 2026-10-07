@@ -3,7 +3,6 @@ import { vSessionResponse } from './api-schemas'
 import { authenticatedFetch } from './auth-client'
 import type { SessionClient } from './contracts'
 import { subscribeToSession } from './session-events'
-export { SessionHttpError } from './api-client'
 
 export function createSessionClient(
   baseUrl = '/api/v1',

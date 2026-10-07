@@ -47,9 +47,7 @@ def evaluate(
                     **match,
                 }
             ]
-            row["preparation_suggestions"] = (
-                [{"requirement_id": "r1", "suggestion": advice}] if advice else []
-            )
+            row["preparation_suggestions"] = [advice] if advice else []
 
     return assess(ReplayProvider(respond), [candidate], applicant, {"original": excerpt})
 

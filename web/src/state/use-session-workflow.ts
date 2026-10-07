@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
+import { SessionHttpError } from '../lib/api-client'
 import type {
   CreateSessionRequest,
   ResumeSessionRequest,
@@ -10,7 +11,6 @@ import type {
   SessionClient,
   StopSessionRequest,
 } from '../lib/contracts'
-import { SessionHttpError } from '../lib/session-client'
 import { latestSessionSnapshot, sessionKey, sessionQueryOptions } from '../lib/session-query'
 import { discardSessionDrafts, flushPendingDrafts } from './draft-navigation'
 import { useSessionStream } from './use-session-stream'

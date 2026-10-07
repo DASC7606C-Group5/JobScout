@@ -32,12 +32,6 @@ export function changeAccount(next: Account | null, broadcast = true) {
   discardAllDrafts()
   void queryClient.cancelQueries()
   queryClient.clear()
-  try {
-    localStorage.removeItem('jobscout.session_id')
-    sessionStorage.removeItem('jobscout.session_id')
-  } catch {
-    /* Browser storage is optional. */
-  }
   account = next
   loaded = true
   loading = null

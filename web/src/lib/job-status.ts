@@ -1,14 +1,10 @@
 import type { ReviewIssue } from '../api/types.gen'
-import { vSearchActivity, vReviewIssue } from './api-schemas'
 import type { RecommendationItem, SearchActivity } from './contracts'
 import { hasFullDescription } from './job-display'
 
-export const jobStatuses = vSearchActivity.entries.status.options
 export type JobStatus = SearchActivity['status']
-export const reviewIssueCodes = vReviewIssue.entries.code.options
 export type { ReviewIssue } from '../api/types.gen'
-export const exclusionReasons = vSearchActivity.entries.exclusion_reasons.item.options
-export type ExclusionReason = SearchActivity['exclusion_reasons'][number]
+type ExclusionReason = SearchActivity['exclusion_reasons'][number]
 
 export const statusLabels: Record<JobStatus, string> = {
   found: 'Found',

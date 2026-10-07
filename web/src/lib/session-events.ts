@@ -1,7 +1,9 @@
+import { is } from 'valibot'
+
+import { vSessionResponse } from './api-schemas'
 import { ApplicantRequestError } from './applicant-errors'
 import { identityEvents, loadAccount } from './auth-client'
 import type { ScoutSession } from './contracts'
-import { isSessionResponse } from './session-response'
 
 export interface SessionEventHandlers {
   onSnapshot: (session: ScoutSession) => void
@@ -39,7 +41,7 @@ export function subscribeToSession(
       handlers.onError(new ApplicantRequestError('invalid_response'))
       return
     }
-    if (!isSessionResponse(data) || data.session_id !== sessionId) {
+    if (!is(vSessionResponse, data) || data.session_id !== sessionId) {
       close()
       handlers.onError(new ApplicantRequestError('invalid_response'))
       return

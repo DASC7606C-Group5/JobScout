@@ -48,8 +48,5 @@ def wire_review(row: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
         }
         for row in row.get("dimensions", [])
     ]
-    result["preparation_suggestions"] = [
-        suggestion["suggestion"] if isinstance(suggestion, dict) else suggestion
-        for suggestion in row.get("preparation_suggestions", [])
-    ][:2]
+    result["preparation_suggestions"] = row.get("preparation_suggestions", [])[:2]
     return result

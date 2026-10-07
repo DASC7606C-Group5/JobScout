@@ -1,8 +1,9 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { InfiniteData, QueryClient } from '@tanstack/react-query'
 
+import { SessionHttpError } from '../lib/api-client'
 import type { RecommendationItem, SessionHistory } from '../lib/contracts'
-import { sessionClient, SessionHttpError } from '../lib/session-client'
+import { sessionClient } from '../lib/session-client'
 import { sessionKey } from '../lib/session-query'
 import { workspaceClient } from '../lib/workspace-client'
 import { discardSessionDrafts } from './draft-navigation'

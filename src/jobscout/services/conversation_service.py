@@ -211,7 +211,7 @@ class ConversationService:
         if parsed.target_directions:
             updates.append(ProfileChange(field="target_directions", value=parsed.target_directions))
         for key, value in parsed.preferences.model_dump().items():
-            if key not in {"locations", "employment"} and value is not None and value is not False:
+            if value is not None and value is not False:
                 updates.append(ProfileChange(field=f"preferences.{key}", value=value))
         profile = apply_changes(profile, updates)
         return await self.resolve_preferences(profile)

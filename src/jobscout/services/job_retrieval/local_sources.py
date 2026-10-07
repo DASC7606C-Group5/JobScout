@@ -43,11 +43,6 @@ JOBSDB_DETAIL_QUERY = """query jobDetails($jobId: ID!) {
 }"""
 
 
-def source_keywords(request: SearchRequest, source: str) -> list[str]:
-    """Use the search keywords supplied by the agent."""
-    return plan_keywords(request)
-
-
 @dataclass(frozen=True)
 class SearchPlan:
     url: str
@@ -95,7 +90,7 @@ def build_search_plan(
         raise RetrievalFailure(
             "SEARCH_FILTER_UNSUPPORTED", "This Shixiseng adapter covers internships only."
         )
-    words = source_keywords(request, source)
+    words = plan_keywords(request)
     keyword = " ".join(words)
     if normalized(request.employment_type) == "internship" and source != "shixiseng":
         keyword += " intern" if source == "jobsdb" else " 实习"
@@ -544,12 +539,6 @@ def observed_employment_type(job: RawJob) -> str | None:
     return source_employment_label(values)
 
 
-def passes_filters(job: RawJob, request: SearchRequest) -> bool:
-    # Work-hours labels and employment types can coexist (a full-time
-    # internship). The model considers all supplied job details.
-    return passes_location(job, request)
-
-
 class LocalAdapter:
     def __init__(
         self,
@@ -672,7 +661,7 @@ class LocalAdapter:
                             self.name == "liepin"
                             and normalized(request.employment_type) == "internship"
                         )
-                    ) and not passes_filters(job, request):
+                    ) and not passes_location(job, request):
                         filtered += 1
                         continue
                     if self.name != "zhaopin" and detail_count < self.detail_limit:
@@ -699,7 +688,7 @@ class LocalAdapter:
                             job.raw_payload["detail_status"] = "missing_url"
                     elif self.name != "zhaopin":
                         job.raw_payload["detail_status"] = "limit_reached"
-                    if not passes_filters(job, request):
+                    if not passes_location(job, request):
                         filtered += 1
                         continue
                     if self.name == "shixiseng" and not job.title:

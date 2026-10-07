@@ -119,5 +119,5 @@ export function createApiClient(
       throw error
     }
   }
-  return { request, axios: client }
+  return { request }
 }

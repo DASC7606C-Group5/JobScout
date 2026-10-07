@@ -10,7 +10,7 @@ from jobscout.schemas.matching import MatchDimension, MatchScore
 from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
-from jobscout.schemas.search import ClarificationMessage, ClarificationStatus, SearchRequest
+from jobscout.schemas.search import ClarificationMessage, ClarificationStatus
 from jobscout.services.job_retrieval.models import SourceOutcome
 
 
@@ -20,7 +20,6 @@ def checkpoint_serializer() -> JsonPlusSerializer:
             UserProfile,
             ClarificationMessage,
             ClarificationStatus,
-            SearchRequest,
             ConversationMessage,
             SearchSummary,
             RecommendationResult,

@@ -176,10 +176,7 @@ class ReplayProvider:
                                 for item in candidate["requirements"]
                             ],
                             "preparation_suggestions": [
-                                {
-                                    "requirement_id": "python",
-                                    "suggestion": "Prepare a Python example and explain its tests.",
-                                }
+                                "Prepare a Python example and explain its tests."
                             ]
                             if candidate["requirements"]
                             else [],

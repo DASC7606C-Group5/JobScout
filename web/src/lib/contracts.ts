@@ -6,7 +6,6 @@ import type {
   DraftWriteRequest,
   DraftResponse as ApiDraftResponse,
   EmploymentCondition,
-  WorkArrangement,
   RawProfilePreferences,
   SearchOptionsOutput,
   SessionHistoryResponse,
@@ -41,7 +40,6 @@ export type {
 } from '../api/types.gen'
 
 export type EmploymentType = EmploymentCondition['included'][number]
-export type WorkMode = WorkArrangement['included'][number]
 export type SearchOptions = SearchOptionsOutput
 export type RawPreferences = Required<RawProfilePreferences>
 export type ApplicantRecovery = import('../api/types.gen').ApplicantError['action']
@@ -57,7 +55,6 @@ export type ResumeSessionRequest = Required<
 }
 export type ResumeSubmission = Omit<ResumeSessionRequest, 'request_id' | 'expected_revision'>
 export type ScoutSession = SessionResponse
-export type StopReason = NonNullable<ScoutSession['stop_reason']>
 export type SessionHistory = SessionHistoryResponse
 export type DraftResponse<T = Record<string, unknown>> = Omit<ApiDraftResponse, 'data'> & {
   data: T

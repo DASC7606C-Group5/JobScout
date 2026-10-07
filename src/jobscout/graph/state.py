@@ -7,7 +7,7 @@ from jobscout.schemas.job import JobPosting, SourceDocument
 from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
-from jobscout.schemas.search import ClarificationMessage, SearchRequest
+from jobscout.schemas.search import ClarificationMessage
 from jobscout.services.job_retrieval.models import SourceOutcome
 
 WorkflowStage = Literal[
@@ -18,12 +18,7 @@ WorkflowStage = Literal[
     "confirm",
     "edit_conditions",
     "plan",
-    "retrieve",
     "review",
-    "normalize",
-    "understand",
-    "check_result_count",
-    "present",
     "completed",
     "failed",
 ]
@@ -34,8 +29,6 @@ class AgentState(TypedDict):
     input_data: NotRequired[dict[str, object]]
     profile: NotRequired[UserProfile | None]
     clarification_questions: NotRequired[list[ClarificationMessage]]
-    search_requests: NotRequired[list[SearchRequest]]
-    raw_jobs: NotRequired[list[dict[str, object]]]
     normalized_jobs: NotRequired[list[JobPosting]]
     recommendation: NotRequired[RecommendationResult | None]
     current_stage: NotRequired[WorkflowStage]
@@ -46,7 +39,6 @@ class AgentState(TypedDict):
     revision: NotRequired[int]
     outcome: NotRequired[Literal["running", "paused", "completed", "failed"]]
     retryable: NotRequired[bool]
-    mode: NotRequired[Literal["live", "replay"]]
     conversation: NotRequired[list[ConversationMessage]]
     search_summary: NotRequired[SearchSummary | None]
     source_outcomes: NotRequired[list[SourceOutcome]]
@@ -62,11 +54,8 @@ class AgentState(TypedDict):
     applied_request_id: NotRequired[str]
     confirmed_profile: NotRequired[UserProfile | None]
     operation_deadline: NotRequired[float]
-    retrieval_seconds: NotRequired[float]
     retrieval_round: NotRequired[int]
     analyzed_job_ids: NotRequired[list[str]]
-    analysis_jobs: NotRequired[list[JobPosting]]
-    assessment: NotRequired[RecommendationResult | None]
     jd_cache: NotRequired[dict[str, object]]
     run_id: NotRequired[str | None]
     progress_seq: NotRequired[int]

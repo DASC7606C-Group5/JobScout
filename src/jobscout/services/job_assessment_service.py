@@ -136,7 +136,6 @@ class RequirementMatch(_StrictModel):
 
 
 class PreparationSuggestion(_StrictModel):
-    requirement_id: str
     suggestion: str = Field(min_length=1, max_length=500)
 
 
@@ -314,7 +313,7 @@ def _validate_analysis(analysis: JobAnalysis, documents: dict[str, SourceDocumen
     analysis.incomplete = incomplete
 
 
-def _requirement_terms(requirement: Requirement, profile: UserProfile | None = None) -> list[str]:
+def _requirement_terms(requirement: Requirement) -> list[str]:
     if requirement.category != "skill":
         return []
     return _unique_skills(requirement.skill_terms) or [requirement.text]
@@ -343,10 +342,6 @@ def _validate_matches(
         expected
     ):
         raise _InvalidAssessment("missing, duplicate or unknown requirement ID")
-    if any(item.requirement_id not in expected for item in match.preparation_suggestions):
-        raise _InvalidAssessment("preparation advice references unknown requirement")
-    if any(not item.suggestion.strip() for item in match.preparation_suggestions):
-        raise _InvalidAssessment("empty preparation advice")
     facts = _profile_facts(profile)
     for item in match.matches:
         _references(item.profile_source_quotes, documents)
@@ -445,12 +440,6 @@ def _validate_match(
     incomplete |= any(row.requirement_id not in expected for row in match.matches)
     match.matches = retained
     match.incomplete = incomplete
-    valid_ids = {row.requirement_id for row in retained}
-    match.preparation_suggestions = [
-        suggestion
-        for suggestion in match.preparation_suggestions
-        if suggestion.requirement_id in valid_ids and suggestion.suggestion.strip()
-    ][:2]
 
 
 def _review_match(
@@ -545,19 +534,16 @@ def _review_match(
                 ][:10],
             )
         )
-    valid_ids = [r.requirement_id for r in match.matches]
-    if valid_ids and isinstance(review, ReviewResponse):
+    if match.matches and isinstance(review, ReviewResponse):
         match.preparation_suggestions = [
-            PreparationSuggestion(requirement_id=valid_ids[0], suggestion=text)
+            PreparationSuggestion(suggestion=text)
             for text in review.preparation_suggestions
             if text.strip()
         ]
     return match
 
 
-def _match_explanation(
-    requirement: Requirement, match: RequirementMatch, profile: UserProfile
-) -> str:
+def _match_explanation(requirement: Requirement, match: RequirementMatch) -> str:
     if match.explanation.strip():
         return match.explanation.strip()
     if match.level == "not_documented":
@@ -606,7 +592,7 @@ def _render(
             if reference not in user_refs:
                 user_refs.append(reference)
         label = _requirement_label(requirement)
-        explanation = _match_explanation(requirement, item, profile)
+        explanation = _match_explanation(requirement, item)
         reasons.append(
             MatchingReason(
                 requirement=label,
@@ -816,19 +802,16 @@ class JobAssessmentService:
             }
         )
 
-    def _cache_key(
-        self, job: JobPosting, documents: dict[str, SourceDocument], directions: list[str]
-    ) -> str:
+    def _cache_key(self, documents: dict[str, SourceDocument], directions: list[str]) -> str:
+        model_identity = getattr(self.provider, "cache_identity", None)
+        if model_identity is None:
+            model_identity = str(getattr(self.provider, "model", type(self.provider).__qualname__))
         payload = {
             "schema_version": _SCHEMA_VERSION,
             "instruction": JOB_ANALYSIS_PROMPT,
             "directions": sorted(set(directions)),
             "schema": JDAnalysisBatch.model_json_schema(),
-            "model": getattr(
-                self.provider,
-                "cache_identity",
-                str(getattr(self.provider, "model", type(self.provider).__qualname__)),
-            ),
+            "model": model_identity,
             "documents": [
                 {"document_id": key, "text": value.text, "is_excerpt": value.is_excerpt}
                 for key, value in sorted(documents.items())
@@ -1009,7 +992,7 @@ class JobAssessmentService:
                     public_issue=ReviewIssue(code="unverifiable_claims", stage="jd_analysis"),
                 )
                 continue
-            key = self._cache_key(job, documents[job.job_id], profile.target_directions)
+            key = self._cache_key(documents[job.job_id], profile.target_directions)
             feedback = (repair_feedback or {}).get(job.job_id, "")
             if key in self.cache and (not feedback or feedback.startswith("matching:")):
                 try:
@@ -1048,7 +1031,7 @@ class JobAssessmentService:
                 if job.job_id in responses:
                     analyses[job.job_id] = responses[job.job_id]
                     self.cache[
-                        self._cache_key(job, documents[job.job_id], profile.target_directions)
+                        self._cache_key(documents[job.job_id], profile.target_directions)
                     ] = responses[job.job_id].model_copy(deep=True)
         eligible: dict[str, list[str]] = {}
         for job in valid_jobs:

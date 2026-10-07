@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
+import { SessionHttpError } from '../lib/api-client'
 import type { DraftResponse, SaveDraftRequest } from '../lib/contracts'
-import { SessionHttpError } from '../lib/session-client'
 import { DraftController } from './draft-controller'
 import {
   discardSessionDrafts,

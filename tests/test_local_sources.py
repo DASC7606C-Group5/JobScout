@@ -19,7 +19,7 @@ from jobscout.services.job_retrieval.local_sources import (
     detail_url,
     map_listing,
     parse_listing,
-    passes_filters,
+    passes_location,
 )
 from jobscout.services.job_retrieval.mock_web import FixtureWebClient
 from jobscout.services.job_retrieval.models import RawJob, RetrievalFailure
@@ -207,19 +207,6 @@ def test_shixiseng_glyphs_and_detail_mapping() -> None:
         ),
     )
     assert job.title == "数据分析实习生" and job.salary == "200-300/天" and job.location == "上海"
-
-
-def test_textual_employment_uncertainty_is_preserved_for_assessment() -> None:
-    request = req(location="Hong Kong", employment_type="full-time")
-    job = raw(
-        title="Data Analyst Intern",
-        raw_payload={"workTypes": ["Full time"], "locations": [{"countryCode": "HK"}]},
-    )
-    assert passes_filters(job, request)
-    job.title = "Data Analyst"
-    assert passes_filters(job, request)
-    job.raw_payload["workTypes"] = []
-    assert passes_filters(job, request)
 
 
 class FailingClient(FixtureWebClient):
@@ -442,7 +429,7 @@ def test_shixiseng_company_listing_and_current_detail_selector() -> None:
 def test_country_query_rejects_verified_other_region_and_retains_unknown_for_assessment(
     place: str | None, expected: bool
 ) -> None:
-    assert passes_filters(raw("shixiseng", location=place), req(location="China")) is expected
+    assert passes_location(raw("shixiseng", location=place), req(location="China")) is expected
 
 
 def test_hk_district_alias_checks_country_too() -> None:
@@ -451,6 +438,6 @@ def test_hk_district_alias_checks_country_too() -> None:
         location="Kowloon Bay, Kwun Tong District",
         raw_payload={"locations": [{"countryCode": "HK"}]},
     )
-    assert passes_filters(job, req(location="Kowloon, Hong Kong"))
+    assert passes_location(job, req(location="Kowloon, Hong Kong"))
     job.raw_payload["locations"] = [{"countryCode": "SG"}]
-    assert not passes_filters(job, req(location="Kowloon, Hong Kong"))
+    assert not passes_location(job, req(location="Kowloon, Hong Kong"))
