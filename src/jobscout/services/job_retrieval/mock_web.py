@@ -27,7 +27,15 @@ class FixtureWebClient:
         headers: dict[str, str] | None = None,
     ) -> WebPage:
         parts = urlsplit(url)
-        if parts.path in self.data:
+        if parts.path == "/graphql" and parts.hostname == "hk.jobsdb.com":
+            variables = body.get("variables") if body else None
+            identifier = variables.get("jobId") if isinstance(variables, dict) else None
+            if not isinstance(identifier, str):
+                raise RetrievalFailure("SEARCH_RESPONSE_FORMAT", "Missing synthetic JobsDB job ID.")
+            value = obj(self.data["jobsdb_details"]).get(identifier)
+            if value is None:
+                raise RetrievalFailure("SEARCH_RESPONSE_FORMAT", "No synthetic JobsDB detail.")
+        elif parts.path in self.data:
             value = self.data[parts.path]
         elif "/search/positions" in url:
             value = self.data["zhaopin"]
@@ -51,7 +59,7 @@ class FixtureWebClient:
             if "商业分析" in query or "Business Analyst" in query
             else "Data Analyst"
         )
-        if parts.path not in self.data:
+        if parts.path not in self.data and parts.path != "/graphql":
             # Simulate the website's keyword search over test records.
             value = json.loads(json.dumps(value))
             if isinstance(value, dict):

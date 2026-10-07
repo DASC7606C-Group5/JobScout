@@ -5,11 +5,25 @@ import json
 import time
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
+from weakref import WeakKeyDictionary
 
 import httpx
 
 from .models import RetrievalFailure
 from .web_transport import WebPage
+
+_JOBSDB_LAST_REQUEST: WeakKeyDictionary[asyncio.AbstractEventLoop, float] = WeakKeyDictionary()
+
+
+async def _pace_jobsdb_requests(interval: float) -> None:
+    loop = asyncio.get_running_loop()
+    while True:
+        now = time.monotonic()
+        delay = interval - (now - _JOBSDB_LAST_REQUEST.get(loop, 0))
+        if delay <= 0:
+            _JOBSDB_LAST_REQUEST[loop] = now
+            return
+        await asyncio.sleep(delay)
 
 
 class AsyncHttpWebClient:
@@ -18,7 +32,7 @@ class AsyncHttpWebClient:
         *,
         timeout: float = 12.0,
         retries: int = 1,
-        interval: float = 0.3,
+        interval: float = 0.6,
         cache_seconds: float = 300,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
@@ -57,6 +71,8 @@ class AsyncHttpWebClient:
                     await asyncio.sleep(
                         max(0, self.interval - (time.monotonic() - self._last.get(host, 0)))
                     )
+                    if host == "hk.jobsdb.com":
+                        await _pace_jobsdb_requests(self.interval)
                     self._last[host] = time.monotonic()
                 try:
                     async with client.stream(
@@ -69,6 +85,10 @@ class AsyncHttpWebClient:
                             **(headers or {}),
                         },
                     ) as response:
+                        if response.headers.get("cf-mitigated") == "challenge":
+                            raise RetrievalFailure(
+                                "SEARCH_AUTH", "Source requires Cloudflare verification."
+                            )
                         if response.status_code in {401, 403, 429}:
                             raise RetrievalFailure(
                                 "SEARCH_RATE_LIMIT"

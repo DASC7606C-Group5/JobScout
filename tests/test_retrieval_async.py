@@ -383,8 +383,21 @@ def test_default_page_results_and_details_budgets() -> None:
                     STAMP,
                 )
             self.details += 1
+            assert body is not None and isinstance(body["variables"], dict)
             return WebPage(
-                '<div data-automation="jobAdDetails">Data Analyst SQL full description</div>', STAMP
+                json.dumps(
+                    {
+                        "data": {
+                            "jobDetails": {
+                                "job": {
+                                    "id": body["variables"]["jobId"],
+                                    "content": "<p>Data Analyst SQL full description</p>",
+                                }
+                            }
+                        }
+                    }
+                ),
+                STAMP,
             )
 
     client = Client()
@@ -397,8 +410,9 @@ def test_default_page_results_and_details_budgets() -> None:
     )
     assert not result.errors
     assert len(result.raw_jobs) == 10
-    assert client.listings == 1 and client.details == 3
-    assert result.outcomes[0].excerpt_count == 7
+    assert client.listings == 1 and client.details == 10
+    assert result.outcomes[0].excerpt_count == 0
+    assert all(job.description == "Data Analyst SQL full description" for job in result.raw_jobs)
     assert all(job.employment_type is None for job in result.raw_jobs)
 
 
@@ -423,9 +437,20 @@ def test_timeout_retains_completed_jobs_inside_source() -> None:
                     ),
                     STAMP,
                 )
-            if url.endswith("/1"):
+            assert body is not None and isinstance(body["variables"], dict)
+            identifier = body["variables"]["jobId"]
+            if identifier == "1":
                 await asyncio.sleep(10)
-            return WebPage('<div data-automation="jobAdDetails">Data Analyst SQL</div>', STAMP)
+            return WebPage(
+                json.dumps(
+                    {
+                        "data": {
+                            "jobDetails": {"job": {"id": identifier, "content": "Data Analyst SQL"}}
+                        }
+                    }
+                ),
+                STAMP,
+            )
 
     result = asyncio.run(
         JobSearchService(async_web_client=Client()).search_many_async(

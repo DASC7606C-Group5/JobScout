@@ -32,6 +32,14 @@ HOSTS = {
     "shixiseng": "www.shixiseng.com",
     "jobsdb": "hk.jobsdb.com",
 }
+JOBSDB_DETAIL_QUERY = """query jobDetails($jobId: ID!) {
+  jobDetails(id: $jobId) {
+    job {
+      id
+      content(platform: WEB)
+    }
+  }
+}"""
 
 
 def source_keywords(request: SearchRequest, source: str) -> list[str]:
@@ -387,7 +395,50 @@ def detail_url(job: RawJob) -> str | None:
     return "https://" + parts.netloc + parts.path
 
 
+def build_detail_plan(job: RawJob) -> SearchPlan | None:
+    url = detail_url(job)
+    if url is None:
+        return None
+    if job.source != "jobsdb":
+        return SearchPlan(url, None, {}, ())
+    match = re.fullmatch(r"/job/(\d+)/?", urlsplit(url).path)
+    if match is None or (job.source_job_id and job.source_job_id != match[1]):
+        raise RetrievalFailure("SEARCH_RESPONSE_FORMAT", "Invalid JobsDB job identity.")
+    return SearchPlan(
+        "https://hk.jobsdb.com/graphql",
+        {
+            "operationName": "jobDetails",
+            "query": JOBSDB_DETAIL_QUERY,
+            "variables": {"jobId": match[1]},
+        },
+        {"Accept": "application/json", "Referer": "https://hk.jobsdb.com/"},
+        (),
+    )
+
+
 def add_detail(job: RawJob, page: WebPage) -> None:
+    if job.source == "jobsdb":
+        plan = build_detail_plan(job)
+        data = decode_json(page)
+        if data.get("errors"):
+            raise RetrievalFailure("SEARCH_SOURCE_REJECTED", "JobsDB rejected the detail query.")
+        native = obj(at(data, "data", "jobDetails", "job"))
+        variables = plan.body.get("variables") if plan and plan.body else None
+        if not isinstance(variables, dict) or native.get("id") != variables.get("jobId"):
+            raise RetrievalFailure("SEARCH_RESPONSE_FORMAT", "JobsDB detail job identity mismatch.")
+        content = string(native.get("content"))
+        description = Tree(content).root.text() if content else None
+        if not description:
+            raise RetrievalFailure("SEARCH_RESPONSE_FORMAT", "JobsDB job description is missing.")
+        if job.description:
+            job.raw_payload.setdefault("listing_description", job.description)
+            job.raw_payload.setdefault("listing_fetched_at", job.fetched_at.isoformat())
+        job.description = description
+        job.description_is_excerpt = False
+        job.raw_payload["detail_html"] = content
+        job.raw_payload["detail_description"] = description
+        job.raw_payload["detail_fetched_at"] = page.fetched_at.isoformat()
+        return
     if job.description:
         job.raw_payload.setdefault("listing_description", job.description)
         job.raw_payload.setdefault("listing_fetched_at", job.fetched_at.isoformat())
@@ -413,9 +464,7 @@ def add_detail(job: RawJob, page: WebPage) -> None:
         )
         job.location = location or job.location
         job.employment_type = observed_employment_type(job) or job.employment_type
-    if job.source == "jobsdb":
-        description = tree.field("data-automation", "jobAdDetails")
-    elif job.source == "liepin":
+    if job.source == "liepin":
         description = tree.field("data-selector", "job-intro-content")
     else:
         description = tree.field("class", "job_detail")
@@ -504,8 +553,10 @@ class LocalAdapter:
         page_size: int = 10,
         candidate_limit: int = 60,
         result_limit: int = 10,
-        detail_limit: int = 3,
+        detail_limit: int | None = None,
     ) -> None:
+        if detail_limit is None:
+            detail_limit = result_limit if name == "jobsdb" else 3
         if (
             name not in HOSTS
             or not 1 <= max_pages <= 5
@@ -618,11 +669,11 @@ class LocalAdapter:
                         filtered += 1
                         continue
                     if self.name != "zhaopin" and detail_count < self.detail_limit:
-                        url = detail_url(job)
-                        if url:
+                        detail_plan = build_detail_plan(job)
+                        if detail_plan:
                             detail_count += 1
                             try:
-                                detail_page = yield SearchPlan(url, None, {}, ())
+                                detail_page = yield detail_plan
                                 add_detail(job, detail_page)
                                 job.raw_payload["detail_status"] = "ok"
                             except RetrievalFailure as exc:
@@ -697,7 +748,11 @@ class LocalAdapter:
                     f"{label}: reached a page or job limit; more jobs may be available (pages={number}, candidates={result.candidate_count})."
                 )
                 break
-        if detail_count >= self.detail_limit and self.name != "zhaopin":
+        if (
+            detail_count >= self.detail_limit
+            and self.name != "zhaopin"
+            and any(job.raw_payload.get("detail_status") == "limit_reached" for job in result.jobs)
+        ):
             result.warnings.append(
                 f"{label}: detail budget={self.detail_limit}; some descriptions may be missing/excerpts."
             )

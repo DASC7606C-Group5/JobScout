@@ -15,7 +15,7 @@ from jobscout.services.job_retrieval.local_sources import (
     HOSTS,
     LocalAdapter,
     add_detail,
-    detail_url,
+    build_detail_plan,
 )
 from jobscout.services.job_retrieval.models import (
     RawJob,
@@ -48,7 +48,7 @@ class JobSearchService:
         page_size: int = 10,
         candidate_limit: int = 60,
         result_limit: int = 10,
-        detail_limit: int = 3,
+        detail_limit: int | None = None,
         concurrency: int = 4,
     ) -> None:
         if not 1 <= concurrency <= 16:
@@ -112,11 +112,13 @@ class JobSearchService:
                 raw_payload={},
             )
             try:
-                url = detail_url(raw)
-                if url is None:
+                plan = build_detail_plan(raw)
+                if plan is None:
                     return None
                 async with semaphore:
-                    page = await self.public_client.request_async(url)
+                    page = await self.public_client.request_async(
+                        plan.url, body=plan.body, headers=plan.headers
+                    )
                 add_detail(raw, page)
             except RetrievalFailure:
                 return None
