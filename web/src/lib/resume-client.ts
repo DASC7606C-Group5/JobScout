@@ -1,3 +1,5 @@
+import { createApiClient, type ApiFetcher } from './api-client'
+import { vResumeInput } from './api-schemas'
 import { ApplicantRequestError, responseErrorCode } from './applicant-errors'
 import { authenticatedFetch } from './auth-client'
 import type { ScoutInput } from './contracts'
@@ -21,11 +23,12 @@ function validateText(text: string): string {
   return normalized
 }
 
-export function createResumeReader(
-  baseUrl = '/api/v1',
-  fetcher: (url: string, init: RequestInit) => Promise<Response> = authenticatedFetch,
-) {
-  const base = baseUrl.replace(/\/+$/, '')
+export function createResumeReader(baseUrl = '/api/v1', fetcher: ApiFetcher = authenticatedFetch) {
+  const client = createApiClient(
+    baseUrl,
+    fetcher,
+    (status, data) => new ApplicantRequestError(responseErrorCode(data, status)),
+  )
   return async function readResume(file: File, signal?: AbortSignal): Promise<ResumePayload> {
     signal?.throwIfAborted()
     const extension = file.name.split('.').pop()?.toLowerCase()
@@ -39,31 +42,14 @@ export function createResumeReader(
     }
     const form = new FormData()
     form.append('file', file)
-    let response: Response
-    try {
-      response = await fetcher(`${base}/resumes/parse`, {
-        method: 'POST',
-        headers: { Accept: 'application/json' },
-        body: form,
-        ...(signal ? { signal } : {}),
-      })
-    } catch (error) {
-      if (signal?.aborted) throw error
-      throw new ApplicantRequestError('connection_unavailable')
-    }
-    signal?.throwIfAborted()
-    const data: unknown = await response.json().catch(() => null)
-    if (!response.ok) throw new ApplicantRequestError(responseErrorCode(data, response.status))
-    if (
-      !data ||
-      typeof data !== 'object' ||
-      !('name' in data) ||
-      typeof data.name !== 'string' ||
-      !data.name.trim() ||
-      !('text' in data) ||
-      typeof data.text !== 'string'
+    const data = await client.request(
+      'post',
+      '/api/v1/resumes/parse',
+      { body: form, ...(signal ? { signal } : {}) },
+      vResumeInput,
     )
-      throw new ApplicantRequestError('invalid_response')
+    signal?.throwIfAborted()
+    if (!data.name.trim()) throw new ApplicantRequestError('invalid_response')
     return { name: data.name, text: validateText(data.text) }
   }
 }

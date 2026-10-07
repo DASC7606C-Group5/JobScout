@@ -2,9 +2,10 @@
 
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from jobscout.schemas.conversation import SourceQuoteReference
+from jobscout.schemas.wire import WireModel
 
 DimensionId = Literal[
     "skills", "responsibilities", "experience", "seniority", "education", "preferences"
@@ -19,7 +20,7 @@ DIMENSION_WEIGHTS: dict[DimensionId, int] = {
 }
 
 
-class DimensionAssessment(BaseModel):
+class DimensionAssessment(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     id: DimensionId
@@ -40,17 +41,17 @@ class DimensionAssessment(BaseModel):
 
 
 class MatchDimension(DimensionAssessment):
-    weight: int
+    weight: int = Field(ge=0, le=100)
     input_hash: str
 
 
-class MatchScore(BaseModel):
+class MatchScore(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     total: int | None = Field(ge=0, le=100)
     dimensions: list[MatchDimension] = Field(min_length=6, max_length=6)
-    assessed_weight: int
-    applicable_weight: int
+    assessed_weight: int = Field(ge=0, le=100)
+    applicable_weight: int = Field(ge=0, le=100)
     assessed_percentage: int = Field(ge=0, le=100)
     provisional: bool
     completeness: Literal["complete", "partial", "unknown"]

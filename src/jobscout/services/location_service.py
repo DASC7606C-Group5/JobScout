@@ -10,9 +10,11 @@ from datetime import UTC, datetime
 from typing import Literal
 from urllib.parse import urljoin, urlsplit
 
+from selectolax.lexbor import LexborHTMLParser
+
 from jobscout.schemas.profile import LocationRef
 from jobscout.services.job_retrieval.async_transport import AsyncHttpWebClient
-from jobscout.services.job_retrieval.html_fields import Tree
+from jobscout.services.job_retrieval.html_fields import visible_text
 from jobscout.services.job_retrieval.models import RetrievalFailure
 from jobscout.services.job_retrieval.web_transport import AsyncWebClient
 
@@ -127,7 +129,7 @@ def parse_hk_directory(text: str, fetched_at: datetime) -> list[CatalogEntry]:
     for token in tokens:
         if token.group(1) is not None:
             group_index += 1
-            name = Tree(token.group(1)).root.text()
+            name = visible_text(token.group(1))
             group = CatalogEntry(
                 LocationRef(
                     id=f"hk:region:{group_index}",
@@ -143,7 +145,7 @@ def parse_hk_directory(text: str, fetched_at: datetime) -> list[CatalogEntry]:
             )
             result.append(group)
         elif group is not None:
-            name = Tree(token.group(4)).root.text()
+            name = visible_text(token.group(4))
             result.append(
                 CatalogEntry(
                     LocationRef(
@@ -346,15 +348,15 @@ class LocationCatalog:
                 if self._liepin_links is None:
                     directory = await self.client.request_async(LIEPIN_DIRECTORY)
                     links: dict[str, str] = {}
-                    for anchor in Tree(directory.text).root.find(tag="a"):
-                        href = urljoin(LIEPIN_DIRECTORY, anchor.attrs.get("href", ""))
+                    for anchor in LexborHTMLParser(directory.text).css("a"):
+                        href = urljoin(LIEPIN_DIRECTORY, anchor.attributes.get("href", ""))
                         parts = urlsplit(href)
                         if (
                             parts.scheme == "https"
                             and parts.netloc == "www.liepin.com"
                             and re.fullmatch(r"/city-[a-z0-9-]+/", parts.path)
                         ):
-                            links[location_key(anchor.text())] = href
+                            links[location_key(anchor.text(separator=" ", strip=True))] = href
                     self._liepin_links = links
                 city_url = next(
                     (

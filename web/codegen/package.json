@@ -1,0 +1,12 @@
+{
+  "name": "@jobscout/codegen",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "generate": "bun generate.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "typescript": "^5.9.3"
+  }
+}

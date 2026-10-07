@@ -2,13 +2,15 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
+
+from jobscout.schemas.wire import WireModel
 
 EmploymentType = Literal["full-time", "part-time", "internship", "contract", "freelance"]
 WorkMode = Literal["remote", "hybrid", "onsite"]
 
 
-class LocationRef(BaseModel):
+class LocationRef(WireModel):
     """A place and its catalog ID, looked up rather than invented by the model."""
 
     model_config = ConfigDict(extra="forbid")
@@ -23,7 +25,7 @@ class LocationRef(BaseModel):
     resolution: Literal["resolved", "ambiguous", "unsupported"] = "resolved"
 
 
-class LocationCondition(BaseModel):
+class LocationCondition(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     raw_text: str | None = None
@@ -32,7 +34,7 @@ class LocationCondition(BaseModel):
     unrestricted: bool = False
 
 
-class EmploymentCondition(BaseModel):
+class EmploymentCondition(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     raw_text: str | None = None
@@ -47,13 +49,13 @@ class EmploymentCondition(BaseModel):
         return self
 
 
-class SearchOptions(BaseModel):
+class SearchOptions(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     result_count: int = Field(default=10, ge=5, le=20, strict=True)
 
 
-class WorkArrangement(BaseModel):
+class WorkArrangement(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     raw_text: str | None = None
@@ -69,14 +71,14 @@ class WorkArrangement(BaseModel):
         return self.included[0]
 
 
-class ProfileSource(BaseModel):
+class ProfileSource(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     resume: bool = False
     description: bool = False
 
 
-class RawProfilePreferences(BaseModel):
+class RawProfilePreferences(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     location: str | None = None
@@ -94,7 +96,7 @@ class ProfilePreferences(RawProfilePreferences):
     work_arrangement: WorkArrangement = Field(default_factory=WorkArrangement)
 
 
-class UserProfile(BaseModel):
+class UserProfile(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     profile_id: str

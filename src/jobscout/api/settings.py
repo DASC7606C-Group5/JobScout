@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel
 
+from jobscout.schemas.settings import DailyUsage, DisabledUsage, ModelSettingsResponse
 from jobscout.services.auth_service import auth_error
 from jobscout.services.identity import owner_id
 from jobscout.services.llm_service import ModelServiceError
@@ -17,7 +18,7 @@ def service(request: Request) -> ModelSettingsService:
     return request.app.state.model_settings  # type: ignore[no-any-return]
 
 
-@router.get("/models")
+@router.get("/models", response_model=ModelSettingsResponse)
 async def read_models(request: Request) -> dict[str, Any]:
     return await service(request).read(owner_id())
 
@@ -38,7 +39,7 @@ class ConnectionResult(BaseModel):
     ok: bool
 
 
-@router.post("/models/{role}/test")
+@router.post("/models/{role}/test", response_model=ConnectionResult)
 async def test_model(request: Request, role: Role) -> dict[str, bool]:
     auth = request.app.state.auth
     limits = [(f"model-test:{owner_id()}", 10)]
@@ -83,6 +84,6 @@ async def test_model(request: Request, role: Role) -> dict[str, bool]:
         await models.provider.aclose()
 
 
-@router.get("/usage")
+@router.get("/usage", response_model=DailyUsage | DisabledUsage)
 async def read_usage(request: Request) -> dict[str, Any]:
     return await service(request).usage(owner_id())

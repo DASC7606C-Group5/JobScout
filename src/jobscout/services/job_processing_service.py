@@ -26,10 +26,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
-from html.parser import HTMLParser
 from typing import Any, NamedTuple
 
 from pydantic import ValidationError
+from selectolax.lexbor import LexborHTMLParser
 
 from jobscout.schemas.job import FreshnessStatus, JobPosting, SourceDocument
 from jobscout.services.job_retrieval.employment import source_employment_label
@@ -64,39 +64,15 @@ _HTML_BLOCK_TAGS = frozenset(
 )
 
 
-class _DescriptionParser(HTMLParser):
-    """Decode HTML text while preserving blocks and excluding scripts/styles."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.parts: list[str] = []
-        self.hidden_depth = 0
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in {"script", "style"}:
-            self.hidden_depth += 1
-        if not self.hidden_depth and tag in _HTML_BLOCK_TAGS:
-            self.parts.append("\n")
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag in {"script", "style"} and self.hidden_depth:
-            self.hidden_depth -= 1
-        if not self.hidden_depth and tag in _HTML_BLOCK_TAGS:
-            self.parts.append("\n")
-
-    def handle_data(self, data: str) -> None:
-        if not self.hidden_depth:
-            self.parts.append(data)
-
-
 def _html_description_text(value: str) -> str:
     if not re.search(r"</?[a-zA-Z][^>]*>", value):
         return value
-    parser = _DescriptionParser()
-    parser.feed(value)
-    parser.close()
-    # Adjacent block tags should not create blank lines ending a section.
-    return re.sub(r"\n\s*\n", "\n", "".join(parser.parts))
+    tree = LexborHTMLParser(value)
+    tree.strip_tags(["script", "style"])
+    for node in tree.css(",".join(_HTML_BLOCK_TAGS)):
+        node.insert_before("\n")
+        node.insert_after("\n")
+    return re.sub(r"\n\s*\n", "\n", tree.text())
 
 
 def _clean_description(value: object) -> str | None:

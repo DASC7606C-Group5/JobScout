@@ -3,7 +3,7 @@ import { rejects } from 'node:assert/strict'
 
 import { registerDraft } from '../state/draft-navigation'
 import {
-  accountRequest,
+  accountClient,
   authenticatedFetch,
   changeAccount,
   currentAccount,
@@ -69,7 +69,13 @@ test('account changes discard private requests, query results, and pending draft
 test('an incorrect password does not end the current account session', async () => {
   changeAccount(account)
   mockFetch(async () => Response.json({ detail: { code: 'invalid_credentials' } }, { status: 401 }))
-  await rejects(accountRequest('/auth/password', 'POST', {}), { code: 'invalid_credentials' })
+  await rejects(
+    accountClient.changePassword({
+      current_password: 'synthetic-old-password',
+      new_password: 'synthetic-new-password',
+    }),
+    { code: 'invalid_credentials' },
+  )
   expect(currentAccount()?.user_id).toBe(account.user_id)
 })
 
@@ -78,6 +84,40 @@ test('an expired password-change session clears the current account', async () =
   mockFetch(async () =>
     Response.json({ detail: { code: 'authentication_required' } }, { status: 401 }),
   )
-  await rejects(accountRequest('/auth/password', 'POST', {}), { code: 'authentication_required' })
+  await rejects(
+    accountClient.changePassword({
+      current_password: 'synthetic-old-password',
+      new_password: 'synthetic-new-password',
+    }),
+    { code: 'authentication_required' },
+  )
   expect(currentAccount()).toBeNull()
+})
+
+test('account responses are validated before changing identity', async () => {
+  changeAccount(account)
+  mockFetch(async () => Response.json({ ...account, csrf_token: 42 }))
+  await rejects(
+    accountClient.signIn({ username: 'student', password: 'synthetic-password' }, false),
+    { code: 'invalid_response' },
+  )
+  expect(currentAccount()?.user_id).toBe(account.user_id)
+})
+
+test('daily allowance accepts disabled development usage and rejects invalid production usage', async () => {
+  mockFetch(async () => Response.json({ enabled: false }))
+  expect(await accountClient.usage()).toEqual({ enabled: false })
+  const usage = {
+    enabled: true,
+    remaining: 5,
+    used: 2,
+    limit: 7,
+    server_remaining: 20,
+    day: '2026-10-08',
+    timezone: 'Asia/Hong_Kong',
+  }
+  mockFetch(async () => Response.json(usage))
+  expect(await accountClient.usage()).toEqual(usage)
+  mockFetch(async () => Response.json({ ...usage, remaining: -1 }))
+  await rejects(accountClient.usage(), { code: 'invalid_response' })
 })

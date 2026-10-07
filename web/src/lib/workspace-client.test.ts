@@ -1,7 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 import { rejects } from 'node:assert/strict'
 
-import { createProfileFixture, createRecommendationFixture } from '../../tests/fixtures'
+import {
+  createMatchScoreFixture,
+  createProfileFixture,
+  createRecommendationFixture,
+} from '../../tests/fixtures'
 import type { SessionSummary } from './contracts'
 import { createWorkspaceClient, sessionDraftPath } from './workspace-client'
 
@@ -113,4 +117,24 @@ describe('persistent shared workspace API', () => {
     )
     await rejects(invalidHistory.history(null), { code: 'invalid_response' })
   })
+})
+
+test('saved snapshots reject duplicate assessment axes and numeric unknown scores', async () => {
+  const score = createMatchScoreFixture()
+  const first = score.dimensions[0]!
+  const invalidScores = [
+    { ...score, dimensions: score.dimensions.map(() => first) },
+    {
+      ...score,
+      dimensions: [{ ...first, status: 'unknown', score: 42 }, ...score.dimensions.slice(1)],
+    },
+  ]
+  for (const match_score of invalidScores) {
+    const item = { ...createRecommendationFixture(), match_score }
+    const client = createWorkspaceClient('/api/v1', (_url, init) =>
+      Promise.resolve(Response.json(init.method === 'GET' ? { items: [item] } : item)),
+    )
+    await rejects(client.savedJobs(), { code: 'invalid_response' })
+    await rejects(client.saveJob(item.job.job_id, 'search-1', 7), { code: 'invalid_response' })
+  }
 })

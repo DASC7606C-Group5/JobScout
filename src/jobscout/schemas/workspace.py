@@ -3,31 +3,32 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
 from jobscout.schemas.recommendation import RecommendationItem
 from jobscout.schemas.session import ResumeInput
+from jobscout.schemas.wire import WireModel
 
 
-class SessionHistoryItem(BaseModel):
+class SessionHistoryItem(WireModel):
     session_id: str
     title: str
     location: str
     outcome: Literal["running", "paused", "completed", "failed"]
     current_stage: str
-    revision: int
+    revision: int = Field(ge=0)
     created_at: datetime
     updated_at: datetime
     retryable: bool
     mode: Literal["live", "replay"]
 
 
-class SessionHistoryResponse(BaseModel):
+class SessionHistoryResponse(WireModel):
     items: list[SessionHistoryItem]
     next_cursor: str | None
 
 
-class DraftWriteRequest(BaseModel):
+class DraftWriteRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: str = Field(min_length=1, max_length=128)
@@ -35,13 +36,13 @@ class DraftWriteRequest(BaseModel):
     data: dict[str, Any]
 
 
-class DraftResponse(BaseModel):
+class DraftResponse(WireModel):
     data: dict[str, Any]
-    revision: int
+    revision: int = Field(ge=0)
     updated_at: datetime | None
 
 
-class RawPreferences(BaseModel):
+class RawPreferences(WireModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     location: str | None
@@ -53,7 +54,7 @@ class RawPreferences(BaseModel):
     industry: str | None
 
 
-class ProfileDraft(BaseModel):
+class ProfileDraft(WireModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     description: str
@@ -63,13 +64,13 @@ class ProfileDraft(BaseModel):
     search_options: DraftSearchOptions = Field(default_factory=lambda: DraftSearchOptions())
 
 
-class DraftSearchOptions(BaseModel):
+class DraftSearchOptions(WireModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     result_count: int = 10
 
 
-class ClarificationDraft(BaseModel):
+class ClarificationDraft(WireModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     values: dict[str, str | list[str]]
@@ -77,7 +78,7 @@ class ClarificationDraft(BaseModel):
     message: str
 
 
-class SummaryFields(BaseModel):
+class SummaryFields(WireModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     education: str
@@ -95,19 +96,19 @@ class SummaryFields(BaseModel):
     result_count: int = Field(default=10, alias="search_options.result_count")
 
 
-class SummaryDraft(BaseModel):
+class SummaryDraft(WireModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     fields: SummaryFields
     message: str
 
 
-class SaveJobRequest(BaseModel):
+class SaveJobRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str
     expected_revision: int = Field(ge=0)
 
 
-class SavedJobsResponse(BaseModel):
+class SavedJobsResponse(WireModel):
     items: list[RecommendationItem]

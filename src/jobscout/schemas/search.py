@@ -3,10 +3,11 @@
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
 from jobscout.schemas.conversation import QuestionOption
 from jobscout.schemas.profile import LocationRef
+from jobscout.schemas.wire import WireModel
 
 
 class ClarificationStatus(StrEnum):
@@ -15,7 +16,7 @@ class ClarificationStatus(StrEnum):
     SKIPPED = "skipped"
 
 
-class SearchRequest(BaseModel):
+class SearchRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     target_direction: str
@@ -31,7 +32,7 @@ class SearchRequest(BaseModel):
     page: int = Field(default=1, ge=1, le=5)
 
 
-class ClarificationMessage(BaseModel):
+class ClarificationMessage(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     question: str

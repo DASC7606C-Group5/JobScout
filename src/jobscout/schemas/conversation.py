@@ -3,12 +3,13 @@
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
 from jobscout.schemas.profile import UserProfile
+from jobscout.schemas.wire import WireModel
 
 
-class ConversationResponse(BaseModel):
+class ConversationResponse(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     label: str
@@ -16,7 +17,7 @@ class ConversationResponse(BaseModel):
     status: Literal["answered", "skipped"] = "answered"
 
 
-class ConversationMessage(BaseModel):
+class ConversationMessage(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     message_id: str
@@ -27,21 +28,21 @@ class ConversationMessage(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-class QuestionOption(BaseModel):
+class QuestionOption(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
     label: str
 
 
-class QuestionAnswer(BaseModel):
+class QuestionAnswer(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     question_id: str
     value: str | list[str]
 
 
-class SearchSummary(BaseModel):
+class SearchSummary(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     profile: UserProfile
@@ -53,7 +54,7 @@ class SearchSummary(BaseModel):
     search_limitations: str = ""
 
 
-class SourceQuoteReference(BaseModel):
+class SourceQuoteReference(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     document_id: str
@@ -61,7 +62,7 @@ class SourceQuoteReference(BaseModel):
     source_url: str | None = None
 
 
-class MatchingReason(BaseModel):
+class MatchingReason(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     requirement: str

@@ -3,37 +3,13 @@ import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState, useSyncExternalStore } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 
+import type { ModelInfo, ModelSettingsResponse } from '../api/types.gen'
 import { Icon } from '../components/icon'
 import { PageHeading } from '../components/layout/page-heading'
-import { accountRequest, changeAccount, currentAccount, subscribeAccount } from '../lib/auth-client'
+import { accountClient, changeAccount, currentAccount, subscribeAccount } from '../lib/auth-client'
 
 export const Route = createFileRoute('/_workspace/settings')({ component: SettingsPage })
 type Role = 'semantic' | 'decision'
-interface ModelInfo {
-  personal: boolean
-  endpoint_id: string | null
-  model: string
-  key_configured: boolean
-  server_provider: string
-  server_model: string
-  server_key_configured: boolean
-  thinking: boolean
-  server_thinking: boolean
-}
-interface ModelSettings {
-  roles: Record<Role, ModelInfo>
-  endpoints: { id: string; name: string; thinking_supported: boolean }[]
-  personal_available: boolean
-}
-interface DailyUsage {
-  enabled: true
-  remaining: number
-  limit: number
-  server_remaining: number
-  day: string
-  timezone: string
-}
-type Usage = DailyUsage | { enabled: false }
 interface ModelFields {
   endpoint_id: string
   model: string
@@ -45,7 +21,7 @@ const settingsKey = ['model-settings'] as const
 interface ModelFormProps {
   role: Role
   info: ModelInfo
-  settings: ModelSettings
+  settings: ModelSettingsResponse
 }
 
 function useModelForm({ role, info, settings }: ModelFormProps) {
@@ -74,10 +50,9 @@ function useModelForm({ role, info, settings }: ModelFormProps) {
     setMessage('')
     setError('')
     try {
-      if (values.endpoint_id === 'server')
-        await accountRequest(`/settings/models/${role}`, 'DELETE')
+      if (values.endpoint_id === 'server') await accountClient.clearModel(role)
       else
-        await accountRequest(`/settings/models/${role}`, 'PUT', {
+        await accountClient.saveModel(role, {
           endpoint_id: values.endpoint_id,
           model: values.model.trim(),
           thinking: thinkingSupported && values.thinking,
@@ -95,7 +70,7 @@ function useModelForm({ role, info, settings }: ModelFormProps) {
     setError('')
     setMessage('')
     try {
-      await accountRequest(`/settings/models/${role}/test`, 'POST')
+      await accountClient.testModel(role)
       setMessage('Connection verified')
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : 'Connection test failed.')
@@ -262,7 +237,7 @@ function PasswordForm() {
   const submit = handleSubmit(async (values) => {
     setError('')
     try {
-      await accountRequest('/auth/password', 'POST', values)
+      await accountClient.changePassword(values)
       reset()
       changeAccount(null)
       await router.navigate({ to: '/login' })
@@ -327,11 +302,11 @@ function SettingsPage() {
   const account = useSyncExternalStore(subscribeAccount, currentAccount)
   const settings = useQuery({
     queryKey: settingsKey,
-    queryFn: () => accountRequest<ModelSettings>('/settings/models'),
+    queryFn: ({ signal }) => accountClient.models(signal),
   })
   const usage = useQuery({
     queryKey: ['model-usage'],
-    queryFn: () => accountRequest<Usage>('/settings/usage'),
+    queryFn: ({ signal }) => accountClient.usage(signal),
   })
   const [error, setError] = useState('')
   const router = useRouter()
@@ -340,7 +315,7 @@ function SettingsPage() {
     setLoggingOut(true)
     setError('')
     try {
-      await accountRequest('/auth/logout', 'POST')
+      await accountClient.logout()
       changeAccount(null)
       await router.navigate({ to: '/login' })
     } catch (failure) {

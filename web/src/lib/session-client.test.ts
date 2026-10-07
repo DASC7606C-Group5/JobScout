@@ -86,7 +86,7 @@ describe('Session HTTP API', () => {
     expect(JSON.parse(answerBody)).toEqual(request)
     expect(JSON.parse(stopBody)).toEqual(stopRequest)
     expect(requests.every(({ init }) => init.signal === signal)).toBe(true)
-    expect(requests[0]?.init.headers).toHaveProperty('Content-Type', 'application/json')
+    expect(new Headers(requests[0]?.init.headers).get('Content-Type')).toBe('application/json')
     expect(requests[1]?.init.body).toBeUndefined()
     expect(requests[3]?.init.body).toBeUndefined()
   })

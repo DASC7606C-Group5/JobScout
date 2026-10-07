@@ -3,16 +3,20 @@
 import asyncio
 import hashlib
 import json
-import time
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
 import httpx
+from aiolimiter import AsyncLimiter
+from async_lru import alru_cache
+from cachetools import TLRUCache
 from pydantic import AwareDatetime, BaseModel, JsonValue, ValidationError
+from tenacity import AsyncRetrying, stop_after_attempt, wait_incrementing
 
 from .models import RetrievalFailure
+from .retries import source_retry
 
 
 class Page(BaseModel):
@@ -52,20 +56,49 @@ class HttpJsonClient:
         self.sleep = sleep
         self._authorization = authorization
         self.transport = transport
-        self._remotive_lock = asyncio.Lock()
-        self._memory: dict[str, Page] = {}
-        self._last_remotive: float | None = None
+        self._reads: dict[asyncio.AbstractEventLoop, Callable[[str], Awaitable[Page]]] = {}
+        self._remotive_limiters: dict[asyncio.AbstractEventLoop, AsyncLimiter] = {}
+        self._memory: TLRUCache[str, Page, datetime] = TLRUCache(
+            maxsize=128,
+            ttu=lambda _key, page, _now: page.fetched_at + timedelta(seconds=cache_seconds),
+            timer=lambda: datetime.now(UTC),
+        )
+
+    async def _pace_remotive_requests(self) -> None:
+        loop = asyncio.get_running_loop()
+        for closed_loop in tuple(self._remotive_limiters):
+            if closed_loop.is_closed():
+                del self._remotive_limiters[closed_loop]
+        await self._remotive_limiters.setdefault(loop, AsyncLimiter(1, 31)).acquire()
 
     async def get(self, url: str) -> Page:
+        loop = asyncio.get_running_loop()
+        for closed_loop in tuple(self._reads):
+            if closed_loop.is_closed():
+                del self._reads[closed_loop]
+        if loop not in self._reads:
+            read = alru_cache(maxsize=128, ttl=0)(self._get)
+
+            async def inflight_only(url: str) -> Page:
+                page = await read(url)
+                read.cache_invalidate(url)
+                return page
+
+            self._reads[loop] = inflight_only
+        return (await self._reads[loop](url)).model_copy(deep=True)
+
+    async def _get(self, url: str) -> Page:
         key = hashlib.sha256(url.encode()).hexdigest()
         path = self.cache_dir / f"{key}.json" if self.cache_dir else None
         page = self._memory.get(key)
         if page is None and path and path.exists():
             try:
-                page = Page.model_validate_json(path.read_text(encoding="utf-8"))
+                restored = Page.model_validate_json(path.read_text(encoding="utf-8"))
+                self._memory[key] = restored
+                page = self._memory.get(key)
             except OSError, ValidationError:
                 page = None
-        if page and 0 <= (datetime.now(UTC) - page.fetched_at).total_seconds() < self.cache_seconds:
+        if page is not None and page.fetched_at <= datetime.now(UTC):
             return page.model_copy(update={"cached": True})
         headers = {
             "Accept": "application/json",
@@ -73,66 +106,65 @@ class HttpJsonClient:
         }
         if self._authorization:
             headers["Authorization"] = self._authorization
-        async with httpx.AsyncClient(
-            timeout=self.timeout, transport=self.transport, follow_redirects=True
-        ) as client:
-            for attempt in range(self.retries + 1):
-                if url.startswith("https://remotive.com/"):
-                    async with self._remotive_lock:
-                        if self._last_remotive is not None:
-                            await self.sleep(max(0, 31 - (time.monotonic() - self._last_remotive)))
-                        self._last_remotive = time.monotonic()
-                try:
-                    # httpx strips Authorization when a redirect changes origin.
-                    async with client.stream("GET", url, headers=headers) as response:
-                        if response.status_code in {401, 403}:
-                            raise RetrievalFailure(
-                                "SEARCH_AUTH", "Source rejected access (401/403)."
-                            )
-                        if response.status_code == 429:
-                            raise RetrievalFailure(
-                                "SEARCH_RATE_LIMIT", "Source rate limit (429); retry later."
-                            )
-                        response.raise_for_status()
-                        chunks: list[bytes] = []
-                        size = 0
-                        async for chunk in response.aiter_bytes():
-                            size += len(chunk)
-                            if size > 8_000_000:
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.timeout, transport=self.transport, follow_redirects=True
+            ) as client:
+                async for attempt in AsyncRetrying(
+                    stop=stop_after_attempt(self.retries + 1),
+                    wait=wait_incrementing(start=1, increment=1),
+                    retry=source_retry,
+                    sleep=self.sleep,
+                    reraise=True,
+                ):
+                    with attempt:
+                        if url.startswith("https://remotive.com/"):
+                            await self._pace_remotive_requests()
+                        # httpx strips Authorization when a redirect changes origin.
+                        async with client.stream("GET", url, headers=headers) as response:
+                            if response.status_code in {401, 403}:
                                 raise RetrievalFailure(
-                                    "SEARCH_RESPONSE_FORMAT", "Response exceeds 8 MB bound."
+                                    "SEARCH_AUTH", "Source rejected access (401/403)."
                                 )
-                            chunks.append(chunk)
-                    try:
-                        page = Page(
-                            payload=json.loads(b"".join(chunks)), fetched_at=datetime.now(UTC)
-                        )
-                    except (ValueError, UnicodeError) as exc:
-                        raise RetrievalFailure(
-                            "SEARCH_RESPONSE_FORMAT", "Expected a JSON object."
-                        ) from exc
-                    self._memory[key] = page
-                    if path:
+                            if response.status_code == 429:
+                                raise RetrievalFailure(
+                                    "SEARCH_RATE_LIMIT", "Source rate limit (429); retry later."
+                                )
+                            response.raise_for_status()
+                            chunks: list[bytes] = []
+                            size = 0
+                            async for chunk in response.aiter_bytes():
+                                size += len(chunk)
+                                if size > 8_000_000:
+                                    raise RetrievalFailure(
+                                        "SEARCH_RESPONSE_FORMAT", "Response exceeds 8 MB bound."
+                                    )
+                                chunks.append(chunk)
                         try:
-                            path.parent.mkdir(parents=True, exist_ok=True)
-                            path.write_text(page.model_dump_json(), encoding="utf-8")
-                        except OSError:
-                            pass
-                    return page
-                except httpx.HTTPStatusError as exc:
-                    status = exc.response.status_code
-                    failure = RetrievalFailure("SEARCH_HTTP", f"Source HTTP status {status}.")
-                    if status < 500:
-                        raise failure from exc
-                except httpx.TimeoutException, TimeoutError:
-                    failure = RetrievalFailure("SEARCH_TIMEOUT", "Source request timed out.")
-                except httpx.RequestError, OSError:
-                    failure = RetrievalFailure(
-                        "SEARCH_NETWORK", "Source connection or read failed."
-                    )
-                if attempt < self.retries:
-                    await self.sleep(float(attempt + 1))
-        raise failure
+                            page = Page(
+                                payload=json.loads(b"".join(chunks)), fetched_at=datetime.now(UTC)
+                            )
+                        except (ValueError, UnicodeError) as exc:
+                            raise RetrievalFailure(
+                                "SEARCH_RESPONSE_FORMAT", "Expected a JSON object."
+                            ) from exc
+                        self._memory[key] = page
+                        if path:
+                            try:
+                                path.parent.mkdir(parents=True, exist_ok=True)
+                                path.write_text(page.model_dump_json(), encoding="utf-8")
+                            except OSError:
+                                pass
+                        return page
+        except httpx.HTTPStatusError as exc:
+            raise RetrievalFailure(
+                "SEARCH_HTTP", f"Source HTTP status {exc.response.status_code}."
+            ) from exc
+        except httpx.TimeoutException, TimeoutError:
+            raise RetrievalFailure("SEARCH_TIMEOUT", "Source request timed out.") from None
+        except httpx.RequestError, OSError:
+            raise RetrievalFailure("SEARCH_NETWORK", "Source connection or read failed.") from None
+        raise RuntimeError("HTTP retry loop ended without a result")
 
 
 class FixtureClient:

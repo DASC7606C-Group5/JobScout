@@ -1,12 +1,10 @@
+import type { AccountResponse, Credentials, PasswordChange, ModelWrite } from '../api/types.gen'
 import { discardAllDrafts } from '../state/draft-navigation'
+import { createApiClient } from './api-client'
+import { vAccountResponse, vModelSettings, vUsage, vConnectionResult } from './api-schemas'
 import { queryClient } from './query-client'
 
-export interface Account {
-  user_id: string
-  username: string
-  csrf_token: string
-  expires_at: string
-}
+export type Account = AccountResponse
 
 let account: Account | null = null
 let loaded = false
@@ -118,20 +116,46 @@ export function accountErrorMessage(code: string): string {
   return messages[code] ?? 'Could not complete the request. Please try again.'
 }
 
-export async function accountRequest<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
-  const response = await authenticatedFetch(`/api/v1${path}`, {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  })
-  if (!response.ok) {
-    const data = (await response.json().catch(() => null)) as { detail?: { code?: string } } | null
-    throw new AccountRequestError(data?.detail?.code ?? 'request_failed')
-  }
-  return response.status === 204 ? (undefined as T) : ((await response.json()) as T)
+const client = createApiClient('/api/v1', authenticatedFetch, (_status, data) => {
+  const code =
+    typeof data === 'object' &&
+    data !== null &&
+    'detail' in data &&
+    typeof data.detail === 'object' &&
+    data.detail !== null &&
+    'code' in data.detail &&
+    typeof data.detail.code === 'string'
+      ? data.detail.code
+      : 'request_failed'
+  return new AccountRequestError(code)
+})
+
+export const accountClient = {
+  signIn: (body: Credentials, register: boolean) =>
+    client.request(
+      'post',
+      register ? '/api/v1/auth/register' : '/api/v1/auth/login',
+      { body },
+      vAccountResponse,
+    ),
+  changePassword: (body: PasswordChange) =>
+    client.request('post', '/api/v1/auth/password', { body }),
+  logout: () => client.request('post', '/api/v1/auth/logout', {}),
+  models: (signal?: AbortSignal) =>
+    client.request('get', '/api/v1/settings/models', signal ? { signal } : {}, vModelSettings),
+  usage: (signal?: AbortSignal) =>
+    client.request('get', '/api/v1/settings/usage', signal ? { signal } : {}, vUsage),
+  saveModel: (role: 'semantic' | 'decision', body: ModelWrite) =>
+    client.request('put', '/api/v1/settings/models/{role}', { path: { role }, body }),
+  clearModel: (role: 'semantic' | 'decision') =>
+    client.request('delete', '/api/v1/settings/models/{role}', { path: { role } }),
+  testModel: (role: 'semantic' | 'decision') =>
+    client.request(
+      'post',
+      '/api/v1/settings/models/{role}/test',
+      { path: { role } },
+      vConnectionResult,
+    ),
 }
 
 export async function loadAccount(refresh = false): Promise<Account | null> {
@@ -140,14 +164,7 @@ export async function loadAccount(refresh = false): Promise<Account | null> {
   loading = (async () => {
     const captured = generation
     try {
-      const next = await accountRequest<Account>('/auth/me')
-      if (
-        typeof next.user_id !== 'string' ||
-        typeof next.username !== 'string' ||
-        typeof next.csrf_token !== 'string' ||
-        typeof next.expires_at !== 'string'
-      )
-        throw new AccountRequestError('invalid_response')
+      const next = await client.request('get', '/api/v1/auth/me', {}, vAccountResponse)
       if (captured === generation) {
         if (account?.user_id !== next.user_id || account.csrf_token !== next.csrf_token)
           changeAccount(next, false)

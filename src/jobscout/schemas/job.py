@@ -3,7 +3,9 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from jobscout.schemas.wire import WireModel
 
 
 class FreshnessStatus(StrEnum):
@@ -12,7 +14,7 @@ class FreshnessStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
-class SourceDocument(BaseModel):
+class SourceDocument(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     document_id: str
@@ -23,7 +25,7 @@ class SourceDocument(BaseModel):
     is_excerpt: bool = False
 
 
-class JobPosting(BaseModel):
+class JobPosting(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     job_id: str

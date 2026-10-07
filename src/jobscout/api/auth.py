@@ -12,6 +12,13 @@ from jobscout.services.auth_service import PASSWORD_HASHER, AuthService, Identit
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
+class AccountResponse(BaseModel):
+    user_id: str
+    username: str
+    csrf_token: str
+    expires_at: str
+
+
 class Credentials(BaseModel):
     model_config = ConfigDict(extra="forbid")
     username: str = Field(min_length=3, max_length=32, pattern=r"^[a-zA-Z0-9_.-]+$")
@@ -52,7 +59,7 @@ async def login_response(auth: AuthService, response: Response, user: User) -> d
     return auth.public(user, session)
 
 
-@router.post("/register", status_code=201)
+@router.post("/register", status_code=201, response_model=AccountResponse)
 async def register(request: Request, response: Response, payload: Credentials) -> dict[str, object]:
     auth = service(request)
     ip = request.client.host if request.client else "unknown"
@@ -69,7 +76,7 @@ async def register(request: Request, response: Response, payload: Credentials) -
     return await login_response(auth, response, user)
 
 
-@router.post("/login")
+@router.post("/login", response_model=AccountResponse)
 async def login(request: Request, response: Response, payload: Credentials) -> dict[str, object]:
     auth = service(request)
     ip = request.client.host if request.client else "unknown"
@@ -91,7 +98,7 @@ async def login(request: Request, response: Response, payload: Credentials) -> d
         return result
 
 
-@router.get("/me")
+@router.get("/me", response_model=AccountResponse)
 async def me(request: Request) -> dict[str, object]:
     identity: Identity = request.state.identity
     return service(request).public(identity.user, identity.session)

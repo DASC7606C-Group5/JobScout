@@ -3,18 +3,19 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
 from jobscout.schemas.conversation import MatchingReason
 from jobscout.schemas.job import JobPosting
 from jobscout.schemas.job_status import JobStatus, ReviewIssue, issue_status
 from jobscout.schemas.matching import MatchScore
 from jobscout.schemas.notices import ApplicantNotice
+from jobscout.schemas.wire import WireModel
 
 RecommendationFit = Literal["recommended", "possible", "unlikely", "unknown"]
 
 
-class RecommendationItem(BaseModel):
+class RecommendationItem(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     job: JobPosting
@@ -50,7 +51,7 @@ class RecommendationItem(BaseModel):
         return "reviewed"
 
 
-class RecommendationResult(BaseModel):
+class RecommendationResult(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str

@@ -1,9 +1,11 @@
 """Model call counts, token usage and timing; excludes prompts, credentials and reasoning."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
+
+from jobscout.schemas.wire import WireModel
 
 
-class ModelUsage(BaseModel):
+class ModelUsage(WireModel):
     """Cumulative counters for a provider instance, including failed/repair requests."""
 
     model_config = ConfigDict(extra="forbid")

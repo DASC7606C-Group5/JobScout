@@ -2,7 +2,9 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
+
+from jobscout.schemas.wire import WireModel
 
 JobStatus = Literal[
     "found",
@@ -26,7 +28,7 @@ JobStatus = Literal[
 ExclusionReason = Literal["role", "location", "employment_type", "expired", "duplicate"]
 
 
-class ReviewIssue(BaseModel):
+class ReviewIssue(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     code: Literal[

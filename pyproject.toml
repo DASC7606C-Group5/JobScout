@@ -5,9 +5,12 @@ description = "Personalized job discovery and recommendation workflow"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "aiolimiter>=1.2,<2",
     "argon2-cffi>=25,<26",
+    "async-lru>=2,<3",
+    "cachetools>=7,<8",
     "cryptography>=46,<47",
-    "fastapi>=0.115,<1",
+    "fastapi>=0.142.3,<1",
     "httpx>=0.28,<1",
     "langchain-deepseek>=1,<2",
     "langchain-openai>=1,<2",
@@ -17,6 +20,8 @@ dependencies = [
     "pypdf>=6.19,<7",
     "python-docx>=1.2,<2",
     "python-multipart>=0.0.22,<1",
+    "selectolax>=1.0,<2",
+    "tenacity>=9,<10",
     "tortoise-orm>=0.25,<1",
     "uvicorn[standard]>=0.34,<1",
 ]

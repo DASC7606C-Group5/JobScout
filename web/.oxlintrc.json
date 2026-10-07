@@ -1,8 +1,13 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "react", "jsx-a11y", "import"],
-  "categories": { "correctness": "error" },
-  "env": { "browser": true, "es2022": true },
+  "categories": {
+    "correctness": "error"
+  },
+  "env": {
+    "browser": true,
+    "es2022": true
+  },
   "rules": {
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
@@ -18,6 +23,7 @@
     ".agents/**",
     ".tools/**",
     "test-results/**",
-    "playwright-report/**"
+    "playwright-report/**",
+    "src/api/**"
   ]
 }

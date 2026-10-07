@@ -1,7 +1,7 @@
 from collections.abc import ItemsView, ValuesView
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import ConfigDict, Field, field_serializer
 
 from jobscout.schemas.conversation import ConversationMessage, QuestionAnswer, SearchSummary
 from jobscout.schemas.errors import ApplicantError
@@ -10,17 +10,18 @@ from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.profile import RawProfilePreferences, SearchOptions, UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
 from jobscout.schemas.search import ClarificationMessage
+from jobscout.schemas.wire import WireModel
 from jobscout.services.job_retrieval.models import SourceOutcome
 
 
-class ResumeInput(BaseModel):
+class ResumeInput(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str
     text: str
 
 
-class SessionCreateRequest(BaseModel):
+class SessionCreateRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: str = Field(min_length=1, max_length=128)
@@ -34,7 +35,7 @@ class SessionCreateRequest(BaseModel):
 type PatchValue = str | list[str] | bool | None
 
 
-class ProfilePatch(BaseModel):
+class ProfilePatch(WireModel):
     """Only supplied fields change; null clears text and an empty list clears a list."""
 
     model_config = ConfigDict(extra="forbid", strict=True, serialize_by_alias=True)
@@ -67,7 +68,7 @@ class ProfilePatch(BaseModel):
         return bool(self.model_fields_set)
 
 
-class SessionResumeRequest(BaseModel):
+class SessionResumeRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: str = Field(min_length=1, max_length=128)
@@ -84,7 +85,7 @@ class SessionResumeRequest(BaseModel):
         return value.supplied()
 
 
-class SessionStopRequest(BaseModel):
+class SessionStopRequest(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: str = Field(min_length=1, max_length=128)
@@ -92,13 +93,13 @@ class SessionStopRequest(BaseModel):
     run_id: str = Field(min_length=1, max_length=128)
 
 
-class SessionResponse(BaseModel):
+class SessionResponse(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str
     outcome: Literal["running", "paused", "completed", "failed"]
     current_stage: str = "ingest"
-    revision: int = 0
+    revision: int = Field(default=0, ge=0)
     profile: UserProfile | None = None
     clarification_questions: list[ClarificationMessage] = Field(default_factory=list)
     conversation: list[ConversationMessage] = Field(default_factory=list)

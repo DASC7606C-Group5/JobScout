@@ -19,6 +19,7 @@ from langchain_openai import ChatOpenAI
 from langchain_openai.chat_models.base import BaseChatOpenAI
 from langsmith import tracing_context
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from tenacity import AsyncRetrying, RetryCallState, retry_if_exception, stop_after_attempt
 
 from jobscout.config import Settings, get_settings
 from jobscout.schemas.model import ModelUsage
@@ -298,38 +299,48 @@ class LangChainModelProvider:
         deadline: float,
         retry_used: list[bool],
     ) -> Any:
-        while True:
-            self._remaining(deadline)
-            self._count("requests")
-            try:
-                return await runnable.ainvoke(messages, config={"callbacks": []})
-            except openai.APIStatusError as error:
-                if error.status_code in {401, 403}:
-                    raise ModelServiceError("model_auth") from None
-                transient = error.status_code in _TRANSIENT_STATUS or 500 <= error.status_code < 600
-                if not transient or retry_used[0]:
-                    raise ModelServiceError("model_http") from None
-            except openai.APIConnectionError as error:
-                if retry_used[0]:
-                    raise ModelServiceError(
-                        "model_timeout"
-                        if isinstance(error, openai.APITimeoutError)
-                        else "model_transport"
-                    ) from None
-            except (
-                openai.APIError,
-                openai.LengthFinishReasonError,
-                openai.ContentFilterFinishReasonError,
-                ValueError,
-                TypeError,
-                KeyError,
-                IndexError,
-                AttributeError,
-            ):
-                raise ModelServiceError("model_output") from None
+        def transient(error: BaseException) -> bool:
+            return isinstance(error, openai.APIConnectionError) or (
+                isinstance(error, openai.APIStatusError)
+                and (error.status_code in _TRANSIENT_STATUS or 500 <= error.status_code < 600)
+            )
+
+        def before_sleep(_state: RetryCallState) -> None:
             retry_used[0] = True
             self._count("retries")
-            await asyncio.sleep(min(_RETRY_DELAY_SECONDS, self._remaining(deadline)))
+
+        try:
+            async for attempt in AsyncRetrying(
+                retry=retry_if_exception(lambda error: not retry_used[0] and transient(error)),
+                stop=stop_after_attempt(2),
+                wait=lambda _state: min(_RETRY_DELAY_SECONDS, self._remaining(deadline)),
+                before_sleep=before_sleep,
+                reraise=True,
+            ):
+                with attempt:
+                    self._remaining(deadline)
+                    self._count("requests")
+                    return await runnable.ainvoke(messages, config={"callbacks": []})
+        except openai.APIStatusError as error:
+            raise ModelServiceError(
+                "model_auth" if error.status_code in {401, 403} else "model_http"
+            ) from None
+        except openai.APIConnectionError as error:
+            raise ModelServiceError(
+                "model_timeout" if isinstance(error, openai.APITimeoutError) else "model_transport"
+            ) from None
+        except (
+            openai.APIError,
+            openai.LengthFinishReasonError,
+            openai.ContentFilterFinishReasonError,
+            ValueError,
+            TypeError,
+            KeyError,
+            IndexError,
+            AttributeError,
+        ):
+            raise ModelServiceError("model_output") from None
+        raise ModelServiceError("model_output")
 
     async def tool_turn(
         self,

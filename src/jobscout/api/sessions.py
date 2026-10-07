@@ -5,8 +5,8 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import cast
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from jobscout.schemas.session import (
     SessionCreateRequest,
@@ -56,68 +56,67 @@ async def get_session(request: Request, session_id: str) -> SessionResponse:
         raise HTTPException(error.status, public_error(error.code).model_dump()) from error
 
 
-@router.get("/sessions/{session_id}/events")
-async def session_events(request: Request, session_id: str) -> StreamingResponse:
+async def _existing_session(request: Request, session_id: str) -> None:
+    # Streaming errors cannot change an HTTP status after headers are sent.
+    try:
+        await _service(request).get(session_id)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
+
+
+@router.get(
+    "/sessions/{session_id}/events",
+    response_class=EventSourceResponse,
+    dependencies=[Depends(_existing_session)],
+)
+async def session_events(request: Request, session_id: str) -> AsyncIterator[ServerSentEvent]:
     service = _service(request)
     try:
         queue = await service.subscribe(session_id)
     except SessionOperationError as error:
         raise HTTPException(error.status, public_error(error.code).model_dump()) from error
 
-    async def events() -> AsyncIterator[str]:
-        identity = getattr(request.state, "identity", None)
-        revoked = asyncio.create_task(identity.revoked.wait()) if identity is not None else None
-        try:
-            yield "retry: 1500\n\n"
-            while True:
-                if identity is not None and (
-                    identity.revoked.is_set() or identity.session.expires_at <= datetime.now(UTC)
-                ):
+    identity = getattr(request.state, "identity", None)
+    revoked = asyncio.create_task(identity.revoked.wait()) if identity is not None else None
+    try:
+        yield ServerSentEvent(retry=1500)
+        while True:
+            if identity is not None and (
+                identity.revoked.is_set() or identity.session.expires_at <= datetime.now(UTC)
+            ):
+                return
+            received = asyncio.create_task(queue.get())
+            try:
+                waiting = {received, revoked} if revoked is not None else {received}
+                timeout = (
+                    max(0, (identity.session.expires_at - datetime.now(UTC)).total_seconds())
+                    if identity is not None
+                    else None
+                )
+                done, _ = await asyncio.wait(
+                    waiting, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+                )
+                if revoked is not None and revoked in done:
                     return
-                received = asyncio.create_task(queue.get())
-                try:
-                    waiting = {received, revoked} if revoked is not None else {received}
-                    timeout = (
-                        min(
-                            15,
-                            max(
-                                0, (identity.session.expires_at - datetime.now(UTC)).total_seconds()
-                            ),
-                        )
-                        if identity is not None
-                        else 15
-                    )
-                    done, _ = await asyncio.wait(
-                        waiting, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
-                    )
-                    if revoked is not None and revoked in done:
-                        return
-                    if received in done:
-                        snapshot = received.result()
-                    else:
-                        snapshot = None
-                finally:
-                    received.cancel()
-                    await asyncio.gather(received, return_exceptions=True)
-                if received not in done:
-                    yield ": heartbeat\n\n"
-                    continue
-                if snapshot is None:
-                    return
-                yield f"event: snapshot\ndata: {snapshot.model_dump_json()}\n\n"
-                if snapshot.outcome != "running":
-                    return
-        finally:
-            if revoked is not None:
-                revoked.cancel()
-                await asyncio.gather(revoked, return_exceptions=True)
-            service.unsubscribe(session_id, queue)
-
-    return StreamingResponse(
-        events(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
-    )
+                if received in done:
+                    snapshot = received.result()
+                else:
+                    snapshot = None
+            finally:
+                received.cancel()
+                await asyncio.gather(received, return_exceptions=True)
+            if received not in done:
+                return
+            if snapshot is None:
+                return
+            yield ServerSentEvent(event="snapshot", data=snapshot)
+            if snapshot.outcome != "running":
+                return
+    finally:
+        if revoked is not None:
+            revoked.cancel()
+            await asyncio.gather(revoked, return_exceptions=True)
+        service.unsubscribe(session_id, queue)
 
 
 @router.post(

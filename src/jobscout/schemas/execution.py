@@ -2,10 +2,11 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
 from jobscout.schemas.job_status import ExclusionReason, JobStatus, ReviewIssue
 from jobscout.schemas.recommendation import RecommendationFit
+from jobscout.schemas.wire import WireModel
 
 StopReason = Literal[
     "results_ready",
@@ -17,7 +18,7 @@ StopReason = Literal[
 ]
 
 
-class SearchEvent(BaseModel):
+class SearchEvent(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     sequence: int = Field(ge=1)
@@ -26,7 +27,7 @@ class SearchEvent(BaseModel):
     source: str | None = None
 
 
-class SearchActivity(BaseModel):
+class SearchActivity(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     sequence: int = Field(ge=1)
@@ -41,7 +42,7 @@ class SearchActivity(BaseModel):
     recommendation_fit: RecommendationFit = "unknown"
 
 
-class SearchProgress(BaseModel):
+class SearchProgress(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     sequence: int = Field(default=0, ge=0)

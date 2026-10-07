@@ -42,8 +42,7 @@ def test_authentication_ends_an_idle_event_stream_without_stopping_the_operation
             app = FastAPI()
             app.state.sessions = manager
             request = Request({"type": "http", "app": app, "state": {"identity": identity}})
-            response = await session_events(request, created.session_id)
-            iterator = aiter(response.body_iterator)
+            iterator = session_events(request, created.session_id)
             await anext(iterator)
             await anext(iterator)
             if reason == "expiry":
@@ -205,12 +204,11 @@ def test_sse_disconnect_releases_subscription_without_cancelling_search() -> Non
             app = FastAPI()
             app.state.sessions = manager
             request = Request({"type": "http", "app": app})
-            response = await session_events(request, created.session_id)
-            iterator = aiter(response.body_iterator)
+            iterator = session_events(request, created.session_id)
             await anext(iterator)
             frame = await anext(iterator)
-            assert isinstance(frame, str)
-            data = json.loads(frame.split("data: ", 1)[1])
+            assert frame.event == "snapshot"
+            data = frame.data.model_dump(mode="json")
             assert data["session_id"] == created.session_id
             pending = asyncio.ensure_future(anext(iterator))
             await asyncio.sleep(0)

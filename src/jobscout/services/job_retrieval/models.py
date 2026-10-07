@@ -4,6 +4,7 @@ from pydantic import AwareDatetime, BaseModel, Field, JsonValue
 
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.notices import ApplicantNotice
+from jobscout.schemas.wire import WireModel
 
 
 class RawJob(BaseModel):
@@ -24,7 +25,7 @@ class RawJob(BaseModel):
     raw_payload: dict[str, JsonValue]
 
 
-class SourceOutcome(BaseModel):
+class SourceOutcome(WireModel):
     request_index: int = 0
     target_direction: str
     source: str

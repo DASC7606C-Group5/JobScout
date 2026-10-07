@@ -44,12 +44,14 @@ export function summaryUpdates(original: SummaryDraft, draft: SummaryDraft, edit
     if (kind === 'number') continue
     if (!editableKeys.has(key) || original[key] === draft[key]) continue
     const value = draft[key]
-    updates[key] =
-      kind === 'array' && typeof value === 'string'
-        ? parseDirections(value)
-        : typeof value === 'string'
-          ? value.trim() || null
-          : Boolean(value)
+    Object.assign(updates, {
+      [key]:
+        kind === 'array' && typeof value === 'string'
+          ? parseDirections(value)
+          : typeof value === 'string'
+            ? value.trim() || null
+            : Boolean(value),
+    })
   }
   if (updates['preferences.location_unrestricted'] === true) updates['preferences.location'] = null
   if (updates['preferences.employment_type_unrestricted'] === true)

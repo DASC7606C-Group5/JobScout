@@ -2,10 +2,12 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
+
+from jobscout.schemas.wire import WireModel
 
 
-class WorkflowError(BaseModel):
+class WorkflowError(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     code: str
@@ -14,7 +16,7 @@ class WorkflowError(BaseModel):
     details: dict[str, str | int | float | bool | None] | None = None
 
 
-class ApplicantError(BaseModel):
+class ApplicantError(WireModel):
     """User-facing error and next action; internal stages and details stay on the server."""
 
     model_config = ConfigDict(extra="forbid")

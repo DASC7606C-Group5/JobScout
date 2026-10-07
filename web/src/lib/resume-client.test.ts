@@ -24,7 +24,7 @@ describe('resume file input', () => {
         calls += 1
         expect(url).toBe('https://api.example.test/api/v1/resumes/parse')
         expect(init.method).toBe('POST')
-        expect(init.headers).toEqual({ Accept: 'application/json' })
+        expect(new Headers(init.headers).get('Accept')).toBe('application/json')
         expect(init.signal).toBe(controller.signal)
         if (!(init.body instanceof FormData)) throw new Error('Expected multipart form data')
         const uploaded = init.body.get('file')

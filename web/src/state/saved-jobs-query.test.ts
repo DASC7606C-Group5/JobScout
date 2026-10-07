@@ -26,9 +26,11 @@ test('a GET started during a saved-job write cannot restore a removed job after 
   const observer = new QueryObserver(cache, {
     queryKey: savedJobsKey,
     queryFn: async ({ signal }) => {
-      const items = await client.savedJobs(signal)
-      received.resolve()
-      return items
+      try {
+        return await client.savedJobs(signal)
+      } finally {
+        received.resolve()
+      }
     },
     staleTime: 0,
   })

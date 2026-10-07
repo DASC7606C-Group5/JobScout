@@ -1,49 +1,14 @@
+import type { ReviewIssue } from '../api/types.gen'
+import { vSearchActivity, vReviewIssue } from './api-schemas'
 import type { RecommendationItem, SearchActivity } from './contracts'
 import { hasFullDescription } from './job-display'
 
-export const jobStatuses = [
-  'found',
-  'queued',
-  'reviewing',
-  'reviewed',
-  'summary_reviewed',
-  'not_reviewed',
-  'partial',
-  'timeout',
-  'unavailable',
-  'invalid',
-  'insufficient',
-  'failed',
-  'excluded',
-  'unverified',
-  'expired',
-  'duplicate',
-  'not_shortlisted',
-] as const
-export type JobStatus = (typeof jobStatuses)[number]
-export const reviewIssueCodes = [
-  'timeout',
-  'service_unavailable',
-  'invalid_output',
-  'unverifiable_claims',
-  'insufficient_job_information',
-  'incomplete_review',
-  'failed',
-  'stopped',
-  'search_ended',
-] as const
-export interface ReviewIssue {
-  code: (typeof reviewIssueCodes)[number]
-  stage: 'jd_analysis' | 'matching' | null
-}
-export const exclusionReasons = [
-  'role',
-  'location',
-  'employment_type',
-  'expired',
-  'duplicate',
-] as const
-export type ExclusionReason = (typeof exclusionReasons)[number]
+export const jobStatuses = vSearchActivity.entries.status.options
+export type JobStatus = SearchActivity['status']
+export const reviewIssueCodes = vReviewIssue.entries.code.options
+export type { ReviewIssue } from '../api/types.gen'
+export const exclusionReasons = vSearchActivity.entries.exclusion_reasons.item.options
+export type ExclusionReason = SearchActivity['exclusion_reasons'][number]
 
 export const statusLabels: Record<JobStatus, string> = {
   found: 'Found',

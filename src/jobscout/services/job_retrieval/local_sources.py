@@ -13,13 +13,14 @@ from urllib.parse import urlencode, urljoin, urlsplit
 from uuid import uuid4
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
+from selectolax.lexbor import LexborHTMLParser
 
 from jobscout.schemas.search import SearchRequest
 from jobscout.services.location_service import get_location_catalog, within
 from jobscout.services.notice_service import make_notice
 
 from .employment import source_employment_label
-from .html_fields import Tree
+from .html_fields import field_text, visible_text
 from .models import RawJob, RetrievalFailure, workflow_error
 from .planning import normalized, plan_keywords, validate_request
 from .sources import SourceResult
@@ -233,10 +234,11 @@ def parse_listing(source: str, page: WebPage) -> list[dict[str, JsonValue]]:
     ):
         raise RetrievalFailure("SEARCH_AUTH", "Source requires verification; not an empty result.")
     if source == "shixiseng":
-        tree = Tree(page.text).root
-        cards = tree.find(attr="class", value="intern-wrap")
+        tree = LexborHTMLParser(page.text)
+        cards = tree.css(".intern-wrap")
         if not cards and not any(
-            s in tree.text() for s in ("暂无相关职位", "暂无搜索结果", "没有找到", "暂无职位")
+            s in tree.text(separator=" ", strip=True)
+            for s in ("暂无相关职位", "暂无搜索结果", "没有找到", "暂无职位")
         ):
             raise RetrievalFailure(
                 "SEARCH_RESPONSE_FORMAT",
@@ -244,21 +246,23 @@ def parse_listing(source: str, page: WebPage) -> list[dict[str, JsonValue]]:
             )
         records: list[dict[str, JsonValue]] = []
         for card in cards:
-            links = [n for n in card.find(tag="a") if "/intern/" in n.attrs.get("href", "")]
+            links = [n for n in card.css("a") if "/intern/" in (n.attributes.get("href") or "")]
             if not links:
                 records.append({})
                 continue
-            companies = card.find(attr="class", value="intern-detail__company")
-            company = companies[0].field("class", "title") if companies else None
+            companies = card.css(".intern-detail__company")
+            company = field_text(companies[0], ".title") if companies else None
             records.append(
                 {
-                    "id": card.attrs.get("data-intern-id"),
-                    "url": links[0].attrs["href"],
-                    "title": clean_field(links[0].attrs.get("title") or links[0].text()),
-                    "location": card.field("class", "city"),
+                    "id": card.attributes.get("data-intern-id"),
+                    "url": links[0].attributes["href"],
+                    "title": clean_field(
+                        links[0].attributes.get("title") or links[0].text(separator=" ", strip=True)
+                    ),
+                    "location": field_text(card, ".city"),
                     "company": clean_field(company),
-                    "salary": clean_field(card.field("class", "day")),
-                    "listing_text": card.text(),
+                    "salary": clean_field(field_text(card, ".day")),
+                    "listing_text": card.text(separator=" ", strip=True),
                     "employment_type": "internship",
                 }
             )
@@ -427,7 +431,7 @@ def add_detail(job: RawJob, page: WebPage) -> None:
         if not isinstance(variables, dict) or native.get("id") != variables.get("jobId"):
             raise RetrievalFailure("SEARCH_RESPONSE_FORMAT", "JobsDB detail job identity mismatch.")
         content = string(native.get("content"))
-        description = Tree(content).root.text() if content else None
+        description = visible_text(content) if content else None
         if not description:
             raise RetrievalFailure("SEARCH_RESPONSE_FORMAT", "JobsDB job description is missing.")
         if job.description:
@@ -442,11 +446,11 @@ def add_detail(job: RawJob, page: WebPage) -> None:
     if job.description:
         job.raw_payload.setdefault("listing_description", job.description)
         job.raw_payload.setdefault("listing_fetched_at", job.fetched_at.isoformat())
-    tree = Tree(page.text).root
+    tree = LexborHTMLParser(page.text)
     structured_description: str | None = None
-    for node in tree.find(tag="script", attr="type", value="application/ld+json"):
+    for node in tree.css('script[type="application/ld+json"]'):
         try:
-            source_json = "".join(child for child in node.children if isinstance(child, str))
+            source_json = node.text()
             structured = JSON_OBJECT.validate_python(json.loads(source_json, strict=False))
         except ValueError, ValidationError:
             continue
@@ -464,28 +468,31 @@ def add_detail(job: RawJob, page: WebPage) -> None:
         )
         job.location = location or job.location
         job.employment_type = observed_employment_type(job) or job.employment_type
+    tree.strip_tags(["script", "style"])
     if job.source == "liepin":
-        description = tree.field("data-selector", "job-intro-content")
+        description = field_text(tree, '[data-selector="job-intro-content"]')
     else:
-        description = tree.field("class", "job_detail")
-        headings = tree.find(tag="h1")
-        job.title = clean_field(tree.field("class", "new_job_name")) or job.title
+        description = field_text(tree, ".job_detail")
+        headings = tree.css("h1")
+        job.title = clean_field(field_text(tree, ".new_job_name")) or job.title
         if headings:
-            job.title = clean_field(headings[0].text()) or job.title
-        job.location = clean_field(tree.field("class", "job_position")) or job.location
+            job.title = clean_field(headings[0].text(separator=" ", strip=True)) or job.title
+        job.location = clean_field(field_text(tree, ".job_position")) or job.location
         # Source labels delimit these values; no numeric/font guessing.
-        text = tree.text()
-        job.salary = clean_field(tree.field("class", "job_money"))
+        text = visible_text(page.text)
+        job.salary = clean_field(field_text(tree, ".job_money"))
         posted = re.search(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s*刷新", text)
         expiry = re.search(r"截止日期[：:]\s*(\d{4}-\d{2}-\d{2})", text)
         job.posted_at = posted.group(1) if posted else job.posted_at
         job.expiry_at = expiry.group(1) if expiry else job.expiry_at
         companies = [
-            n for n in tree.find(tag="a") if "/com/" in n.attrs.get("href", "") and n.text()
+            n
+            for n in tree.css("a")
+            if "/com/" in (n.attributes.get("href") or "") and n.text(separator=" ", strip=True)
         ]
         job.company = (
-            clean_field(tree.field("class", "com-name"))
-            or (clean_field(companies[0].text()) if companies else None)
+            clean_field(field_text(tree, ".com-name"))
+            or (clean_field(companies[0].text(separator=" ", strip=True)) if companies else None)
             or job.company
         )
     description = clean_field(description)

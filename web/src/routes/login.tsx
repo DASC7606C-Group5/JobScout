@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 
 import { Icon } from '../components/icon'
-import { accountRequest, changeAccount, type Account } from '../lib/auth-client'
+import { accountClient, changeAccount } from '../lib/auth-client'
 import { GITHUB_URL } from '../lib/project-links'
 
 export const Route = createFileRoute('/login')({ component: LoginPage })
@@ -14,6 +14,8 @@ interface LoginFields {
 }
 
 function LoginPage() {
+  'use no memo'
+  // reset clears React Hook Form's field registry; register must run again.
   const [registering, setRegistering] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
@@ -26,13 +28,9 @@ function LoginPage() {
   const submit = handleSubmit(async (values) => {
     setError('')
     try {
-      const account = await accountRequest<Account>(
-        registering ? '/auth/register' : '/auth/login',
-        'POST',
-        {
-          username: values.username,
-          password: values.password,
-        },
+      const account = await accountClient.signIn(
+        { username: values.username, password: values.password },
+        registering,
       )
       reset()
       changeAccount(account)
