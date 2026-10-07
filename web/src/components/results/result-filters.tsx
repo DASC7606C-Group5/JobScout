@@ -154,9 +154,9 @@ function FilterPanel({
   const fields = [
     {
       key: 'freshness',
-      label: 'Listing status',
-      ariaLabel: 'Filter by listing status',
-      all: 'All statuses',
+      label: 'Hiring status',
+      ariaLabel: 'Filter by hiring status',
+      all: 'All jobs',
       options: freshnessLabels,
     },
     {

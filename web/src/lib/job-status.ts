@@ -25,7 +25,7 @@ export const statusLabels: Record<JobStatus, string> = {
   failed: 'Review failed',
   excluded: 'Excluded',
   unverified: 'Needs checking',
-  expired: 'Expired',
+  expired: 'Applications closed',
   duplicate: 'Duplicate',
   not_shortlisted: 'Not shortlisted',
 }
@@ -51,7 +51,7 @@ const exclusionLabels: Record<ExclusionReason, string> = {
   role: 'The role does not match your selected job interests.',
   location: 'The location conflicts with your search criteria.',
   employment_type: 'The employment type conflicts with your search criteria.',
-  expired: 'The listing has expired.',
+  expired: 'Applications for this job have closed.',
   duplicate: 'This listing duplicates another job.',
 }
 

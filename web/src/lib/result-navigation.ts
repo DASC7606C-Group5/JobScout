@@ -18,9 +18,9 @@ export const sortLabels = {
 } as const
 
 export const freshnessLabels = {
-  active: 'Active',
-  unknown: 'Status unconfirmed',
-  expired: 'Expired',
+  active: 'Still hiring',
+  unknown: 'Hiring status unknown',
+  expired: 'Applications closed',
 } as const
 
 function searchText(value: unknown) {

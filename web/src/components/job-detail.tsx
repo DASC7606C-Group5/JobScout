@@ -191,7 +191,9 @@ function ListingMetadata({ job, links }: { job: JobPosting; links: string[] }) {
       </p>
       {job.posted_at && <p className="mt-1">Posted {dateLabel(job.posted_at)}</p>}
       {job.expiry_at && <p className="mt-1">Deadline {dateLabel(job.expiry_at)}</p>}
-      {job.freshness_status === 'expired' && <p className="mt-2">This listing has expired.</p>}
+      {job.freshness_status === 'expired' && (
+        <p className="mt-2">Applications for this job have closed.</p>
+      )}
       {links.slice(1).map((url, index) => (
         <a
           key={url}
