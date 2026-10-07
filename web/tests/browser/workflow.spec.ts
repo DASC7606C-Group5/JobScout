@@ -1844,41 +1844,100 @@ test('result panes scroll independently and restore reading positions by job ide
   await expect(listing).toBeInViewport()
 })
 
-test('search criteria expands in the page and leaves results reachable on short screens', async ({
+test('search criteria supports hover preview, pinned reading and keyboard dismissal', async ({
   page,
 }) => {
-  await mockSessions(page, resultSession())
-  await introduce(page)
-  const criteria = page.getByRole('region', { name: 'Search criteria', exact: true })
-  const results = page.getByRole('region', { name: 'Recommended jobs', exact: true })
-  for (const height of [900, 500]) {
-    await page.setViewportSize({ width: 1440, height })
-    await page.emulateMedia({ reducedMotion: 'no-preference' })
-    const closedHeight = await criteria.evaluate(
-      (element) => element.getBoundingClientRect().height,
+  await page.setViewportSize({ width: 1440, height: 500 })
+  const session = resultSession()
+  session.profile!.target_directions = [
+    'Frontend development',
+    'Full stack development',
+    'Data analysis',
+  ]
+  session.profile!.preferences.employment.excluded = ['part-time']
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  await page.goto('/searches/session-1')
+  const trigger = page.getByRole('button', { name: 'Search criteria', exact: true })
+  const panel = page.getByRole('region', { name: 'Search criteria details', exact: true })
+  await expect(panel).toBeHidden()
+  await trigger.hover()
+  for (const direction of session.profile!.target_directions)
+    await expect(panel).toContainText(direction)
+  await expect(panel).toContainText(session.profile!.preferences.salary_range!)
+  await expect(panel).toContainText('Excluded: part-time')
+  await panel.hover()
+  await page.waitForTimeout(250)
+  await expect(panel).toBeVisible()
+  const heading = page.getByRole('heading', { name: '3 jobs', exact: true })
+  await heading.hover()
+  await expect(panel).toBeHidden()
+  await trigger.click()
+  await heading.hover()
+  await page.waitForTimeout(250)
+  await expect(panel).toBeVisible()
+  await captureResults(page, 'search-criteria-popover-desktop')
+  await trigger.click()
+  await expect(panel).toBeHidden()
+  await trigger.click()
+  await heading.click()
+  await expect(panel).toBeHidden()
+  await trigger.focus()
+  await page.keyboard.press('Enter')
+  const close = panel.getByRole('button', { name: 'Close search criteria', exact: true })
+  await close.focus()
+  await page.keyboard.press('Escape')
+  await expect(panel).toBeHidden()
+  await expect(trigger).toBeFocused()
+  await trigger.press('Enter')
+  await close.click()
+  await expect(panel).toBeHidden()
+  await expect(
+    page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
+  ).toBeInViewport()
+  expect(state.requests).toEqual([])
+})
+
+test.describe('search criteria on touch screens', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } })
+
+  test('tap opens all supplied criteria and editing retains the current search', async ({
+    page,
+  }) => {
+    const session = resultSession()
+    session.profile!.target_directions = Array.from(
+      { length: 16 },
+      (_, index) => `Supplied direction ${index + 1}`,
     )
-    await criteria.locator('summary').click()
-    await criteria.evaluate(async (element) => {
-      await Promise.all(
-        element.getAnimations({ subtree: true }).map((animation) => animation.finished),
-      )
-    })
-    const expanded = await criteria.boundingBox()
-    const resultsBounds = await results.boundingBox()
-    expect(expanded!.height).toBeGreaterThan(closedHeight)
-    expect(resultsBounds!.y).toBeGreaterThanOrEqual(expanded!.y + expanded!.height)
-    const listing = page.getByRole('link', { name: 'View job listing', exact: true })
-    await listing.scrollIntoViewIfNeeded()
-    await expect(listing).toBeInViewport()
-    await criteria.locator('summary').click()
-    await expect(criteria.locator('details')).not.toHaveAttribute('open')
-    await expect
-      .poll(() => criteria.evaluate((element) => element.getBoundingClientRect().height))
-      .toBe(closedHeight)
+    const state = await mockSessions(page, session)
+    state.seedSession(session)
+    await page.goto('/searches/session-1')
+    const trigger = page.getByRole('button', { name: 'Search criteria', exact: true })
+    const panel = page.getByRole('region', { name: 'Search criteria details', exact: true })
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 })
+      await trigger.tap()
+      await expect(panel).toBeVisible()
+      for (const direction of session.profile!.target_directions)
+        await expect(panel).toContainText(direction)
+      const salary = panel.getByText(session.profile!.preferences.salary_range!, { exact: true })
+      await salary.scrollIntoViewIfNeeded()
+      await expect(salary).toBeInViewport()
+      await captureResults(page, `search-criteria-popover-${width}`)
+      await panel.getByRole('button', { name: 'Close search criteria', exact: true }).tap()
+      await expect(panel).toBeHidden()
+    }
+    await page.getByRole('button', { name: 'Edit criteria', exact: true }).tap()
     await expect(
-      page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
-    ).toBeInViewport()
-  }
+      page.getByRole('heading', { name: 'Review your profile and search criteria', exact: true }),
+    ).toBeVisible()
+    expect(state.requests.at(-1)?.action).toBe('edit_conditions')
+    expect(new URL(page.url()).pathname).toBe(`/searches/${session.session_id}`)
+    await page.getByRole('button', { name: 'Edit search conditions', exact: true }).tap()
+    await expect(page.getByLabel('Job interests', { exact: true })).toHaveValue(
+      session.profile!.target_directions.join('\n'),
+    )
+  })
 })
 
 test('search failure preserves published job identities until editing the criteria', async ({

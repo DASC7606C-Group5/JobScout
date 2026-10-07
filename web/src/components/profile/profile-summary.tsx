@@ -5,10 +5,12 @@ export function SummaryValues({
   fields,
   draft,
   profile,
+  collapseLongValues = true,
 }: {
   fields: (typeof summaryFields)[number][]
   draft: SummaryDraft
   profile?: UserProfile | undefined
+  collapseLongValues?: boolean
 }) {
   const visible = fields.filter(
     ([key, , kind]) =>
@@ -71,7 +73,7 @@ export function SummaryValues({
           <div key={key} className="grid min-w-0 grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 sm:block">
             <dt className="text-xs text-base-content/65">{label}</dt>
             <dd className="wrap-anywhere whitespace-pre-wrap sm:mt-1">
-              {lines.length > 2 ? (
+              {collapseLongValues && lines.length > 2 ? (
                 <>
                   {lines.slice(0, 2).join('\n')}
                   <details className="mt-1">

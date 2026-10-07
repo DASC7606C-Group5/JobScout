@@ -50,28 +50,14 @@ function discoveryTitle(session: ScoutSession | null) {
   return headings[session.outcome]
 }
 
-function DiscoveryHeading() {
-  const { session } = useScoutSession()
+function DiscoveryHeading({ focused }: { focused: boolean }) {
+  const { session, canEdit, edit } = useScoutSession()
   return (
     <PageHeading title={discoveryTitle(session)}>
-      {session?.mode === 'replay' && (
-        <span className="badge badge-ghost badge-sm">Replay demo</span>
-      )}
-    </PageHeading>
-  )
-}
-
-export function DiscoveryPage() {
-  const { session, busy, canEdit, edit } = useScoutSession()
-  const stage = session?.outcome ?? 'initial'
-  const completed = stage === 'completed'
-  const step = workflowStep(session)
-  const focused = completed || step === 2
-  return (
-    <div className="results-layout">
-      <DiscoveryHeading />
-      {!focused && <WorkflowSteps step={step} />}
-      <StepTransition step={transitionStep(session)} className="results-layout">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        {session?.mode === 'replay' && (
+          <span className="badge badge-ghost badge-sm">Replay demo</span>
+        )}
         {focused && session?.profile && (
           <SearchCriteria
             key={session.session_id}
@@ -80,6 +66,22 @@ export function DiscoveryPage() {
             onEdit={edit}
           />
         )}
+      </div>
+    </PageHeading>
+  )
+}
+
+export function DiscoveryPage() {
+  const { session, busy } = useScoutSession()
+  const stage = session?.outcome ?? 'initial'
+  const completed = stage === 'completed'
+  const step = workflowStep(session)
+  const focused = completed || step === 2
+  return (
+    <div className="results-layout">
+      <DiscoveryHeading focused={focused} />
+      {!focused && <WorkflowSteps step={step} />}
+      <StepTransition step={transitionStep(session)} className="results-layout">
         <div
           aria-busy={busy}
           className={`results-layout grid items-start gap-6 ${focused ? '' : 'min-[1100px]:grid-cols-[minmax(0,1fr)_280px]'}`}

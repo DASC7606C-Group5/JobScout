@@ -56,18 +56,6 @@
     min-width: 0;
     gap: 0;
   }
-
-  .workspace-page:has(.results-workspace) .search-criteria {
-    flex-shrink: 0;
-  }
-
-  .workspace-page:has(.results-workspace):has(.search-criteria details[open]) {
-    overflow-y: auto;
-  }
-
-  .workspace-page:has(.search-criteria details[open]) .results-layout:has(.results-workspace) {
-    min-height: 20rem;
-  }
 }
 
 ::view-transition-group(root),
