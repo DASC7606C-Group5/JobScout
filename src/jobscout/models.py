@@ -21,6 +21,7 @@ class SearchSession(Model):
 
     class Meta:
         table = "workspace_sessions"
+        indexes = (("owner_id", "deleting", "updated_at", "session_id"),)
 
 
 class AcceptedRequest(Model):

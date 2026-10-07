@@ -481,6 +481,8 @@ class SearchAgent:
                     "updated_job_ids": [job.job_id for job in fetched],
                     "observation": self.observation(),
                 }
+                if any(job.job_id not in self.completed_details for job in selected):
+                    result["error"] = "details_incomplete"
             elif name == "assess_candidates":
                 result = await self.assess(arguments.job_ids)
             else:

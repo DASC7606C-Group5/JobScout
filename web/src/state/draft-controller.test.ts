@@ -19,6 +19,43 @@ const record = (data: Value, revision = 1): DraftResponse<Value> => ({
 })
 
 describe('server draft lifecycle', () => {
+  test('discarded drafts ignore late reads and cannot restore private cache data', async () => {
+    for (const action of ['retry', 'reload', 'overwrite'] as const) {
+      const reading = Promise.withResolvers<DraftResponse<Value>>()
+      const committed: DraftResponse<Value>[] = []
+      const controller = new DraftController(
+        initial,
+        async (request) => record(request.data),
+        () => reading.promise,
+        (response) => committed.push(response),
+      )
+      controller.update({ message: 'Private local draft', choices: [] })
+      const pending = controller[action]()
+      controller.discard()
+      reading.resolve(record({ message: 'Private remote draft', choices: ['data'] }, 5))
+      expect(await pending).toBe(true)
+      expect(committed).toEqual([])
+      expect(controller.getSnapshot().value).toEqual(initial)
+      expect(controller.hasPending()).toBe(false)
+    }
+  })
+
+  test('late load failures cannot reactivate a discarded draft', async () => {
+    const reading = Promise.withResolvers<DraftResponse<Value>>()
+    const controller = new DraftController(
+      initial,
+      async (request) => record(request.data),
+      () => reading.promise,
+    )
+    const pending = controller.reload()
+    controller.discard()
+    reading.reject(new Error('Old account request failed'))
+    expect(await pending).toBe(true)
+    controller.loadFailed(new Error('Late query failure'))
+    expect(controller.getSnapshot().status).toBe('saved')
+    expect(controller.getSnapshot().error).toBeNull()
+  })
+
   test('flush preserves raw supplied values and advances the independent revision', async () => {
     const requests: SaveDraftRequest<Value>[] = []
     const controller = new DraftController(

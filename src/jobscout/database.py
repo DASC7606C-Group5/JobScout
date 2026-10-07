@@ -43,8 +43,8 @@ async def database_lifespan(_: FastAPI, *, database_url: str | None = None) -> A
                     "This database contains a shared workspace. Use a new DATABASE_URL; existing private data is not migrated."
                 )
     await Tortoise.init(config=tortoise_config(database_url))
-    await Tortoise.generate_schemas(safe=True)
     try:
+        await Tortoise.generate_schemas(safe=True)
         yield
     finally:
         await Tortoise.close_connections()

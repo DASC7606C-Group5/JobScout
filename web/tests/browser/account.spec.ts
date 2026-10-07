@@ -1,5 +1,64 @@
 import { expect, test } from '@playwright/test'
 
+test('drafts remain private and editable after switching accounts and signing back in', async ({
+  page,
+  baseURL,
+}) => {
+  const first = `draft-first-${Date.now()}`
+  const second = `draft-second-${Date.now()}`
+  const password = 'synthetic-browser-password'
+  for (const username of [first, second]) {
+    const response = await page.request.post('/api/v1/auth/register', {
+      headers: { Origin: baseURL! },
+      data: { username, password },
+    })
+    expect(response.status()).toBe(201)
+  }
+
+  async function signIn(username: string) {
+    await page.goto('/login')
+    await page.getByLabel('Username', { exact: true }).fill(username)
+    await page.getByLabel(/^Password/).fill(password)
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+    await expect(page).toHaveURL(/\/new$/)
+  }
+
+  async function saveDescription(description: string) {
+    const saved = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        response.url().endsWith('/api/v1/workspace/draft') &&
+        response.ok(),
+    )
+    await page.getByLabel('About you', { exact: true }).fill(description)
+    await saved
+  }
+
+  async function signOut() {
+    // Unmount the draft view before clearing identity so cached controllers are covered.
+    await page.getByRole('link', { name: 'Settings', exact: true }).click()
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+    await expect(page).toHaveURL(/\/login$/)
+  }
+
+  await signIn(first)
+  await saveDescription('First applicant private draft')
+  await signOut()
+  await signIn(second)
+  await expect(page.getByLabel('About you', { exact: true })).toHaveValue('')
+  await saveDescription('Second applicant private draft')
+  await signOut()
+  await signIn(first)
+  await expect(page.getByLabel('About you', { exact: true })).toHaveValue(
+    'First applicant private draft',
+  )
+  await saveDescription('First applicant updated draft')
+  await page.reload()
+  await expect(page.getByLabel('About you', { exact: true })).toHaveValue(
+    'First applicant updated draft',
+  )
+})
+
 test('registration, independent model settings and sign-out protect the workspace', async ({
   page,
 }) => {

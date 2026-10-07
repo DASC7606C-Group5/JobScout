@@ -91,6 +91,8 @@ class JobSearchService:
         """Fetch only source-owned URLs attached to existing candidate identities."""
         if not math.isfinite(timeout) or timeout < 0:
             raise ValueError("timeout must be finite and nonnegative")
+        if timeout == 0:
+            return []
         semaphore = asyncio.Semaphore(self.concurrency)
 
         async def fetch(job: JobPosting) -> JobPosting | None:
@@ -130,7 +132,10 @@ class JobSearchService:
                 fetched_at=page.fetched_at,
             )
             documents = [
-                item for item in job.source_documents if item.document_id != document.document_id
+                item
+                for item in job.source_documents
+                if item.document_id
+                not in {document.document_id, document.document_id + ":structured"}
             ]
             documents.append(document)
             if raw.raw_payload.get("detail_structured"):
@@ -170,12 +175,21 @@ class JobSearchService:
                 else None
             )
 
-        async with asyncio.timeout(timeout):
-            return [
-                updated
-                for updated in await asyncio.gather(*(fetch(job) for job in jobs))
-                if updated is not None
-            ]
+        tasks = [asyncio.create_task(fetch(job)) for job in jobs]
+        if not tasks:
+            return []
+        try:
+            await asyncio.wait(tasks, timeout=timeout)
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        return [
+            updated
+            for task in tasks
+            if not task.cancelled() and (updated := task.result()) is not None
+        ]
 
     async def search_many_async(
         self,

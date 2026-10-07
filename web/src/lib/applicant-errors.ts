@@ -41,6 +41,10 @@ const errors = {
     message: 'Check your information and try again.',
     action: 'edit_conditions',
   },
+  request_too_large: {
+    message: 'The request is too large. Shorten the text or upload a smaller file.',
+    action: 'edit_conditions',
+  },
   invalid_answer: {
     message: 'Check your answers or search criteria.',
     action: 'edit_conditions',

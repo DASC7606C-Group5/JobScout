@@ -43,14 +43,15 @@ class ConnectionResult(BaseModel):
 async def test_model(request: Request, role: Role) -> dict[str, bool]:
     auth = request.app.state.auth
     limits = [(f"model-test:{owner_id()}", 10)]
-    auth.check_rate(limits)
-    auth.failed(limits)
+    auth.reserve_attempt(limits)
     models = await service(request).prepare(owner_id(), (role,), allow_server=False)
     provider = models.provider.semantic if role == "semantic" else models.provider.decision
-    async with request.app.state.sessions.lock:
-        request.app.state.sessions.check_capacity()
-        request.app.state.sessions.testing_users.add(owner_id())
+    reserved = False
     try:
+        async with request.app.state.sessions.lock:
+            request.app.state.sessions.check_capacity()
+            request.app.state.sessions.testing_users.add(owner_id())
+            reserved = True
         result = await provider.structured(
             ConnectionResult, [{"role": "user", "content": 'Return JSON {"ok": true}.'}]
         )
@@ -80,7 +81,8 @@ async def test_model(request: Request, role: Role) -> dict[str, bool]:
     except ModelServiceError as error:
         raise auth_error(502, error.code) from None
     finally:
-        request.app.state.sessions.testing_users.discard(owner_id())
+        if reserved:
+            request.app.state.sessions.testing_users.discard(owner_id())
         await models.provider.aclose()
 
 

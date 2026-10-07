@@ -630,6 +630,61 @@ def test_deadline_cancellation_and_completed_batch_callback() -> None:
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("failure_stage", ["jd_analysis", "matching", "callback"])
+def test_assessment_failure_drains_sibling_requests_before_return(failure_stage: str) -> None:
+    async def scenario() -> None:
+        started, closed = asyncio.Event(), asyncio.Event()
+        failure = RuntimeError("Synthetic assessment failure")
+
+        class FailingProvider(ReplayProvider):
+            async def structured[SchemaT: BaseModel](
+                self,
+                schema: type[SchemaT],
+                messages: list[dict[str, str]],
+                *,
+                deadline: float | None = None,
+            ) -> SchemaT:
+                payload = json.loads(messages[-1]["content"])
+                identities = {row["job_id"] for row in payload["jobs"]}
+                blocked_id = "01" if failure_stage == "matching" else "03"
+                stage = "jd_analysis" if failure_stage == "callback" else failure_stage
+                if payload["task"] == stage:
+                    if blocked_id in identities:
+                        started.set()
+                        try:
+                            await asyncio.Event().wait()
+                        finally:
+                            closed.set()
+                    elif "00" in identities and failure_stage != "callback":
+                        await started.wait()
+                        raise failure
+                return await super().structured(schema, messages, deadline=deadline)
+
+        async def fail_callback(batch: RecommendationResult) -> None:
+            if failure_stage == "callback":
+                await started.wait()
+                raise failure
+
+        service = JobAssessmentService(FailingProvider())
+        await service.begin_search("run")
+        async with asyncio.timeout(2):
+            with pytest.raises(RuntimeError) as error:
+                await service.assess(
+                    profile(),
+                    [job(f"{index:02}") for index in range(6)],
+                    PROFILE_DOCUMENTS,
+                    "s",
+                    on_batch=fail_callback,
+                )
+        assert error.value is failure
+        assert closed.is_set()
+        assert all(task is asyncio.current_task() or task.done() for task in asyncio.all_tasks())
+        await service.cleanup_session("s")
+        assert service.cache == {}
+
+    asyncio.run(scenario())
+
+
 def test_profile_session_and_confirmation_must_be_valid_before_analysis() -> None:
     async def scenario() -> None:
         provider = ReplayProvider()

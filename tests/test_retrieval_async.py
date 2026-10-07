@@ -17,6 +17,7 @@ from jobscout.services.job_retrieval.mock_web import FixtureWebClient
 from jobscout.services.job_retrieval.models import RawJob, RetrievalFailure
 from jobscout.services.job_retrieval.planning import select_sources
 from jobscout.services.job_retrieval.sources import SourceResult
+from jobscout.services.job_retrieval.transport import HttpJsonClient
 from jobscout.services.job_retrieval.web_transport import WebPage
 from jobscout.services.job_search_service import JobSearchService
 
@@ -65,7 +66,14 @@ def test_detail_enrichment_retains_identity_and_rechecks_explicit_expiry() -> No
                 source_url="https://www.liepin.com/job/1",
                 text="Earlier full job description",
                 fetched_at=STAMP,
-            )
+            ),
+            SourceDocument(
+                document_id="job:stable:detail:structured",
+                source="liepin",
+                source_url="https://www.liepin.com/job/1",
+                text='{"validThrough": "2027-12-31"}',
+                fetched_at=STAMP,
+            ),
         ],
     )
     original = candidate.model_dump_json()
@@ -87,21 +95,80 @@ def test_detail_enrichment_retains_identity_and_rechecks_explicit_expiry() -> No
         for doc in result[0].source_documents
     )
     assert any('"validThrough": "2026-09-30"' in doc.text for doc in result[0].source_documents)
+    assert all("2027-12-31" not in doc.text for doc in result[0].source_documents)
     assert candidate.model_dump_json() == original
 
 
-def test_source_redirect_cannot_fetch_an_untrusted_target() -> None:
+@pytest.mark.parametrize("kind", ["web", "json"])
+@pytest.mark.parametrize("target", ["http://127.0.0.1/private", "https://attacker.invalid/private"])
+def test_source_redirect_cannot_fetch_an_untrusted_target(kind: str, target: str) -> None:
     seen: list[str] = []
 
     async def respond(request: httpx.Request) -> httpx.Response:
         seen.append(str(request.url))
-        return httpx.Response(302, headers={"location": "http://127.0.0.1/private"})
+        return httpx.Response(302, headers={"location": target})
 
-    client = AsyncHttpWebClient(transport=httpx.MockTransport(respond), interval=0, retries=0)
+    mock = httpx.MockTransport(respond)
+    url = "https://www.liepin.com/job/1"
+    operation = (
+        AsyncHttpWebClient(transport=mock, interval=0, retries=0).request_async(url)
+        if kind == "web"
+        else HttpJsonClient(transport=mock, retries=0, authorization="Bearer private").get(url)
+    )
     with pytest.raises(RetrievalFailure) as error:
-        asyncio.run(client.request_async("https://www.liepin.com/job/1"))
+        asyncio.run(operation)
     assert error.value.code == "SEARCH_HTTP"
     assert seen == ["https://www.liepin.com/job/1"]
+
+
+@pytest.mark.parametrize("timeout", [0, 0.05])
+def test_detail_deadline_retains_completed_jobs_and_drains_pending_requests(timeout: float) -> None:
+    async def scenario() -> None:
+        requested: list[str] = []
+        closed = asyncio.Event()
+
+        class DetailClient:
+            async def request_async(
+                self,
+                url: str,
+                *,
+                body: dict[str, object] | None = None,
+                headers: dict[str, str] | None = None,
+            ) -> WebPage:
+                requested.append(url)
+                if url.endswith("slow"):
+                    try:
+                        await asyncio.Event().wait()
+                    finally:
+                        closed.set()
+                return WebPage('<div data-selector="job-intro-content">SQL required.</div>', STAMP)
+
+        candidates = [
+            JobPosting(
+                job_id=identity,
+                source="liepin",
+                source_url=f"https://www.liepin.com/job/{identity}",
+                title="Analyst",
+                company="Example",
+                location="Hong Kong",
+                target_direction="Analyst",
+                fetched_at=STAMP,
+            )
+            for identity in ("fast", "slow")
+        ]
+        result = await JobSearchService(async_web_client=DetailClient()).fetch_details(
+            candidates, timeout=timeout
+        )
+        if timeout:
+            assert [job.job_id for job in result] == ["fast"]
+            assert result[0].description == "SQL required."
+            assert closed.is_set()
+        else:
+            assert result == []
+            assert requested == []
+        assert all(task is asyncio.current_task() or task.done() for task in asyncio.all_tasks())
+
+    asyncio.run(scenario())
 
 
 def request(**updates: object) -> SearchRequest:

@@ -177,20 +177,17 @@ class FeedAdapter:
                         raise self._failures[number]
                     page = self._pages.get(number)
                     if page is None:
-                        try:
-                            page = await self.client.get(
-                                URLS[self.name] + "?" + urlencode(query.params)
-                            )
-                        except RetrievalFailure as exc:
-                            self._failures[number] = exc
-                            raise
+                        page = await self.client.get(
+                            URLS[self.name] + "?" + urlencode(query.params)
+                        )
                         self._pages[number] = page
                 key = "jobs" if self.name == "remotive" else "data"
                 records = page.payload.get(key)
                 if not isinstance(records, list):
                     raise RetrievalFailure("SEARCH_RESPONSE_FORMAT", f"Expected '{key}' array.")
             except RetrievalFailure as exc:
-                self._failures[number] = exc
+                if exc.code in {"SEARCH_AUTH", "SEARCH_RATE_LIMIT", "SEARCH_RESPONSE_FORMAT"}:
+                    self._failures[number] = exc
                 result.errors.append(
                     workflow_error(
                         exc.code,

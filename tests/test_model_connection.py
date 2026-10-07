@@ -8,6 +8,7 @@ from replay.app import create_replay_app
 
 from jobscout.api.settings import ConnectionResult
 from jobscout.services.llm_service import LangChainModelProvider, ToolCall, ToolTurn
+from jobscout.services.model_settings_service import OperationModels
 from tests.test_account_security import register
 
 
@@ -77,3 +78,24 @@ def test_personal_connection_works_and_clearing_it_disables_testing(
         assert response.status_code == 422
         assert response.json()["detail"]["code"] == "personal_model_required"
         structured.assert_awaited_once()
+
+
+def test_capacity_rejection_closes_models_without_releasing_another_test(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    application = create_replay_app()
+    with TestClient(application) as client:
+        account = register(client)
+        router = Mock()
+        router.aclose = AsyncMock()
+        router.semantic.structured = AsyncMock()
+        prepared = AsyncMock(return_value=OperationModels(provider=router, uses_server=False))
+        monkeypatch.setattr(application.state.model_settings, "prepare", prepared)
+        application.state.sessions.model_settings = application.state.model_settings
+        application.state.sessions.testing_users.add(account["user_id"])
+        response = client.post("/api/v1/settings/models/semantic/test")
+        assert response.status_code == 429
+        assert response.json()["detail"]["code"] == "operation_capacity"
+        assert application.state.sessions.testing_users == {account["user_id"]}
+        router.semantic.structured.assert_not_awaited()
+        router.aclose.assert_awaited_once()

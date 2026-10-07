@@ -96,7 +96,7 @@ class HttpJsonClient:
                 restored = Page.model_validate_json(path.read_text(encoding="utf-8"))
                 self._memory[key] = restored
                 page = self._memory.get(key)
-            except OSError, ValidationError:
+            except OSError, UnicodeError, ValidationError:
                 page = None
         if page is not None and page.fetched_at <= datetime.now(UTC):
             return page.model_copy(update={"cached": True})
@@ -108,7 +108,7 @@ class HttpJsonClient:
             headers["Authorization"] = self._authorization
         try:
             async with httpx.AsyncClient(
-                timeout=self.timeout, transport=self.transport, follow_redirects=True
+                timeout=self.timeout, transport=self.transport, follow_redirects=False
             ) as client:
                 async for attempt in AsyncRetrying(
                     stop=stop_after_attempt(self.retries + 1),
@@ -120,7 +120,6 @@ class HttpJsonClient:
                     with attempt:
                         if url.startswith("https://remotive.com/"):
                             await self._pace_remotive_requests()
-                        # httpx strips Authorization when a redirect changes origin.
                         async with client.stream("GET", url, headers=headers) as response:
                             if response.status_code in {401, 403}:
                                 raise RetrievalFailure(

@@ -10,13 +10,15 @@ from docx.document import Document as WordDocument
 from docx.section import _Footer, _Header
 from docx.table import _Cell
 from docx.text.paragraph import Paragraph
-from pypdf import PdfReader
+from pypdf import PdfReader, apply_configuration
+from pypdf.errors import LimitReachedError
 
 from jobscout.schemas.session import ResumeInput
 
 MAX_RESUME_BYTES = 10 * 1024 * 1024
 MAX_RESUME_TEXT_LENGTH = 100_000
 MAX_PDF_PAGES = 50
+MAX_PDF_UNCOMPRESSED_BYTES = 20 * 1024 * 1024
 MAX_DOCX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024
 SUPPORTED_EXTENSIONS = frozenset({".txt", ".pdf", ".docx"})
 
@@ -59,7 +61,15 @@ def _extract_pdf(content: bytes) -> str:
         )
     parts: list[str] = []
     length = 0
+    uncompressed_bytes = 0
     for page in reader.pages:
+        contents = page.get_contents()
+        if contents is not None:
+            uncompressed_bytes += len(contents.get_data())
+            if uncompressed_bytes > MAX_PDF_UNCOMPRESSED_BYTES:
+                raise ResumeParseError(
+                    "document_too_large", "The PDF is too large. Shorten it and upload it again."
+                )
         part = page.extract_text() or ""
         length += len(part)
         if length > MAX_RESUME_TEXT_LENGTH:
@@ -113,7 +123,7 @@ def _extract_docx(content: bytes) -> str:
         if "word/document.xml" not in archive.namelist():
             raise ResumeParseError("invalid_file", "This is not a valid DOCX document.")
     document = Document(BytesIO(content))
-    parts = list(_word_blocks(document))
+    containers: list[WordDocument | _Header | _Footer] = [document]
     for section in document.sections:
         for container in (
             section.header,
@@ -124,7 +134,18 @@ def _extract_docx(content: bytes) -> str:
             section.even_page_footer,
         ):
             if not container.is_linked_to_previous:
-                parts.extend(_word_blocks(container))
+                containers.append(container)
+    parts: list[str] = []
+    length = 0
+    for part_container in containers:
+        for part in _word_blocks(part_container):
+            length += len(part) + bool(parts)
+            if length > MAX_RESUME_TEXT_LENGTH:
+                raise ResumeParseError(
+                    "text_too_long",
+                    "The resume is too long. Shorten it to 100,000 characters or fewer.",
+                )
+            parts.append(part)
     return "\n".join(parts)
 
 
@@ -141,13 +162,27 @@ def parse_resume(filename: str | None, content: bytes) -> ResumeInput:
         )
     try:
         if extension == ".pdf":
-            text = _extract_pdf(content)
+            with apply_configuration(
+                maximum_declared_stream_length=MAX_RESUME_BYTES,
+                array_based_stream_maximum_output_length=MAX_PDF_UNCOMPRESSED_BYTES,
+                zlib_maximum_output_length=MAX_PDF_UNCOMPRESSED_BYTES,
+                lzw_maximum_output_length=MAX_PDF_UNCOMPRESSED_BYTES,
+                run_length_maximum_output_length=MAX_PDF_UNCOMPRESSED_BYTES,
+                page_tree_maximum_entries=1000,
+                xform_maximum_invocations_per_extraction=500,
+                jbig2dec_binary=None,
+            ):
+                text = _extract_pdf(content)
         elif extension == ".docx":
             text = _extract_docx(content)
         else:
             text = content.decode("utf-8-sig")
     except ResumeParseError:
         raise
+    except LimitReachedError as error:
+        raise ResumeParseError(
+            "document_too_large", "The PDF is too large. Shorten it and upload it again."
+        ) from error
     except UnicodeDecodeError as error:
         raise ResumeParseError(
             "invalid_encoding", "The file encoding could not be read. Use a UTF-8 encoded TXT file."

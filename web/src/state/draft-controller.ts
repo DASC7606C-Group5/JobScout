@@ -40,6 +40,7 @@ export class DraftController<T extends object> {
   }
 
   getSnapshot = () => this.snapshot
+  isDiscarded = () => this.discarded
   subscribe = (listener: () => void) => {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
@@ -65,7 +66,7 @@ export class DraftController<T extends object> {
   }
 
   loadFailed(error: Error) {
-    if (!this.loaded) this.publish({ status: 'error', error })
+    if (!this.discarded && !this.loaded) this.publish({ status: 'error', error })
   }
 
   update = (update: T | ((value: T) => T)) => {
@@ -96,6 +97,7 @@ export class DraftController<T extends object> {
   }
 
   setComposing = (value: boolean) => {
+    if (this.discarded) return
     this.composing = value
     if (value && this.timer) {
       clearTimeout(this.timer)
@@ -103,7 +105,9 @@ export class DraftController<T extends object> {
     } else if (!value && this.hasPending()) this.schedule()
   }
 
-  hasPending = () => this.version !== this.savedVersion || this.operation !== null || this.composing
+  hasPending = () =>
+    !this.discarded &&
+    (this.version !== this.savedVersion || this.operation !== null || this.composing)
 
   discard = () => {
     this.discarded = true
@@ -111,7 +115,7 @@ export class DraftController<T extends object> {
     this.timer = null
     this.request = null
     this.savedVersion = this.version
-    this.publish({ status: 'saved', error: null })
+    this.publish({ value: structuredClone(this.initial), status: 'saved', error: null })
   }
 
   flush = (): Promise<boolean> => {
@@ -168,6 +172,7 @@ export class DraftController<T extends object> {
 
   reload = async () => {
     if (this.operation) await this.operation
+    if (this.discarded) return true
     const version = this.version
     this.publish({ status: 'loading', error: null })
     try {
@@ -189,6 +194,7 @@ export class DraftController<T extends object> {
       this.committed(response)
       return true
     } catch (cause) {
+      if (this.discarded) return true
       this.publish({
         status: 'error',
         error: cause instanceof Error ? cause : new Error('Could not load this draft.'),
@@ -198,9 +204,11 @@ export class DraftController<T extends object> {
   }
 
   retry = async () => {
+    if (this.discarded) return true
     if (!this.loaded) {
       try {
         const response = await this.read()
+        if (this.discarded) return true
         if (this.hasPending()) {
           this.loaded = true
           if (response.revision > 0 || Object.keys(response.data).length > 0) {
@@ -215,6 +223,7 @@ export class DraftController<T extends object> {
         } else this.hydrate(response)
         this.committed(response)
       } catch (cause) {
+        if (this.discarded) return true
         this.publish({
           status: 'error',
           error: cause instanceof Error ? cause : new Error('Could not load this draft.'),
@@ -227,13 +236,16 @@ export class DraftController<T extends object> {
 
   overwrite = async () => {
     if (this.operation) await this.operation
+    if (this.discarded) return true
     try {
       const response = await this.read()
+      if (this.discarded) return true
       this.loaded = true
       this.request = null
       this.publish({ revision: response.revision, status: 'unsaved', error: null })
       return await this.flush()
     } catch (cause) {
+      if (this.discarded) return true
       this.publish({
         status: 'error',
         error: cause instanceof Error ? cause : new Error('Could not load this draft.'),

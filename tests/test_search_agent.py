@@ -523,6 +523,44 @@ def test_successful_details_are_deduplicated_per_vacancy_across_batches() -> Non
     asyncio.run(scenario())
 
 
+def test_partial_details_allow_one_retry_only_for_unfinished_jobs() -> None:
+    class PartialDetails(SnapshotSearch):
+        def __init__(self) -> None:
+            super().__init__(2)
+            self.detail_batches: list[list[str]] = []
+
+        async def fetch_details(
+            self, jobs: Sequence[JobPosting], *, timeout: float = 30
+        ) -> list[JobPosting]:
+            self.detail_batches.append([job.job_id for job in jobs])
+            selected = jobs[:1] if len(self.detail_batches) == 1 else jobs
+            return [
+                job.model_copy(update={"description": "Full SQL requirement."}) for job in selected
+            ]
+
+    async def scenario() -> None:
+        search = PartialDetails()
+        provider = ScriptedProvider(
+            [
+                lambda _: query(),
+                *[
+                    lambda o: (
+                        "fetch_job_details",
+                        {"job_ids": [row["job_id"] for row in o["candidates"]]},
+                    )
+                    for _ in range(3)
+                ],
+                lambda _: ("finish_search", {"reason": "results_ready"}),
+            ]
+        )
+        result = await run(provider, search, Assessment())
+        first = search.detail_batches[0]
+        assert search.detail_batches == [first, [first[1]]]
+        assert all(job.description == "Full SQL requirement." for job in result["normalized_jobs"])
+
+    asyncio.run(scenario())
+
+
 def test_new_details_allow_reassessment_without_reusing_summary_analysis() -> None:
     class DetailSearch(SnapshotSearch):
         async def fetch_details(

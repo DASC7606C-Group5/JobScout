@@ -150,7 +150,7 @@ def test_location_ambiguity_is_an_error() -> None:
     assert exc.value.code == "SEARCH_LOCATION_AMBIGUOUS"
 
 
-def test_authorization_not_in_url_or_redirect_headers() -> None:
+def test_authorization_stays_on_the_requested_source_and_redirects_are_rejected() -> None:
     requests: list[httpx.Request] = []
 
     async def respond(request: httpx.Request) -> httpx.Response:
@@ -159,12 +159,13 @@ def test_authorization_not_in_url_or_redirect_headers() -> None:
             return httpx.Response(302, headers={"Location": "https://redirect.invalid/feed"})
         return httpx.Response(200, json={"type": "JOBS", "jobs": []})
 
-    asyncio.run(
-        HttpJsonClient(authorization="Basic SYNTHETIC", transport=httpx.MockTransport(respond)).get(
-            "https://example.invalid"
+    with pytest.raises(RetrievalFailure) as error:
+        asyncio.run(
+            HttpJsonClient(
+                authorization="Basic SYNTHETIC", transport=httpx.MockTransport(respond)
+            ).get("https://example.invalid")
         )
-    )
-    assert len(requests) == 2
+    assert error.value.code == "SEARCH_HTTP"
+    assert [str(request.url) for request in requests] == ["https://example.invalid"]
     assert requests[0].headers["Authorization"] == "Basic SYNTHETIC"
-    assert "Authorization" not in requests[1].headers
     assert all("SYNTHETIC" not in str(request.url) for request in requests)

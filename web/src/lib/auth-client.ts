@@ -96,6 +96,7 @@ export function accountErrorMessage(code: string): string {
     invalid_credentials: 'Username or password is incorrect.',
     username_unavailable: 'That username is already taken.',
     invalid_input: 'Check the fields and try again.',
+    request_too_large: 'The request is too large. Shorten the input and try again.',
     auth_rate_limited: 'Too many attempts. Try again in 15 minutes.',
     invalid_csrf_token: 'Your session changed. Reload and try again.',
     invalid_origin: 'This request is not allowed. Open the site using its configured address.',

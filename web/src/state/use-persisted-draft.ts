@@ -1,39 +1,10 @@
-import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useSyncExternalStore } from 'react'
 
-import type { DraftResponse, WorkspaceClient } from '../lib/contracts'
+import type { DraftResponse } from '../lib/contracts'
 import { workspaceClient } from '../lib/workspace-client'
-import { DraftController } from './draft-controller'
 import { registerDraft } from './draft-navigation'
-
-const controllers = new WeakMap<QueryClient, Map<string, DraftController<object>>>()
-
-function controllerFor<T extends object>(
-  cache: QueryClient,
-  path: string,
-  initial: T,
-  client: WorkspaceClient,
-) {
-  let entries = controllers.get(cache)
-  if (!entries) {
-    entries = new Map()
-    controllers.set(cache, entries)
-  }
-  const previous = entries.get(path)
-  if (previous) return previous as unknown as DraftController<T>
-  const controller = new DraftController<T>(
-    initial,
-    (request) =>
-      client.saveDraft(path, {
-        ...request,
-        data: request.data as Record<string, unknown>,
-      }) as Promise<DraftResponse<T>>,
-    () => client.getDraft(path) as Promise<DraftResponse<T>>,
-    (response) => cache.setQueryData(['draft', path], response),
-  )
-  entries.set(path, controller as unknown as DraftController<object>)
-  return controller
-}
+import { getDraftController } from './draft-store'
 
 export function usePersistedDraft<T extends object>(
   path: string,
@@ -41,7 +12,7 @@ export function usePersistedDraft<T extends object>(
   client = workspaceClient,
 ) {
   const cache = useQueryClient()
-  const controller = controllerFor(cache, path, initial, client)
+  const controller = getDraftController(cache, path, initial, client)
   const query = useQuery({
     queryKey: ['draft', path],
     queryFn: async ({ signal }) => {

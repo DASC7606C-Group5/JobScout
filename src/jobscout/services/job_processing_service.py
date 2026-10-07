@@ -143,15 +143,6 @@ def _dedup_key_part(value: str | None) -> str:
     return " ".join(normalized.casefold().split())
 
 
-def _parse_responsibilities(raw: dict[str, Any], description: str | None) -> list[str]:
-    """Keep the source's fields; the assessment model reads the full job description later."""
-    return _dedupe_keep_order(_clean_str_list(raw.get("responsibilities")))
-
-
-def _parse_required_skills(raw: dict[str, Any], description: str | None) -> list[str]:
-    return _dedupe_keep_order(_clean_str_list(raw.get("required_skills")))
-
-
 def _normalize_status(value: object) -> FreshnessStatus | None:
     """Return the explicit source status, or ``None`` when absent or unrecognized."""
     if not isinstance(value, str):
@@ -305,18 +296,10 @@ def process_jobs(
         first = records[0]
 
         responsibilities = _dedupe_keep_order(
-            [
-                item
-                for raw in records
-                for item in _parse_responsibilities(raw, _clean_description(raw.get("description")))
-            ]
+            [item for raw in records for item in _clean_str_list(raw.get("responsibilities"))]
         )
         required_skills = _dedupe_keep_order(
-            [
-                item
-                for raw in records
-                for item in _parse_required_skills(raw, _clean_description(raw.get("description")))
-            ]
+            [item for raw in records for item in _clean_str_list(raw.get("required_skills"))]
         )
 
         source_links = _dedupe_keep_order(

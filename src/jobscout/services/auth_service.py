@@ -8,9 +8,11 @@ from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from weakref import WeakValueDictionary
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
+from cachetools import TTLCache
 from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
 
@@ -18,6 +20,8 @@ from jobscout.config import Settings
 from jobscout.models import LoginSession, User
 
 PASSWORD_HASHER = PasswordHasher(memory_cost=65536, time_cost=3, parallelism=1)
+AUTH_RATE_WINDOW_SECONDS = 900
+MAX_AUTH_RATE_KEYS = 10_000
 
 
 def auth_error(status: int, code: str) -> HTTPException:
@@ -39,8 +43,10 @@ class AuthService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.hash_slots = asyncio.Semaphore(2)
-        self.failures: dict[str, deque[float]] = {}
-        self.user_locks: dict[str, asyncio.Lock] = {}
+        self.failures: TTLCache[str, deque[float]] = TTLCache(
+            maxsize=MAX_AUTH_RATE_KEYS, ttl=AUTH_RATE_WINDOW_SECONDS
+        )
+        self.user_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
         self.session_lock = asyncio.Lock()
         self.listeners: dict[str, list[Identity]] = {}
         self.dummy_hash: str = ""
@@ -63,27 +69,23 @@ class AuthService:
     def check_rate(self, keys: list[tuple[str, int]]) -> None:
         now = time.monotonic()
         for key, limit in keys:
-            failures = self.failures.setdefault(key, deque())
-            while failures and failures[0] <= now - 900:
+            failures = self.failures.get(key, deque())
+            while failures and failures[0] <= now - AUTH_RATE_WINDOW_SECONDS:
                 failures.popleft()
             if len(failures) >= limit:
                 raise auth_error(429, "auth_rate_limited")
-        # Remove expired entries to bound state from arbitrary usernames/IPs.
-        self.failures = {
-            key: values
-            for key, values in self.failures.items()
-            if values and values[-1] > now - 900 or key in dict(keys)
-        }
-
-    def failed(self, keys: list[tuple[str, int]]) -> None:
-        for key, _ in keys:
-            self.failures.setdefault(key, deque()).append(time.monotonic())
+        # Reject new keys at capacity instead of evicting an active account's limit.
+        missing = {key for key, _ in keys if key not in self.failures}
+        if len(self.failures) + len(missing) > self.failures.maxsize:
+            raise auth_error(429, "auth_rate_limited")
 
     def reserve_attempt(self, keys: list[tuple[str, int]]) -> float:
         self.check_rate(keys)
         attempt = time.monotonic()
         for key, _ in keys:
-            self.failures[key].append(attempt)
+            entries = self.failures.get(key, deque())
+            entries.append(attempt)
+            self.failures[key] = entries
         return attempt
 
     def release_attempt(self, keys: list[tuple[str, int]], attempt: float) -> None:
@@ -91,6 +93,8 @@ class AuthService:
             entries = self.failures.get(key, deque())
             if attempt in entries:
                 entries.remove(attempt)
+                if not entries:
+                    self.failures.pop(key, None)
 
     def user_lock(self, user_id: str) -> asyncio.Lock:
         return self.user_locks.setdefault(user_id, asyncio.Lock())

@@ -1,6 +1,7 @@
 """Request pacing and cache lifetime regressions using offline HTTP responses."""
 
 import asyncio
+import hashlib
 import warnings
 from datetime import UTC, datetime, timedelta, tzinfo
 from pathlib import Path
@@ -116,6 +117,25 @@ def test_disk_restore_does_not_extend_memory_cache_expiry(
         assert requested_urls == [url, url]
 
     asyncio.run(scenario())
+
+
+def test_corrupt_disk_cache_is_replaced_by_a_fresh_response(tmp_path: Path) -> None:
+    url = "https://example.invalid/jobs"
+    path = tmp_path / f"{hashlib.sha256(url.encode()).hexdigest()}.json"
+    path.write_bytes(b"\xff\xfe")
+    requested_urls: list[str] = []
+
+    async def respond(request: httpx.Request) -> httpx.Response:
+        requested_urls.append(str(request.url))
+        return httpx.Response(200, json={"job_id": "fresh"})
+
+    result = asyncio.run(
+        HttpJsonClient(cache_dir=tmp_path, transport=httpx.MockTransport(respond)).get(url)
+    )
+    assert result.payload == {"job_id": "fresh"}
+    assert not result.cached
+    assert Page.model_validate_json(path.read_text(encoding="utf-8")).payload == result.payload
+    assert requested_urls == [url]
 
 
 @pytest.mark.parametrize("kind", ["web", "json"])

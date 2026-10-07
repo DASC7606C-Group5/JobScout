@@ -49,6 +49,18 @@ _SCHEMA_VERSION = "job-assessment-v11"
 _LOGGER = logging.getLogger(__name__)
 
 
+async def _gather_results[ResultT](*operations: Awaitable[ResultT]) -> list[ResultT]:
+    """Drain sibling operations before a failed assessment releases its session lock."""
+    tasks = [asyncio.ensure_future(operation) for operation in operations]
+    try:
+        return list(await asyncio.gather(*tasks))
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1094,7 +1106,7 @@ class JobAssessmentService:
                     deadline,
                 )
 
-        compared = await asyncio.gather(
+        compared = await _gather_results(
             *(compare(identity) for identity in eligible if identity in analyses)
         )
         matches = {identity: match for response in compared for identity, match in response.items()}
@@ -1217,7 +1229,7 @@ class JobAssessmentService:
                         )
                     return completed
 
-            batches = await asyncio.gather(
+            batches = await _gather_results(
                 *(
                     process(candidates[i : i + BATCH_SIZE])
                     for i in range(0, len(candidates), BATCH_SIZE)

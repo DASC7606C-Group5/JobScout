@@ -1,9 +1,11 @@
 """Concurrent login attempts and password changes exercise the actual auth routes."""
 
 import asyncio
+from collections import deque
 
 import httpx
 import pytest
+from cachetools import TTLCache
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from replay.app import create_replay_app
@@ -11,6 +13,34 @@ from replay.app import create_replay_app
 from jobscout.config import get_settings
 from jobscout.services.auth_service import AuthService, Identity, token_hash
 from tests.test_account_security import register
+
+
+def test_ip_rejection_does_not_store_arbitrary_usernames() -> None:
+    auth = AuthService(get_settings())
+    for _ in range(60):
+        auth.reserve_attempt([("login:attacker", 60)])
+    for index in range(1000):
+        with pytest.raises(HTTPException) as rejected:
+            auth.reserve_attempt([(f"username:unknown-{index}", 10), ("login:attacker", 60)])
+        assert rejected.value.status_code == 429
+    assert set(auth.failures) == {"login:attacker"}
+
+
+def test_full_rate_limit_state_retains_existing_limits_until_expiry() -> None:
+    auth = AuthService(get_settings())
+    now = 0.0
+    auth.failures = TTLCache[str, deque[float]](maxsize=2, ttl=900, timer=lambda: now)
+    auth.reserve_attempt([("username:first", 1)])
+    auth.reserve_attempt([("username:second", 1)])
+    with pytest.raises(HTTPException) as capacity:
+        auth.reserve_attempt([("username:third", 1)])
+    assert capacity.value.status_code == 429
+    with pytest.raises(HTTPException) as existing:
+        auth.reserve_attempt([("username:first", 1)])
+    assert existing.value.status_code == 429
+    now = 901.0
+    auth.reserve_attempt([("username:third", 1)])
+    assert set(auth.failures) == {"username:third"}
 
 
 @pytest.mark.parametrize("limit", [10, 60])

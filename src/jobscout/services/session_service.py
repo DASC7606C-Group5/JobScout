@@ -61,6 +61,9 @@ class _Session:
     revision: int = 1
     outcome: str = "running"
     task: asyncio.Task[None] | None = None
+    previous_tasks: set[asyncio.Task[None]] = field(default_factory=set)
+    operation_models: Any = None
+    checkpoint_read_id: int = 0
     requests: dict[str, str] = field(default_factory=dict)
     deleted: bool = False
     thread_id: str = ""
@@ -205,7 +208,9 @@ class SessionService:
             if record.outcome in {"paused", "completed"}:
                 record.state.pop("accepted_resume", None)
             await self._persist(record)
-        for accepted in await AcceptedRequest.all():
+        for accepted in await AcceptedRequest.filter(
+            Q(scope="create") | Q(scope__startswith="resume:")
+        ):
             if accepted.scope == "create" and accepted.session_id:
                 self.creation_requests[(accepted.owner_id, accepted.request_id)] = (
                     accepted.fingerprint,
@@ -303,18 +308,22 @@ class SessionService:
                 created_at=now,
                 updated_at=now,
             )
-            async with in_transaction() as connection:
-                await self._persist(record, connection=connection)
-                if models and models.uses_server:
-                    await self.model_settings.charge(owner_id(), connection)
-                await AcceptedRequest.create(
-                    owner_id=owner_id(),
-                    scope="create",
-                    request_id=payload.request_id,
-                    fingerprint=fingerprint,
-                    session_id=session_id,
-                    using_db=connection,
-                )
+            try:
+                async with in_transaction() as connection:
+                    await self._persist(record, connection=connection)
+                    if models and models.uses_server:
+                        await self.model_settings.charge(owner_id(), connection)
+                    await AcceptedRequest.create(
+                        owner_id=owner_id(),
+                        scope="create",
+                        request_id=payload.request_id,
+                        fingerprint=fingerprint,
+                        session_id=session_id,
+                        using_db=connection,
+                    )
+            except BaseException:
+                await self._close_models(models)
+                raise
             self.sessions[session_id] = record
             self.creation_requests[(owner_id(), payload.request_id)] = (fingerprint, session_id)
             self._start(record, state, models=models)
@@ -425,16 +434,17 @@ class SessionService:
                         using_db=connection,
                     )
                     await WorkspaceDraft.filter(session_id=session_id).using_db(connection).delete()
-            except Exception:
+            except BaseException:
                 record.revision -= 1
                 record.state = previous_state
                 record.outcome = previous_outcome
                 record.thread_id = previous_thread
                 record.thread_ids = previous_threads
                 record.updated_at = previous_updated_at
+                await self._close_models(models)
                 raise
             record.requests[payload.request_id] = fingerprint
-            if previous_task is not None:
+            if previous_task is not None and not previous_task.cancelling():
                 previous_task.cancel()
             self._start(record, next_input, previous_task=previous_task, models=models)
             self._notify(record)
@@ -493,15 +503,31 @@ class SessionService:
     async def get(self, session_id: str) -> SessionResponse:
         async with self.lock:
             record = self._get(session_id)
-            if record.outcome == "running":
-                snapshot = await self.graph.aget_state(self._config(record.thread_id))
-                if (
-                    snapshot.values
-                    and snapshot.values.get("revision", 0) >= record.revision
-                    and not record.deleted
-                ):
-                    self._merge_snapshot(record, snapshot.values)
-                    await self._persist(record)
+            if record.outcome != "running":
+                return self._response(record)
+            thread_id, revision = record.thread_id, record.revision
+            record.checkpoint_read_id += 1
+            read_id = record.checkpoint_read_id
+        # Checkpoint reads can wait on the graph writer; other sessions must remain usable.
+        snapshot = await self.graph.aget_state(self._config(thread_id))
+        async with self.lock:
+            record = self._get(session_id)
+            if (
+                record.outcome == "running"
+                and record.thread_id == thread_id
+                and record.revision == revision
+                and record.checkpoint_read_id == read_id
+                and snapshot.values
+                and snapshot.values.get("revision", 0) >= revision
+            ):
+                previous_state = dict(record.state)
+                self._merge_snapshot(record, snapshot.values)
+                try:
+                    if record.state != previous_state:
+                        await self._persist(record)
+                except BaseException:
+                    record.state = previous_state
+                    raise
             return self._response(record)
 
     async def stop(self, session_id: str, payload: SessionStopRequest) -> SessionResponse:
@@ -553,7 +579,7 @@ class SessionService:
                         session_id=session_id,
                         using_db=connection,
                     )
-            except Exception:
+            except BaseException:
                 record.state = previous_state
                 record.outcome = "running"
                 record.updated_at = previous_updated_at
@@ -580,6 +606,16 @@ class SessionService:
                 "source_outcomes",
             ):
                 incoming.pop(key, None)
+            if incoming.get("current_stage") not in {"completed", "failed"}:
+                incoming.pop("current_stage", None)
+        if record.stop_event.is_set():
+            incoming.pop("stop_reason", None)
+            if "progress" in incoming:
+                incoming["progress"] = SearchProgress.model_validate(
+                    incoming["progress"]
+                ).model_copy(update={"retrieval_stopped": True})
+            if incoming.get("current_stage") not in {"completed", "failed", "review"}:
+                incoming.pop("current_stage", None)
         record.state.update(incoming)
 
     async def _progress(
@@ -635,7 +671,7 @@ class SessionService:
                     record.state[key] = update[key]
             try:
                 await self._persist(record)
-            except Exception:
+            except BaseException:
                 record.state = previous
                 raise
             self._notify(record)
@@ -711,16 +747,19 @@ class SessionService:
                 async with in_transaction() as connection:
                     await self._persist(record, connection=connection)
                     await WorkspaceDraft.filter(session_id=session_id).using_db(connection).delete()
-            except Exception:
+            except BaseException:
                 record.deleted = previous_deleted
                 record.state = previous_state
                 raise
             self._notify(record)
-            task = record.task
-            if task is not None:
-                task.cancel()
-        if task is not None:
-            await asyncio.gather(task, return_exceptions=True)
+            tasks = [*record.previous_tasks, *([record.task] if record.task is not None else [])]
+            for task in tasks:
+                if not task.cancelling():
+                    task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        await self._close_models(record.operation_models)
+        record.operation_models = None
         await self._finish_delete(record)
 
     async def _finish_delete(self, record: _Session) -> None:
@@ -734,27 +773,47 @@ class SessionService:
         await self.graph.cleanup_session(session_id)
 
     async def close(self) -> None:
-        self.closing = True
-        tasks = []
-        for record in self.sessions.values():
-            self._notify(record)
-            if record.task is not None:
-                record.task.cancel()
-                tasks.append(record.task)
+        async with self.lock:
+            self.closing = True
+            records = list(self.sessions.values())
+            tasks = []
+            for record in records:
+                self._notify(record)
+                record_tasks = [
+                    *record.previous_tasks,
+                    *([record.task] if record.task is not None else []),
+                ]
+                for task in record_tasks:
+                    if not task.cancelling():
+                        task.cancel()
+                tasks.extend(record_tasks)
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
-        for record in self.sessions.values():
+        for record in records:
+            # A task cancelled before its first turn never executes its finally block.
+            await self._close_models(record.operation_models)
+            record.operation_models = None
+        failures: list[Exception] = []
+        for record in records:
             if record.deleted:
                 continue
-            if record.outcome == "running":
-                snapshot = await self.graph.aget_state(self._config(record.thread_id))
-                if snapshot.values and snapshot.values.get("revision", 0) >= record.revision:
-                    self._merge_snapshot(record, snapshot.values)
-                await self._persist(record)
-            await self._cleanup_session(record.session_id)
+            try:
+                if record.outcome == "running":
+                    snapshot = await self.graph.aget_state(self._config(record.thread_id))
+                    if snapshot.values and snapshot.values.get("revision", 0) >= record.revision:
+                        self._merge_snapshot(record, snapshot.values)
+                    await self._persist(record)
+            except Exception as error:
+                failures.append(error)
+            try:
+                await self._cleanup_session(record.session_id)
+            except Exception as error:
+                failures.append(error)
         self.sessions.clear()
         self.creation_requests.clear()
         self.subscribers.clear()
+        if failures:
+            raise ExceptionGroup("Session shutdown failed", failures)
 
     def _get(self, session_id: str) -> _Session:
         record = self.sessions.get(session_id)
@@ -769,6 +828,8 @@ class SessionService:
         return {"configurable": {"thread_id": session_id}, "recursion_limit": 100}
 
     def check_capacity(self, exclude_session: str | None = None) -> None:
+        if self.closing:
+            raise SessionOperationError(503, "Service is closing.", code="service_unavailable")
         if self.model_settings is None:
             return
         active = [
@@ -799,7 +860,11 @@ class SessionService:
         models: Any = None,
     ) -> None:
         run_id = uuid4().hex
+        if previous_task is not None:
+            record.previous_tasks.add(previous_task)
+            previous_task.add_done_callback(record.previous_tasks.discard)
         record.active_run_id = run_id
+        record.operation_models = models
         record.stop_event = asyncio.Event()
         record.state.update(
             run_id=None, progress=SearchProgress(), progress_seq=0, stop_reason=None
@@ -819,7 +884,7 @@ class SessionService:
     ) -> None:
         revision = record.revision
         thread_id = record.thread_id
-        graph = self.graph_factory(models.provider) if models is not None else self.graph
+        graph = self.graph
 
         async def on_progress(update: dict[str, Any]) -> None:
             await self._progress(record, run_id, revision, update)
@@ -829,8 +894,17 @@ class SessionService:
             run_id=run_id, stop_event=record.stop_event, on_progress=on_progress
         )
         try:
+            if models is not None:
+                graph = self.graph_factory(models.provider)
             if previous_task is not None:
-                await asyncio.gather(previous_task, return_exceptions=True)
+                previous_finished = asyncio.gather(previous_task, return_exceptions=True)
+                try:
+                    await asyncio.shield(previous_finished)
+                except asyncio.CancelledError:
+                    # The superseded worker owns its provider until its cleanup finishes.
+                    # Cancelling this worker must not cancel that cleanup a second time.
+                    await asyncio.shield(previous_finished)
+                    raise
             state = await graph.ainvoke(graph_input, config)
             snapshot = await graph.aget_state(self._config(thread_id))
             async with self.lock:
@@ -842,6 +916,7 @@ class SessionService:
                     or record.active_run_id != run_id
                 ):
                     return
+                previous_state = dict(record.state)
                 self._merge_snapshot(record, state)
                 stage = state.get("current_stage")
                 record.outcome = (
@@ -849,7 +924,12 @@ class SessionService:
                 )
                 if record.outcome in {"paused", "completed"}:
                     record.state.pop("accepted_resume", None)
-                await self._persist(record)
+                try:
+                    await self._persist(record)
+                except BaseException:
+                    record.state = previous_state
+                    record.outcome = "running"
+                    raise
                 self._notify(record)
         except asyncio.CancelledError:
             raise
@@ -888,8 +968,22 @@ class SessionService:
 
         finally:
             if models is not None:
-                await graph.cleanup_session(record.session_id)
+                try:
+                    await graph.cleanup_session(record.session_id)
+                except Exception:
+                    logger.warning("session_cleanup_failed")
+                finally:
+                    await self._close_models(models)
+                    if record.operation_models is models:
+                        record.operation_models = None
+
+    @staticmethod
+    async def _close_models(models: Any) -> None:
+        if models is not None:
+            try:
                 await models.provider.aclose()
+            except Exception:
+                logger.warning("session_provider_close_failed")
 
     def _response(self, record: _Session) -> SessionResponse:
         state = record.state

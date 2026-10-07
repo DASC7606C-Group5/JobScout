@@ -331,6 +331,21 @@ def test_pagination_does_not_follow_response_url_and_preserves_partial() -> None
     assert client.urls[-1] == "https://www.arbeitnow.com/api/job-board-api?page=2"
 
 
+@pytest.mark.parametrize("code", ["SEARCH_TIMEOUT", "SEARCH_NETWORK", "SEARCH_HTTP"])
+def test_feed_retry_fetches_again_after_a_transient_failure(code: str) -> None:
+    async def scenario() -> None:
+        client = Pages(RetrievalFailure(code, "Temporary failure"), page())
+        search = service(client)
+        first = await search.search_many_async([request(sources=["remotive"])])
+        second = await search.search_many_async([request(sources=["remotive"])])
+        assert [error.code for error in first.errors] == [code]
+        assert [job.source_job_id for job in second.raw_jobs] == ["10"]
+        assert not second.errors
+        assert client.urls == ["https://remotive.com/api/remote-jobs?limit=1000"] * 2
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("bound", [{"result_limit": 1}, {"candidate_limit": 1}, {"max_pages": 1}])
 def test_bounds_are_reported(bound: dict[str, int]) -> None:
     result = asyncio.run(

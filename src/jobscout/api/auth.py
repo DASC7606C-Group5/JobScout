@@ -64,8 +64,7 @@ async def register(request: Request, response: Response, payload: Credentials) -
     auth = service(request)
     ip = request.client.host if request.client else "unknown"
     limits = [(f"register:{ip}", 60)]
-    auth.check_rate(limits)
-    auth.failed(limits)
+    auth.reserve_attempt(limits)
     hashed = await auth.hash_password(payload.password)
     try:
         user = await User.create(

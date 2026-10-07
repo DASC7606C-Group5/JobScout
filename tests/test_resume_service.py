@@ -9,6 +9,7 @@ from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from jobscout.services.resume_service import (
+    MAX_PDF_UNCOMPRESSED_BYTES,
     MAX_RESUME_BYTES,
     MAX_RESUME_TEXT_LENGTH,
     ResumeParseError,
@@ -169,3 +170,30 @@ def test_pdf_page_limit() -> None:
     with pytest.raises(ResumeParseError) as raised:
         parse_resume("long.pdf", make_pdf(*(["Skills: Python"] * 51)))
     assert raised.value.code == "document_too_large"
+
+
+@pytest.mark.parametrize("pages", [1, 3])
+def test_pdf_rejects_compressed_content_over_the_document_budget(pages: int) -> None:
+    writer = PdfWriter()
+    for _ in range(pages):
+        page = writer.add_blank_page(width=595, height=842)
+        stream = DecodedStreamObject()
+        stream.set_data(b" " * (MAX_PDF_UNCOMPRESSED_BYTES // pages + 1))
+        page[NameObject("/Contents")] = stream.flate_encode()
+    output = BytesIO()
+    writer.write(output)
+    assert len(output.getvalue()) < MAX_RESUME_BYTES
+    with pytest.raises(ResumeParseError) as raised:
+        parse_resume("compressed.pdf", output.getvalue())
+    assert raised.value.code == "document_too_large"
+
+
+def test_docx_rejects_excessive_extracted_text() -> None:
+    document = Document()
+    document.add_paragraph("x" * MAX_RESUME_TEXT_LENGTH)
+    document.add_paragraph("more text")
+    output = BytesIO()
+    document.save(output)
+    with pytest.raises(ResumeParseError) as raised:
+        parse_resume("long.docx", output.getvalue())
+    assert raised.value.code == "text_too_long"

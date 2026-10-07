@@ -1,5 +1,6 @@
 """FastAPI entry point with application-scoped clients and cancellable sessions."""
 
+import asyncio
 import inspect
 import os
 from collections.abc import AsyncGenerator
@@ -30,6 +31,12 @@ from jobscout.services.session_service import SessionService
 from jobscout.services.workspace_service import WorkspaceService
 
 
+async def close_resource(resource: Any) -> None:
+    result = resource.aclose()
+    if inspect.isawaitable(result):
+        await result
+
+
 def create_app(
     *,
     provider: Any = None,
@@ -53,6 +60,19 @@ def create_app(
         active_search = search_service
         active_database_url = database_url or get_settings().database_url
         async with AsyncExitStack() as stack:
+            resources: set[int] = set()
+
+            def own_resource(resource: Any) -> None:
+                if (
+                    resource is not None
+                    and hasattr(resource, "aclose")
+                    and id(resource) not in resources
+                ):
+                    resources.add(id(resource))
+                    stack.push_async_callback(close_resource, resource)
+
+            own_resource(active_provider)
+            own_resource(active_search)
             if temporary_database and database_url is None and not os.environ.get("DATABASE_URL"):
                 workspace_directory = stack.enter_context(
                     TemporaryDirectory(prefix="jobscout-workspace-")
@@ -65,6 +85,7 @@ def create_app(
             )
             application.state.auth = AuthService(settings)
             await application.state.auth.open()
+            application.state.resume_slots = asyncio.Semaphore(2)
             application.state.model_settings = ModelSettingsService(settings)
             checkpointer: Any = getattr(graph, "checkpointer", None)
             if checkpointer is None:
@@ -80,6 +101,7 @@ def create_app(
                 from jobscout.services.llm_service import get_llm_provider
 
                 active_provider = active_provider or get_llm_provider()
+                own_resource(active_provider)
                 active_graph = build_live_graph(
                     checkpointer=checkpointer,
                     provider=active_provider,
@@ -102,17 +124,10 @@ def create_app(
                 if active_mode == "live" and graph is None and provider is None
                 else None,
             )
+            stack.push_async_callback(application.state.sessions.close)
             await application.state.sessions.open()
             application.state.workspace = WorkspaceService(application.state.sessions)
-            try:
-                yield
-            finally:
-                await application.state.sessions.close()
-                for resource in (active_provider, active_search):
-                    if resource is not None and hasattr(resource, "aclose"):
-                        result = resource.aclose()
-                        if inspect.isawaitable(result):
-                            await result
+            yield
 
     settings = get_settings()
     application = FastAPI(
