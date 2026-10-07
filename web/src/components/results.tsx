@@ -3,7 +3,6 @@ import { useMemo, type ReactNode } from 'react'
 import { uniqueNotices } from '../lib/applicant-notices'
 import type { ApplicantNotice, RecommendationItem, RecommendationResult } from '../lib/contracts'
 import { generatedLabel } from '../lib/job-display'
-import type { ResultSearch } from '../lib/result-navigation'
 import { useResultSelection } from '../state/use-result-selection'
 import { Icon } from './icon'
 import { JobCard } from './job-card'
@@ -89,19 +88,10 @@ function FilterControls({ jobs, selection }: { jobs: RecommendationItem[]; selec
   return (
     <div className={detailOpen ? 'hidden min-[1100px]:block' : ''}>
       <ResultFilters
+        jobs={jobs}
         directions={directions}
-        direction={search.direction ?? 'All'}
-        onDirectionChange={(direction) =>
-          filterTo({ ...search, direction: direction === 'All' ? undefined : direction })
-        }
-        freshness={search.freshness ?? 'all'}
-        onFreshnessChange={(freshness) =>
-          filterTo({
-            ...search,
-            freshness: freshness === 'all' ? undefined : (freshness as ResultSearch['freshness']),
-          })
-        }
-        count={jobs.length}
+        search={search}
+        onChange={filterTo}
         filteredCount={filtered.length}
       />
     </div>
@@ -133,7 +123,6 @@ function ResultItems({
     detailHeading,
     detailScrollRef,
     rememberDetailScroll,
-    changeSearch,
     selectJob,
     back,
     toggle,
@@ -143,9 +132,6 @@ function ResultItems({
     return (
       <div className="rounded-box border border-dashed border-base-300 py-12 text-center">
         <p className="text-sm text-base-content/65">No jobs match these filters.</p>
-        <button className="btn mt-3 btn-ghost btn-sm" onClick={() => changeSearch({})}>
-          Clear filters
-        </button>
       </div>
     )
   return (

@@ -1817,7 +1817,7 @@ test('result panes scroll independently and restore reading positions by job ide
   await expect(lastResponsibility).toBeInViewport()
   await expect(listing).toBeInViewport()
   await expect(detail.getByRole('heading', { name: 'Engineer 9', exact: true })).toBeInViewport()
-  await expect(page.getByRole('combobox', { name: 'Filter by listing status' })).toBeInViewport()
+  await expect(page.getByRole('combobox', { name: 'Sort jobs' })).toBeInViewport()
   const readingPosition = await analysis.evaluate((element) => element.scrollTop)
   await page.getByRole('button', { name: 'View job: Engineer 10', exact: true }).click()
   await expect(analysis).toHaveJSProperty('scrollTop', 0)
@@ -1931,7 +1931,9 @@ test('result selection and filters retain job identity and saved removal chooses
   await expect(
     detail.getByRole('heading', { name: 'Frontend Developer', exact: true }),
   ).toBeVisible()
+  await page.getByRole('button', { name: 'Filters', exact: true }).click()
   await page.getByRole('combobox', { name: 'Filter by listing status' }).selectOption('expired')
+  await page.getByRole('button', { name: 'Close filters', exact: true }).click()
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
   await captureResults(page, 'results-desktop')
@@ -1953,6 +1955,120 @@ test('result selection and filters retain job identity and saved removal chooses
   await expect(
     page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
   ).toBeVisible()
+})
+
+test('combined result filters and sorting survive reload and retain selected job identity', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  const session = resultSession()
+  const [first, second, third] = session.recommendation!.jobs
+  first!.job.posted_at = '2026-10-03T00:00:00Z'
+  first!.match_score = { ...createMatchScoreFixture(), total: 0 }
+  second!.match_score = { ...createMatchScoreFixture(), total: 95 }
+  second!.recommendation_fit = 'possible'
+  second!.job.employment_type = 'part-time'
+  third!.job.posted_at = '2026-10-07T00:00:00Z'
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  await page.goto('/searches/session-1')
+  const list = page.getByRole('region', { name: 'Job list', exact: true })
+  const jobTitles = () => list.getByRole('button').allTextContents()
+  const detail = page.getByRole('article', { name: 'Job details', exact: true })
+  await page.getByRole('button', { name: 'View job: Frontend Developer', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Sort jobs' }).selectOption('match')
+  await expect
+    .poll(jobTitles)
+    .toEqual([
+      expect.stringContaining('Full Stack Engineer'),
+      expect.stringContaining('React Engineer'),
+      expect.stringContaining('Frontend Developer'),
+    ])
+  await expect(page).toHaveURL(/job=test-job-3/)
+  await expect(
+    detail.getByRole('heading', { name: 'Frontend Developer', exact: true }),
+  ).toBeVisible()
+  await page.getByRole('combobox', { name: 'Sort jobs' }).selectOption('newest')
+  await expect
+    .poll(jobTitles)
+    .toEqual([
+      expect.stringContaining('Frontend Developer'),
+      expect.stringContaining('React Engineer'),
+      expect.stringContaining('Full Stack Engineer'),
+    ])
+  await captureResults(page, 'result-filters-desktop')
+  await page.getByRole('button', { name: 'Filters', exact: true }).click()
+  await page.getByRole('combobox', { name: 'Filter by listing status' }).selectOption('unknown')
+  await page.getByRole('combobox', { name: 'Filter by match result' }).selectOption('possible')
+  await page.getByRole('combobox', { name: 'Filter by employment type' }).selectOption('part-time')
+  await captureResults(page, 'result-filters-panel-desktop')
+  await page.keyboard.press('Escape')
+  if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1')
+    await page.getByRole('group', { name: 'Job filters and sorting', exact: true }).screenshot({
+      path: '.tools/review/result-filters-bar-desktop.png',
+      animations: 'disabled',
+    })
+  await expect.poll(jobTitles).toEqual([expect.stringContaining('Full Stack Engineer')])
+  await expect(page).toHaveURL(/job=test-job-2/)
+  await page.reload()
+  await expect(page.getByRole('combobox', { name: 'Sort jobs' })).toHaveValue('newest')
+  await expect.poll(jobTitles).toEqual([expect.stringContaining('Full Stack Engineer')])
+  await page.getByRole('button', { name: /^Filters/ }).click()
+  await page.getByRole('combobox', { name: 'Filter by match result' }).selectOption('')
+  await expect(page).not.toHaveURL(/fit=/)
+  await page.getByRole('combobox', { name: 'Filter by listing status' }).selectOption('expired')
+  await page.getByRole('button', { name: 'Close filters', exact: true }).click()
+  await expect(list).toHaveCount(0)
+  await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
+  await expect
+    .poll(jobTitles)
+    .toEqual([
+      expect.stringContaining('Frontend Developer'),
+      expect.stringContaining('React Engineer'),
+      expect.stringContaining('Full Stack Engineer'),
+    ])
+  await expect(page.getByRole('combobox', { name: 'Sort jobs' })).toHaveValue('newest')
+})
+
+test('mobile filters dismiss with Escape, preserve sort when cleared and fit within the viewport', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 900 })
+  const session = resultSession()
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  await page.goto('/searches/session-1')
+  const filters = page.getByRole('button', { name: 'Filters', exact: true })
+  await filters.click()
+  const status = page.getByRole('combobox', { name: 'Filter by listing status' })
+  await status.selectOption('active')
+  await captureResults(page, 'result-filters-panel-mobile')
+  await status.focus()
+  await page.keyboard.press('Escape')
+  await expect(status).not.toBeVisible()
+  await expect(page.getByRole('button', { name: 'Filters 1', exact: true })).toBeFocused()
+  const list = page.getByRole('region', { name: 'Job list', exact: true })
+  await expect(list.getByRole('button')).toHaveAttribute('aria-label', 'View job: React Engineer')
+  await page.getByRole('combobox', { name: 'Sort jobs' }).selectOption('company')
+  await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
+  await expect(page.getByRole('combobox', { name: 'Sort jobs' })).toHaveValue('company')
+  await expect(list.getByRole('button')).toHaveCount(3)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await captureResults(page, 'result-filters-mobile')
+  await filters.click()
+  await page.getByRole('button', { name: 'All jobs', exact: true }).click()
+  await expect(status).not.toBeVisible()
+  await page.getByRole('button', { name: 'Full stack development', exact: true }).click()
+  await expect(list.getByRole('button')).toHaveAttribute(
+    'aria-label',
+    'View job: Full Stack Engineer',
+  )
+  await expect(page.getByRole('button', { name: 'Clear filters', exact: true })).toBeInViewport()
+  await expect(page.getByRole('combobox', { name: 'Sort jobs' })).toBeInViewport()
+  await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
+  await expect(list.getByRole('button')).toHaveCount(3)
 })
 
 test('mobile detail Back and browser Back restore the selected list control without overflow', async ({

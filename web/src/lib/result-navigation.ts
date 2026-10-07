@@ -4,34 +4,97 @@ export interface ResultSearch {
   job?: string | undefined
   direction?: string | undefined
   freshness?: 'active' | 'unknown' | 'expired' | undefined
+  fit?: RecommendationItem['recommendation_fit'] | undefined
+  employment?: string | undefined
+  sort?: 'match' | 'newest' | 'oldest' | 'company' | undefined
+}
+
+export const sortLabels = {
+  recommended: 'Recommended',
+  match: 'Highest score',
+  newest: 'Newest posted',
+  oldest: 'Oldest posted',
+  company: 'Company A–Z',
+} as const
+
+export const freshnessLabels = {
+  active: 'Active',
+  unknown: 'Status unconfirmed',
+  expired: 'Expired',
+} as const
+
+function searchText(value: unknown) {
+  return typeof value === 'string' && value.length <= 200 && value.trim() ? value : undefined
 }
 
 export function resultSearch(value: Record<string, unknown>): ResultSearch {
   return {
-    job:
-      typeof value.job === 'string' && value.job.length <= 200 && value.job.trim()
-        ? value.job
-        : undefined,
-    direction:
-      typeof value.direction === 'string' && value.direction.length <= 200 && value.direction.trim()
-        ? value.direction
-        : undefined,
+    job: searchText(value.job),
+    direction: searchText(value.direction),
     freshness:
       typeof value.freshness === 'string' &&
       ['active', 'unknown', 'expired'].includes(value.freshness)
         ? (value.freshness as ResultSearch['freshness'])
         : undefined,
+    fit:
+      typeof value.fit === 'string' &&
+      ['recommended', 'possible', 'unlikely', 'unknown'].includes(value.fit)
+        ? (value.fit as ResultSearch['fit'])
+        : undefined,
+    employment: searchText(value.employment),
+    sort:
+      typeof value.sort === 'string' &&
+      ['match', 'newest', 'oldest', 'company'].includes(value.sort)
+        ? (value.sort as ResultSearch['sort'])
+        : undefined,
   }
 }
 
 export function visibleJobs(items: RecommendationItem[], search: ResultSearch) {
-  return items.filter(
-    ({ job }) =>
+  const filtered = items.filter(
+    ({ job, recommendation_fit }) =>
       (!search.direction ||
         job.target_directions.includes(search.direction) ||
         job.target_direction === search.direction) &&
-      (!search.freshness || job.freshness_status === search.freshness),
+      (!search.freshness || job.freshness_status === search.freshness) &&
+      (!search.fit || recommendation_fit === search.fit) &&
+      (!search.employment || job.employment_type === search.employment),
   )
+  switch (search.sort) {
+    case 'match':
+      return filtered.sort((left, right) =>
+        compareNumbers(left.match_score?.total ?? null, right.match_score?.total ?? null, true),
+      )
+    case 'newest':
+    case 'oldest':
+      return filtered.sort((left, right) =>
+        compareNumbers(
+          postedDate(left.job.posted_at),
+          postedDate(right.job.posted_at),
+          search.sort === 'newest',
+        ),
+      )
+    case 'company':
+      return filtered.sort((left, right) =>
+        left.job.company.localeCompare(right.job.company, 'en', {
+          sensitivity: 'base',
+          numeric: true,
+        }),
+      )
+    default:
+      return filtered
+  }
+}
+
+function postedDate(value: string | null) {
+  const date = value ? Date.parse(value) : NaN
+  return Number.isFinite(date) ? date : null
+}
+
+function compareNumbers(left: number | null, right: number | null, descending: boolean) {
+  if (left === null) return right === null ? 0 : 1
+  if (right === null) return -1
+  return descending ? right - left : left - right
 }
 
 export function nextJobAfterRemoval(items: RecommendationItem[], removed: string) {

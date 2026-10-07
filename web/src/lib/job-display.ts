@@ -1,4 +1,16 @@
-import type { JobPosting } from './contracts'
+import type { EmploymentType, JobPosting } from './contracts'
+
+const employmentLabels: Record<EmploymentType, string> = {
+  'full-time': 'Full-time',
+  'part-time': 'Part-time',
+  internship: 'Internship',
+  contract: 'Contract',
+  freelance: 'Freelance',
+}
+
+export function employmentLabel(value: string) {
+  return Object.hasOwn(employmentLabels, value) ? employmentLabels[value as EmploymentType] : value
+}
 
 export function hasFullDescription(job: JobPosting): boolean {
   return (
