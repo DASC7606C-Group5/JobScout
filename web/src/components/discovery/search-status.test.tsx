@@ -35,6 +35,9 @@ test('search activity preserves public job data and hides internal events', () =
             company: 'Company & Co',
             location: 'Hong Kong',
             status: 'reviewing',
+            review_issue: null,
+            exclusion_reasons: [],
+            unknown_conditions: [],
             recommendation_fit: 'unknown',
           },
         ]}

@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import FreshnessStatus, JobPosting
+from jobscout.schemas.job_status import ExclusionReason
 from jobscout.schemas.profile import UserProfile
 from jobscout.services.location_service import get_location_catalog, within
 
@@ -42,9 +43,12 @@ def _job_employment_type(job: JobPosting) -> str | None:
     return _employment_type(job.employment_type or "")
 
 
-def _preference_check(profile: UserProfile, job: JobPosting) -> tuple[bool, list[str]]:
+def _preference_check(
+    profile: UserProfile, job: JobPosting
+) -> tuple[list[ExclusionReason], list[str]]:
     """Reject known location or employment mismatches; leave unclear details for model analysis."""
     warnings: list[str] = []
+    conflicts: list[ExclusionReason] = []
     preferences = profile.preferences
     condition = preferences.locations
     places = get_location_catalog().find(job.location)
@@ -54,7 +58,7 @@ def _preference_check(profile: UserProfile, job: JobPosting) -> tuple[bool, list
         else:
             actual = places[0]
             if any(within(actual, excluded) for excluded in condition.excluded):
-                return False, []
+                conflicts.append("location")
             if any(within(excluded, actual) for excluded in condition.excluded):
                 warnings.append("location")
             if condition.included and not any(
@@ -63,7 +67,7 @@ def _preference_check(profile: UserProfile, job: JobPosting) -> tuple[bool, list
                 if any(within(wanted, actual) for wanted in condition.included):
                     warnings.append("location")
                 else:
-                    return False, []
+                    conflicts.append("location")
             elif not condition.included and not condition.unrestricted:
                 warnings.append("location")
     employment = preferences.employment
@@ -74,10 +78,10 @@ def _preference_check(profile: UserProfile, job: JobPosting) -> tuple[bool, list
         elif actual_type in employment.excluded or (
             employment.included and actual_type not in employment.included
         ):
-            return False, []
+            conflicts.append("employment_type")
         elif not employment.included and not employment.unrestricted:
             warnings.append("employment_type")
-    return True, list(dict.fromkeys(warnings))
+    return list(dict.fromkeys(conflicts)), list(dict.fromkeys(warnings))
 
 
 def _direction_matches(profile: UserProfile, job: JobPosting) -> bool:
@@ -87,33 +91,48 @@ def _direction_matches(profile: UserProfile, job: JobPosting) -> bool:
     )
 
 
-def eligible_jobs(profile: UserProfile, jobs: Sequence[JobPosting]) -> list[JobPosting]:
-    """Return distinct jobs that can proceed to model analysis.
-
-    Exclude jobs that are expired or do not meet confirmed role, location or employment preferences.
-    Keep jobs with unclear work conditions. Normalize company/title/location and compare source URLs
-    to prevent duplicates from inflating the candidate count. Input objects are not changed.
-    """
+def _screen_candidates(
+    profile: UserProfile, jobs: Sequence[JobPosting]
+) -> tuple[list[JobPosting], dict[str, list[ExclusionReason]]]:
+    """Keep the exact exclusion reason while applying the candidate eligibility rules."""
+    excluded: dict[str, list[ExclusionReason]] = {}
     selected: list[JobPosting] = []
     seen_ids: set[str] = set()
     seen_urls: set[str] = set()
     seen_keys: set[tuple[str, str, str]] = set()
     for job in sorted(jobs, key=lambda item: (item.job_id, item.source_url)):
-        if (
-            job.freshness_status == FreshnessStatus.EXPIRED
-            or not _direction_matches(profile, job)
-            or not _preference_check(profile, job)[0]
-        ):
+        if job.job_id in seen_ids:
+            continue
+        reasons, _ = _preference_check(profile, job)
+        if job.freshness_status == FreshnessStatus.EXPIRED:
+            reasons.insert(0, "expired")
+        if not _direction_matches(profile, job):
+            reasons.append("role")
+        if reasons:
+            excluded[job.job_id] = reasons
             continue
         key = (_normalize(job.company), _normalize(job.title), _normalize(job.location))
         urls = {url.rstrip("/") for url in [job.source_url, *job.source_links] if url.strip()}
-        if job.job_id in seen_ids or urls & seen_urls or key in seen_keys:
+        if urls & seen_urls or key in seen_keys:
+            excluded[job.job_id] = ["duplicate"]
             continue
         seen_ids.add(job.job_id)
+        excluded.pop(job.job_id, None)
         seen_urls.update(urls)
         seen_keys.add(key)
         selected.append(job)
-    return selected
+    return selected, excluded
+
+
+def eligibility_exclusions(
+    profile: UserProfile, jobs: Sequence[JobPosting]
+) -> dict[str, list[ExclusionReason]]:
+    return _screen_candidates(profile, jobs)[1]
+
+
+def eligible_jobs(profile: UserProfile, jobs: Sequence[JobPosting]) -> list[JobPosting]:
+    """Return distinct eligible candidates; unclear conditions remain eligible."""
+    return _screen_candidates(profile, jobs)[0]
 
 
 def validate_recommendation_profile(profile: UserProfile, session_id: str) -> None:

@@ -91,7 +91,7 @@ def test_known_mismatches_are_excluded_and_unknown_facts_remain_candidates() -> 
     selected = eligible_jobs(profile(), candidates)
     assert [item.job_id for item in selected] == ["allowed", "unknown"]
     assert selected[1].freshness_status == FreshnessStatus.UNKNOWN
-    assert _preference_check(profile(), selected[1]) == (True, ["location", "employment_type"])
+    assert _preference_check(profile(), selected[1]) == ([], ["location", "employment_type"])
 
 
 def test_merged_direction_tags_keep_a_selected_direction_candidate() -> None:
@@ -118,8 +118,8 @@ def test_combinations_use_or_and_exclusions_preserve_district_uncertainty() -> N
     ]
     selected = eligible_jobs(applicant, candidates)
     assert [item.job_id for item in selected] == ["city-needs-district", "hong-kong"]
-    assert _preference_check(applicant, selected[0]) == (True, ["location"])
-    assert _preference_check(applicant, selected[1]) == (True, [])
+    assert _preference_check(applicant, selected[0]) == ([], ["location"])
+    assert _preference_check(applicant, selected[1]) == ([], [])
 
 
 def test_duplicate_identity_urls_and_vacancy_facts_do_not_inflate_candidates() -> None:

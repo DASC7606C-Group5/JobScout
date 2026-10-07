@@ -191,6 +191,9 @@ describe('Session HTTP API', () => {
       company: item.job.company,
       location: item.job.location,
       status: 'reviewing',
+      review_issue: null,
+      exclusion_reasons: [],
+      unknown_conditions: [],
       recommendation_fit: 'unknown',
     }
     const invalidReplies = [
@@ -269,7 +272,16 @@ describe('Session HTTP API', () => {
     ]
     current.progress = {
       ...current.progress,
-      activity: [{ ...activity, status: 'reviewing', recommendation_fit: 'unknown' }],
+      activity: [
+        {
+          ...activity,
+          status: 'reviewing',
+          review_issue: null,
+          exclusion_reasons: [],
+          unknown_conditions: [],
+          recommendation_fit: 'unknown',
+        },
+      ],
     }
     const client = createSessionClient(
       '/api/v1',

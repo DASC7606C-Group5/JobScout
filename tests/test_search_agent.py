@@ -718,7 +718,7 @@ def test_screening_activity_tracks_all_candidates_without_exposing_diagnostics()
         latest = {row["title"]: row for row in result["progress"]["activity"]}
         assert set(latest) == {f"Data Analyst {index}" for index in range(11)}
         assert latest["Data Analyst 6"]["status"] == "unverified"
-        assert latest["Data Analyst 7"]["status"] == "unavailable"
+        assert latest["Data Analyst 7"]["status"] == "failed"
         assert latest["Data Analyst 8"]["status"] == "excluded"
         assert latest["Data Analyst 9"]["status"] == "excluded"
         assert latest["Data Analyst 10"]["status"] == "not_reviewed"
@@ -734,7 +734,7 @@ def test_screening_activity_tracks_all_candidates_without_exposing_diagnostics()
             for update in updates
         )
         assert any(
-            {row["title"] for row in update["activity"] if row["status"] == "found"}
+            {row["title"] for row in update["activity"] if row["status"] == "queued"}
             >= {"Data Analyst 0", "Data Analyst 10"}
             for update in updates
         )
@@ -746,11 +746,11 @@ def test_screening_activity_tracks_all_candidates_without_exposing_diagnostics()
             for row in update["activity"]
             if row["title"] == "Data Analyst 0"
         ]
-        found = next(row for row in candidate_states if row["status"] == "found")
+        found = next(row for row in candidate_states if row["status"] == "queued")
         reviewing = next(row for row in candidate_states if row["status"] == "reviewing")
         reviewed = next(row for row in candidate_states if row["status"] == "reviewed")
         assert found["sequence"] < reviewing["sequence"] < reviewed["sequence"]
-        assert len({row["sequence"] for row in candidate_states if row["status"] == "found"}) == 1
+        assert len({row["sequence"] for row in candidate_states if row["status"] == "queued"}) == 1
 
     asyncio.run(scenario())
 

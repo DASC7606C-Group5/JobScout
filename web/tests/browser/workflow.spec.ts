@@ -569,6 +569,9 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
           company: matched.job.company,
           location: matched.job.location,
           status: 'reviewed',
+          review_issue: null,
+          exclusion_reasons: [],
+          unknown_conditions: [],
           recommendation_fit: matched.recommendation_fit,
         },
         {
@@ -578,6 +581,9 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
           company: pending.job.company,
           location: pending.job.location,
           status: 'found',
+          review_issue: null,
+          exclusion_reasons: [],
+          unknown_conditions: [],
           recommendation_fit: 'unknown',
         },
       ],
@@ -693,6 +699,9 @@ test('final results preserve an open job and saved selection from an early previ
       company: item.job.company,
       location: item.job.location,
       status: 'reviewed',
+      review_issue: null,
+      exclusion_reasons: [],
+      unknown_conditions: [],
       recommendation_fit: item.recommendation_fit,
     })),
   }
@@ -782,6 +791,9 @@ test('screening activity archives rejected jobs and automatically reveals comple
       company: item.job.company,
       location: item.job.location,
       status: 'reviewing',
+      review_issue: null,
+      exclusion_reasons: [],
+      unknown_conditions: [],
       sequence: 1,
       recommendation_fit: 'unknown',
     },
@@ -792,6 +804,9 @@ test('screening activity archives rejected jobs and automatically reveals comple
       company: 'Example employer',
       location: 'Hong Kong',
       status: 'found',
+      review_issue: null,
+      exclusion_reasons: [],
+      unknown_conditions: [],
       recommendation_fit: 'unknown',
     },
   ]
@@ -805,6 +820,9 @@ test('screening activity archives rejected jobs and automatically reveals comple
       company: 'Example employer',
       location: 'Hong Kong',
       status: 'found' as const,
+      review_issue: null,
+      exclusion_reasons: [],
+      unknown_conditions: [],
       recommendation_fit: 'unknown' as const,
     })),
   )
@@ -1063,6 +1081,9 @@ test('SSE reconnects to current progress without polling and closes on navigatio
       company: 'Example',
       location: 'Remote',
       status: 'found',
+      review_issue: null,
+      exclusion_reasons: [],
+      unknown_conditions: [],
       recommendation_fit: 'unknown',
     },
   ]
@@ -2596,4 +2617,55 @@ test('summary groups retain collapsed edits and require confirmation of the upda
   await page.getByRole('button', { name: 'Confirm and search' }).click()
   await expect.poll(() => state.requests.at(-1)?.action).toBe('confirm_search')
   expect(state.requests.at(-1)?.expected_revision).toBe(2)
+})
+
+test.describe('job status tooltips', () => {
+  test.use({ hasTouch: true })
+
+  test('status reasons support touch, hover, keyboard and dismissal without selecting a job', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    const session = resultSession()
+    const item = session.recommendation!.jobs[0]!
+    item.analysis_status = 'unavailable'
+    item.review_issue = { code: 'timeout', stage: 'matching' }
+    const state = await mockSessions(page, session)
+    state.seedSession(session)
+    await page.goto('/searches/session-1')
+    const card = page.locator('article').filter({
+      has: page.getByRole('button', { name: `View job: ${item.job.title}`, exact: true }),
+    })
+    const badge = card.getByRole('button', { name: 'Timeout', exact: true })
+    const tooltip = page.getByRole('tooltip')
+    await badge.tap()
+    await expect(tooltip).toBeVisible()
+    await expect(badge).toHaveAttribute(
+      'aria-describedby',
+      (await tooltip.getAttribute('id')) as string,
+    )
+    await expect(page.getByRole('article', { name: 'Job details' })).not.toBeVisible()
+    const bounds = await tooltip.boundingBox()
+    expect(bounds).not.toBeNull()
+    expect(bounds!.x).toBeGreaterThanOrEqual(0)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390)
+    await mkdir('.tools/browser', { recursive: true })
+    await page.screenshot({ path: '.tools/browser/status-tooltip-mobile.png', fullPage: true })
+    await page.keyboard.press('Escape')
+    await expect(tooltip).toHaveCount(0)
+    await badge.blur()
+    await badge.focus()
+    await expect(tooltip).toBeVisible()
+    await page.keyboard.press('Tab')
+    await expect(tooltip).toHaveCount(0)
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.mouse.move(5, 5)
+    await badge.hover()
+    await expect(tooltip).toBeVisible()
+    await tooltip.hover()
+    await expect(tooltip).toBeVisible()
+    await page.screenshot({ path: '.tools/browser/status-tooltip-desktop.png', fullPage: true })
+    await page.mouse.click(5, 5)
+    await expect(tooltip).toHaveCount(0)
+  })
 })

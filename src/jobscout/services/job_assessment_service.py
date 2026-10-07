@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from jobscout.schemas.conversation import MatchingReason, SourceQuoteReference
 from jobscout.schemas.job import FreshnessStatus, JobPosting, SourceDocument
+from jobscout.schemas.job_status import ExclusionReason, ReviewIssue
 from jobscout.schemas.matching import DimensionAssessment, MatchDimension
 from jobscout.schemas.profile import EmploymentType, UserProfile
 from jobscout.schemas.recommendation import (
@@ -33,6 +34,7 @@ from jobscout.services.recommendation_service import (
     _normalize,
     _preference_check,
     _unique_skills,
+    eligibility_exclusions,
     validate_recommendation_profile,
 )
 from jobscout.services.recommendation_service import (
@@ -159,6 +161,32 @@ class AssessmentDiagnostic(_StrictModel):
     stage: str
     detail: str
     retryable: bool
+    public_issue: ReviewIssue | None = None
+    exclusion_reasons: list[ExclusionReason] = Field(default_factory=list)
+
+    def review_issue(self) -> ReviewIssue:
+        if self.public_issue is not None:
+            return self.public_issue
+        stage: Literal["jd_analysis", "matching"] | None = (
+            "jd_analysis"
+            if self.stage == "jd_analysis"
+            else "matching"
+            if self.stage == "matching"
+            else None
+        )
+        if self.code == "model_failure":
+            if self.detail == "model_timeout":
+                return ReviewIssue(code="timeout", stage=stage)
+            if self.detail == "model_output":
+                return ReviewIssue(code="invalid_output", stage=stage)
+            if self.detail in {
+                "model_auth",
+                "model_configuration",
+                "model_transport",
+                "model_http",
+            }:
+                return ReviewIssue(code="service_unavailable", stage=stage)
+        return ReviewIssue(code="failed", stage=stage)
 
 
 @dataclass(frozen=True)
@@ -479,9 +507,7 @@ def _render(
         )
     if not reasons:
         analysis_status = "unavailable"
-        diagnostics.append(
-            f"Job {job.job_id} has no verifiable requirements from the original listing, so the match cannot be fully assessed."
-        )
+        diagnostics.append(f"Job {job.job_id} has no validated matching conclusions.")
     diagnostics.extend(_preference_check(profile, job)[1])
     if job.freshness_status == FreshnessStatus.UNKNOWN:
         diagnostics.append(
@@ -719,7 +745,9 @@ class JobAssessmentService:
                 self.diagnostics[str(job["job_id"])] = AssessmentDiagnostic(
                     code="model_failure",
                     stage=str(payload.get("task")),
-                    detail=getattr(error, "code", "model_output"),
+                    detail="model_timeout"
+                    if isinstance(error, TimeoutError)
+                    else getattr(error, "code", "model_output"),
                     retryable=True,
                 )
             _LOGGER.warning(
@@ -735,6 +763,7 @@ class JobAssessmentService:
             try:
                 if len(found) != 1:
                     raise _InvalidAssessment("missing or duplicated job ID")
+                original = found[0].model_copy(deep=True)
                 validate(found[0])
                 accepted[found[0].job_id] = found[0]
                 if getattr(found[0], "incomplete", False):
@@ -743,6 +772,12 @@ class JobAssessmentService:
                         stage=str(payload.get("task")),
                         detail="The supplied documents do not support some conclusions; correct only those conclusions.",
                         retryable=True,
+                        public_issue=ReviewIssue(
+                            code="invalid_evidence"
+                            if original != found[0]
+                            else "incomplete_review",
+                            stage="jd_analysis" if schema is JDAnalysisBatch else "matching",
+                        ),
                     )
             except _InvalidAssessment as error:
                 self.diagnostics[str(job_id)] = AssessmentDiagnostic(
@@ -750,14 +785,19 @@ class JobAssessmentService:
                     stage=str(payload.get("task")),
                     detail=str(error),
                     retryable=True,
+                    public_issue=ReviewIssue(
+                        code="invalid_output",
+                        stage="jd_analysis" if schema is JDAnalysisBatch else "matching",
+                    ),
                 )
         return accepted
 
     async def _condition_status(
         self, profile: UserProfile, row: ConditionAssessment, *, deadline: float | None
-    ) -> tuple[bool, list[str]]:
+    ) -> tuple[list[ExclusionReason], list[str]]:
+        conflicts: list[ExclusionReason] = []
         if row.direction == "mismatch":
-            return False, []
+            conflicts.append("role")
         unknown = ["target_direction"] if row.direction == "unknown" else []
         actual_locations = []
         unresolved = False
@@ -775,7 +815,7 @@ class JobAssessmentService:
             for actual in actual_locations
             for excluded in condition.excluded
         ):
-            return False, []
+            conflicts.append("location")
         if any(
             within(excluded, actual)
             for actual in actual_locations
@@ -797,19 +837,19 @@ class JobAssessmentService:
                 ):
                     unknown.append("location")
                 else:
-                    return False, []
+                    conflicts.append("location")
         employment = profile.preferences.employment
         kinds = {item.value for item in row.employment}
         if kinds & set(employment.excluded):
-            return False, []
+            conflicts.append("employment_type")
         if employment.excluded and not kinds:
             unknown.append("employment_type")
         if not employment.unrestricted:
             if not kinds or not employment.included:
                 unknown.append("employment_type")
             elif not kinds & set(employment.included):
-                return False, []
-        return True, list(dict.fromkeys(unknown))
+                conflicts.append("employment_type")
+        return list(dict.fromkeys(conflicts)), list(dict.fromkeys(unknown))
 
     async def _batch(
         self,
@@ -825,6 +865,13 @@ class JobAssessmentService:
             try:
                 documents[job.job_id] = _documents(job)
             except _InvalidAssessment:
+                self.diagnostics[job.job_id] = AssessmentDiagnostic(
+                    code="invalid_analysis",
+                    stage="jd_analysis",
+                    detail="Source document identifiers are invalid.",
+                    retryable=False,
+                    public_issue=ReviewIssue(code="invalid_evidence", stage="jd_analysis"),
+                )
                 continue
             key = self._cache_key(job, documents[job.job_id], profile.target_directions)
             feedback = (repair_feedback or {}).get(job.job_id, "")
@@ -870,17 +917,18 @@ class JobAssessmentService:
         eligible: dict[str, list[str]] = {}
         for job in valid_jobs:
             if job.job_id in analyses:
-                allowed, missing = await self._condition_status(
+                conflicts, missing = await self._condition_status(
                     profile, analyses[job.job_id], deadline=deadline
                 )
-                if allowed:
+                if not conflicts:
                     eligible[job.job_id] = missing
                 else:
                     self.diagnostics[job.job_id] = AssessmentDiagnostic(
                         code="condition_mismatch",
                         stage="conditions",
-                        detail="Job details conflict with the confirmed direction, location or employment conditions.",
+                        detail="Job details conflict with confirmed search conditions.",
                         retryable=False,
+                        exclusion_reasons=conflicts,
                     )
             else:
                 eligible[job.job_id] = list(
@@ -935,6 +983,19 @@ class JobAssessmentService:
             missing = eligible[job.job_id]
             rendered.item.verification_status = "pending" if missing else "confirmed"
             rendered.item.unknown_conditions = missing
+            issue = self.diagnostics.get(job.job_id)
+            if issue is not None:
+                rendered.item.review_issue = issue.review_issue()
+            elif rendered.item.analysis_status == "unavailable":
+                if not analysis.requirements:
+                    rendered.item.review_issue = ReviewIssue(
+                        code="incomplete_review"
+                        if analysis.incomplete
+                        else "insufficient_job_information",
+                        stage="jd_analysis",
+                    )
+                else:
+                    rendered.item.review_issue = ReviewIssue(code="failed", stage="matching")
             ranked.append(rendered)
         return ranked
 
@@ -978,6 +1039,7 @@ class JobAssessmentService:
             candidates: list[JobPosting] = []
             if repair_feedback:
                 self.dimension_scores.clear()
+            excluded = eligibility_exclusions(profile, jobs)
             unique = eligible_jobs(profile, jobs)
             for job in jobs:
                 self.diagnostics.pop(job.job_id, None)
@@ -985,8 +1047,9 @@ class JobAssessmentService:
                     self.diagnostics[job.job_id] = AssessmentDiagnostic(
                         code="condition_mismatch",
                         stage="eligibility",
-                        detail="The listing is expired, duplicated or conflicts with a confirmed condition.",
+                        detail="The listing was excluded by the eligibility rules.",
                         retryable=False,
+                        exclusion_reasons=excluded.get(job.job_id, []),
                     )
             eligible = select_candidates(unique, limit=len(unique))
             for job in eligible:

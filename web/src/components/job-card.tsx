@@ -27,26 +27,22 @@ export function JobCard({
     <article
       className={`card border ${selected ? 'border-secondary-content/35 bg-secondary/20' : 'border-base-300 bg-base-100'}`}
     >
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+        <span className="text-xs text-base-content/75">{job.company}</span>
+        <JobReviewStatus item={item} active={reviewActive} />
+      </div>
       <button
         ref={buttonRef}
         type="button"
         aria-label={`View job: ${job.title}`}
         aria-pressed={selected}
         onClick={onSelect}
-        className="w-full rounded-box p-4 text-left transition-colors hover:bg-secondary/10"
+        className="w-full rounded-box p-4 pt-2 text-left transition-colors hover:bg-secondary/10"
       >
-        <span className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-xs text-base-content/75">{job.company}</span>
-          <JobReviewStatus item={item} active={reviewActive} />
-        </span>
         <h3 className="text-base font-semibold tracking-tight wrap-anywhere">{job.title}</h3>
         <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/65">
           <span>{job.location}</span>
           {job.employment_type && <span>{job.employment_type}</span>}
-          {job.freshness_status === 'expired' && <span>Expired</span>}
-          {item.verification_status !== 'confirmed' && item.review_status === 'reviewed' && (
-            <span>Details to check</span>
-          )}
         </span>
         <span className="mt-2 block text-sm font-semibold">
           {job.salary || 'Salary not provided'}

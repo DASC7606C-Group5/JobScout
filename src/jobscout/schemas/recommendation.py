@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from jobscout.schemas.conversation import MatchingReason
 from jobscout.schemas.job import JobPosting
+from jobscout.schemas.job_status import JobStatus, ReviewIssue, issue_status
 from jobscout.schemas.matching import MatchScore
 from jobscout.schemas.notices import ApplicantNotice
 
@@ -24,9 +25,27 @@ class RecommendationItem(BaseModel):
     review_status: Literal["queued", "reviewing", "reviewed", "not_reviewed"] = "reviewed"
     verification_status: Literal["confirmed", "pending", "unknown"] = "unknown"
     unknown_conditions: list[str] = Field(default_factory=list)
+    review_issue: ReviewIssue | None = None
     recommendation_fit: RecommendationFit = "unknown"
     recommendation_reason: str = ""
     match_score: MatchScore | None = None
+
+    def display_status(self, *, active: bool) -> JobStatus:
+        if self.job.freshness_status == "expired":
+            return "expired"
+        if active and self.review_status in {"queued", "reviewing"}:
+            return "queued" if self.review_status == "queued" else "reviewing"
+        if self.review_status != "reviewed":
+            if self.review_issue and self.review_issue.code not in {"stopped", "search_ended"}:
+                return issue_status(self.review_issue)
+            return "not_reviewed"
+        if self.analysis_status == "unavailable":
+            return issue_status(self.review_issue)
+        if self.analysis_status == "partial":
+            return "partial"
+        if self.verification_status != "confirmed":
+            return "unverified"
+        return "reviewed"
 
 
 class RecommendationResult(BaseModel):

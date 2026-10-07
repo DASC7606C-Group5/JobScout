@@ -10,8 +10,9 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import uuid4
 
-from jobscout.schemas.execution import SearchActivity, SearchActivityStatus
+from jobscout.schemas.execution import SearchActivity
 from jobscout.schemas.job import JobPosting
+from jobscout.schemas.job_status import JobStatus, ReviewIssue, issue_status
 from jobscout.schemas.model import ModelUsage
 from jobscout.schemas.profile import LocationRef, UserProfile
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult
@@ -24,7 +25,7 @@ from jobscout.services.llm_service import LLMProvider, ModelServiceError, ToolTu
 from jobscout.services.notice_service import finalize_recommendation, source_label
 from jobscout.services.prompts import SEARCH_PROMPT
 from jobscout.services.ranking import recommendation_key
-from jobscout.services.recommendation_service import eligible_jobs
+from jobscout.services.recommendation_service import eligibility_exclusions, eligible_jobs
 from jobscout.services.tool_registry import (
     CandidateSelection,
     FinishSearch,
@@ -624,7 +625,7 @@ class SearchAgent:
             for destination in (self.pending, self.matched):
                 if job.job_id in destination:
                     destination[job.job_id] = destination[job.job_id].model_copy(
-                        update={"review_status": "reviewing"}
+                        update={"review_status": "reviewing", "review_issue": None}
                     )
         await self.publish(
             "assess_candidates", f"Comparing {len(selected)} jobs with your experience."
@@ -650,6 +651,7 @@ class SearchAgent:
                 destination = self.pending if pending else self.matched
                 other = self.matched if pending else self.pending
                 other.pop(job_id, None)
+                self.analysis_diagnostics.pop(job_id, None)
                 destination[job_id] = item.model_copy(update={"review_status": "reviewed"})
                 await self.publish(
                     "analysis_completed", "Finished comparing a job with your experience."
@@ -681,7 +683,10 @@ class SearchAgent:
                 for destination in (self.pending, self.matched):
                     if job.job_id in destination and job.job_id not in processed:
                         destination[job.job_id] = destination[job.job_id].model_copy(
-                            update={"review_status": "not_reviewed"}
+                            update={
+                                "review_status": "not_reviewed",
+                                "review_issue": ReviewIssue(code="failed"),
+                            }
                         )
             await self.publish("analysis_failed", "Some job reviews could not be completed.")
             raise
@@ -689,6 +694,11 @@ class SearchAgent:
         for job in selected:
             issue = diagnostics.get(job.job_id)
             if isinstance(issue, AssessmentDiagnostic):
+                for destination in (self.pending, self.matched):
+                    if job.job_id in destination and issue.code != "condition_mismatch":
+                        destination[job.job_id] = destination[job.job_id].model_copy(
+                            update={"review_issue": issue.review_issue()}
+                        )
                 self.analysis_diagnostics[job.job_id] = issue
                 if issue.code == "condition_mismatch":
                     self.pending.pop(job.job_id, None)
@@ -803,7 +813,14 @@ class SearchAgent:
     def result(self, reason: str | None = None, *, final: bool = False) -> RecommendationResult:
         def displayed(items: list[RecommendationItem]) -> list[RecommendationItem]:
             return [
-                item.model_copy(update={"review_status": "not_reviewed"})
+                item.model_copy(
+                    update={
+                        "review_status": "not_reviewed",
+                        "review_issue": ReviewIssue(
+                            code="stopped" if reason == "user_stopped" else "search_ended"
+                        ),
+                    }
+                )
                 if final and item.review_status in {"queued", "reviewing"}
                 else item
                 for item in self.ranked(items)
@@ -925,28 +942,40 @@ class SearchAgent:
 
     def activity(self) -> list[SearchActivity]:
         """Expose screening facts without private model diagnostics or the result cap."""
-        eligible = {job.job_id for job in eligible_jobs(self.profile, list(self.jobs.values()))}
+        excluded = eligibility_exclusions(self.profile, list(self.jobs.values()))
         shortlisted = {item.job.job_id for item in self.ranked(list(self.matched.values()))}
         activity: list[SearchActivity] = []
         for job in self.jobs.values():
             item = self.matched.get(job.job_id) or self.pending.get(job.job_id)
             issue = self.analysis_diagnostics.get(job.job_id)
-            status: SearchActivityStatus
-            if job.job_id not in eligible or (issue and issue.code == "condition_mismatch"):
-                status = "excluded"
-            elif item and item.review_status == "reviewing" and not self.finished:
-                status = "reviewing"
-            elif issue or (
-                item and item.review_status == "not_reviewed" and job.job_id in self.attempts
-            ):
-                status = "unavailable"
-            elif item and item.review_status == "reviewed":
-                if job.job_id in self.pending:
-                    status = "unverified"
-                else:
-                    status = "reviewed" if job.job_id in shortlisted else "not_shortlisted"
+            reasons = excluded.get(job.job_id, []) or (issue.exclusion_reasons if issue else [])
+            public_issue = item.review_issue if item else None
+            status: JobStatus
+            if reasons or (issue and issue.code == "condition_mismatch"):
+                status = (
+                    "expired"
+                    if "expired" in reasons
+                    else "duplicate"
+                    if "duplicate" in reasons
+                    else "excluded"
+                )
+            elif item:
+                status = item.display_status(active=not self.finished)
+                if status == "reviewed" and job.job_id not in shortlisted:
+                    status = "not_shortlisted"
+                if status == "not_reviewed" and self.finished and public_issue is None:
+                    public_issue = ReviewIssue(
+                        code="stopped" if self.stop_event.is_set() else "search_ended"
+                    )
+            elif issue:
+                public_issue = issue.review_issue()
+                status = issue_status(public_issue)
             else:
                 status = "not_reviewed" if self.finished else "found"
+                if self.finished:
+                    public_issue = ReviewIssue(
+                        code="stopped" if self.stop_event.is_set() else "search_ended"
+                    )
             entry = SearchActivity(
                 sequence=self.progress_seq,
                 job_id=job.job_id,
@@ -954,7 +983,14 @@ class SearchAgent:
                 company=job.company,
                 location=job.location,
                 status=status,
-                recommendation_fit=item.recommendation_fit if item else "unknown",
+                review_issue=public_issue,
+                exclusion_reasons=reasons,
+                unknown_conditions=item.unknown_conditions if item else [],
+                recommendation_fit=item.recommendation_fit
+                if item
+                and item.review_status == "reviewed"
+                and item.analysis_status != "unavailable"
+                else "unknown",
             )
             previous = self.activity_entries.get(job.job_id)
             if (

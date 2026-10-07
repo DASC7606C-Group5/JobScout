@@ -1,32 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import type { SearchActivity as Activity } from '../../lib/contracts'
+import { fitLabels, statusTooltip } from '../../lib/job-status'
 import { Icon } from '../icon'
-
-function activityLabel(job: Activity) {
-  switch (job.status) {
-    case 'found':
-      return 'New job found'
-    case 'reviewing':
-      return 'Checking fit'
-    case 'reviewed':
-      return job.recommendation_fit === 'recommended'
-        ? 'Good match'
-        : job.recommendation_fit === 'unlikely'
-          ? 'Limited fit'
-          : 'Reviewed'
-    case 'excluded':
-      return 'Does not match your search criteria'
-    case 'not_shortlisted':
-      return 'Not shortlisted'
-    case 'unverified':
-      return 'Some details still need checking'
-    case 'unavailable':
-      return 'Review could not be completed'
-    case 'not_reviewed':
-      return 'Not reviewed'
-  }
-}
+import { StatusBadge } from '../status-badge'
 
 function activityIcon(job: Activity) {
   if (job.status === 'found') return 'search'
@@ -48,15 +25,36 @@ const activityTones = {
 }
 
 function activityTone(job: Activity) {
-  if (job.status === 'reviewing') return activityTones.pink
+  if (job.status === 'reviewing' || job.status === 'queued') return activityTones.pink
   if (
     job.status === 'unverified' ||
-    job.status === 'unavailable' ||
+    ['partial', 'timeout', 'unavailable', 'invalid', 'insufficient', 'failed'].includes(
+      job.status,
+    ) ||
     (job.status === 'reviewed' && job.recommendation_fit === 'unlikely')
   )
     return activityTones.amber
   if (job.status === 'found' || job.status === 'reviewed') return activityTones.mint
   return activityTones.muted
+}
+
+function ActivityStatus({ job }: { job: Activity }) {
+  return (
+    <span className={`inline-flex flex-wrap items-center gap-1.5 ${activityTone(job).label}`}>
+      <StatusBadge
+        key={`${job.status}:${JSON.stringify(job.review_issue)}`}
+        status={job.status}
+        tooltip={statusTooltip(job.status, job)}
+        appearance="text"
+      />
+      {['reviewed', 'partial', 'unverified', 'not_shortlisted'].includes(job.status) && (
+        <span className="text-xs" aria-label={`Match: ${fitLabels[job.recommendation_fit]}`}>
+          <span aria-hidden="true">· </span>
+          {fitLabels[job.recommendation_fit]}
+        </span>
+      )}
+    </span>
+  )
 }
 
 function ActivityRow({
@@ -72,7 +70,7 @@ function ActivityRow({
   completed: boolean
   onArchive: (id: string, status: Activity['status']) => void
 }) {
-  const retire = job.status === 'excluded' || job.status === 'not_shortlisted'
+  const retire = ['excluded', 'expired', 'duplicate', 'not_shortlisted'].includes(job.status)
   useEffect(() => {
     if (!retire || paused) return
     const timer = window.setTimeout(() => onArchive(job.job_id, job.status), 3200)
@@ -121,7 +119,7 @@ function ActivityRow({
               className={`search-status-enter mt-3 flex items-center gap-1.5 text-xs font-medium ${tone.label}`}
             >
               <Icon name={activityIcon(job)} size={14} className="shrink-0" />
-              <span>{activityLabel(job)}</span>
+              <ActivityStatus job={job} />
             </p>
           </div>
         </div>
@@ -203,8 +201,7 @@ export function SearchActivity({ jobs, completed }: { jobs: Activity[]; complete
                   <div>
                     <p className="font-medium">{job.title}</p>
                     <p className="mt-1 text-base-content/65">
-                      {job.company} ·{' '}
-                      <span className={activityTone(job).label}>{activityLabel(job)}</span>
+                      {job.company} · <ActivityStatus job={job} />
                     </p>
                   </div>
                 </li>

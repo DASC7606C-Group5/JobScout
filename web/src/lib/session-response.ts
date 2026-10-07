@@ -1,4 +1,5 @@
 import type { RecommendationItem, ScoutSession } from './contracts'
+import { jobStatuses, reviewIssueCodes, exclusionReasons } from './job-status'
 import { isMatchScore } from './matching-contracts'
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -13,7 +14,7 @@ function nullableString(value: unknown) {
 function list(value: unknown, valid: (item: unknown) => boolean) {
   return Array.isArray(value) && value.every(valid)
 }
-function member(value: unknown, choices: string[]) {
+function member(value: unknown, choices: readonly string[]) {
   return string(value) && choices.includes(value)
 }
 function nonnegativeInteger(value: unknown): value is number {
@@ -84,16 +85,10 @@ function progress(value: unknown) {
         string(item.title) &&
         string(item.company) &&
         string(item.location) &&
-        member(item.status, [
-          'found',
-          'reviewing',
-          'reviewed',
-          'excluded',
-          'not_shortlisted',
-          'unverified',
-          'unavailable',
-          'not_reviewed',
-        ]) &&
+        member(item.status, jobStatuses) &&
+        reviewIssue(item.review_issue) &&
+        list(item.exclusion_reasons, (reason) => member(reason, exclusionReasons)) &&
+        list(item.unknown_conditions, string) &&
         member(item.recommendation_fit, ['recommended', 'possible', 'unlikely', 'unknown']),
     ) &&
     list(
@@ -163,12 +158,21 @@ function matchingReason(value: unknown) {
     list(value.profile_source_quotes, sourceQuote)
   )
 }
+function reviewIssue(value: unknown) {
+  return (
+    value === null ||
+    (record(value) &&
+      member(value.code, reviewIssueCodes) &&
+      (value.stage === null || member(value.stage, ['jd_analysis', 'matching'])))
+  )
+}
 export function isRecommendationItem(value: unknown): value is RecommendationItem {
   return (
     record(value) &&
     record(value.job) &&
     (value.match_score === null || isMatchScore(value.match_score)) &&
     string(value.job.job_id) &&
+    reviewIssue(value.review_issue) &&
     member(value.analysis_status, ['complete', 'partial', 'unavailable']) &&
     member(value.review_status, ['queued', 'reviewing', 'reviewed', 'not_reviewed']) &&
     member(value.verification_status, ['confirmed', 'pending', 'unknown']) &&

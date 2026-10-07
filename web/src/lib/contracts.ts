@@ -165,6 +165,7 @@ export interface JobPosting {
 }
 
 export interface RecommendationItem {
+  review_issue: import('./job-status').ReviewIssue | null
   match_score: MatchScore | null
   job: JobPosting
   preparation_suggestions: string[]
@@ -253,20 +254,15 @@ export interface SearchEvent {
 }
 
 export interface SearchActivity {
+  review_issue: import('./job-status').ReviewIssue | null
+  exclusion_reasons: import('./job-status').ExclusionReason[]
+  unknown_conditions: string[]
   sequence: number
   job_id: string
   title: string
   company: string
   location: string
-  status:
-    | 'found'
-    | 'reviewing'
-    | 'reviewed'
-    | 'excluded'
-    | 'not_shortlisted'
-    | 'unverified'
-    | 'unavailable'
-    | 'not_reviewed'
+  status: import('./job-status').JobStatus
   recommendation_fit: RecommendationItem['recommendation_fit']
 }
 

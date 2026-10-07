@@ -1,33 +1,32 @@
 import type { RecommendationItem } from '../lib/contracts'
-import { Icon } from './icon'
+import { fitLabels, recommendationStatus, statusTooltip } from '../lib/job-status'
+import { jobBadgeClass, StatusBadge } from './status-badge'
 
-function reviewLabel(item: RecommendationItem, active: boolean) {
-  if (active && item.review_status === 'reviewing') return 'Reviewing'
-  if (active && item.review_status === 'queued') return 'Queued'
-  if (item.review_status !== 'reviewed') return 'Unreviewed'
-  if (item.analysis_status === 'unavailable') return 'Assessment unavailable'
-  if (item.analysis_status === 'partial') return 'Partially reviewed'
-  return 'Reviewed'
+const fitColors: Record<RecommendationItem['recommendation_fit'], string> = {
+  recommended: 'badge-success text-success-content',
+  possible: 'badge-info text-info-content',
+  unlikely: 'badge-warning text-warning-content',
+  unknown: 'bg-base-200 text-base-content/75',
 }
 
 export function JobReviewStatus({ item, active }: { item: RecommendationItem; active: boolean }) {
-  const reviewing = active && item.review_status === 'reviewing'
-  const queued = active && item.review_status === 'queued'
-  const reviewed = item.review_status === 'reviewed'
-  const label = reviewLabel(item, active)
+  const status = recommendationStatus(item, active)
+  const assessed = ['reviewed', 'partial', 'unverified'].includes(status)
   return (
-    <span
-      className={`badge h-auto min-h-7 gap-1.5 px-2.5 py-1 text-xs font-medium ${reviewing || queued ? 'border-warning/50 bg-warning/30 text-warning-content' : 'border-base-content/15 bg-base-100/70 text-base-content/75'}`}
-    >
-      {reviewing ? (
-        <span className="loading loading-xs loading-ring" aria-hidden="true" />
-      ) : (
-        <Icon
-          name={reviewed && item.analysis_status !== 'unavailable' ? 'check' : 'clock'}
-          size={13}
-        />
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <StatusBadge
+        key={`${status}:${JSON.stringify(item.review_issue)}`}
+        status={status}
+        tooltip={statusTooltip(status, item)}
+      />
+      {assessed && (
+        <span
+          className={`${jobBadgeClass} ${fitColors[item.recommendation_fit]}`}
+          aria-label={`Match: ${fitLabels[item.recommendation_fit]}`}
+        >
+          {fitLabels[item.recommendation_fit]}
+        </span>
       )}
-      {label}
     </span>
   )
 }

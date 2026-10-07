@@ -102,6 +102,7 @@ export function createRecommendationFixture(): RecommendationItem {
     ],
     notices: [],
     analysis_status: 'complete',
+    review_issue: null,
     match_score: null,
     review_status: 'reviewed',
     recommendation_fit: 'recommended',

@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from jobscout.schemas.job_status import ExclusionReason, JobStatus, ReviewIssue
 from jobscout.schemas.recommendation import RecommendationFit
 
 StopReason = Literal[
@@ -25,18 +26,6 @@ class SearchEvent(BaseModel):
     source: str | None = None
 
 
-SearchActivityStatus = Literal[
-    "found",
-    "reviewing",
-    "reviewed",
-    "excluded",
-    "not_shortlisted",
-    "unverified",
-    "unavailable",
-    "not_reviewed",
-]
-
-
 class SearchActivity(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -45,7 +34,10 @@ class SearchActivity(BaseModel):
     title: str
     company: str
     location: str
-    status: SearchActivityStatus
+    status: JobStatus
+    review_issue: ReviewIssue | None = None
+    exclusion_reasons: list[ExclusionReason] = Field(default_factory=list)
+    unknown_conditions: list[str] = Field(default_factory=list)
     recommendation_fit: RecommendationFit = "unknown"
 
 
