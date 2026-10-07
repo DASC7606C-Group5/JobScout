@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 
 import { Icon } from '../components/icon'
 import { accountRequest, changeAccount, type Account } from '../lib/auth-client'
+import { GITHUB_URL } from '../lib/project-links'
 
 export const Route = createFileRoute('/login')({ component: LoginPage })
 
@@ -128,6 +129,18 @@ function LoginPage() {
               </button>
             </div>
           </form>
+        </div>
+        <div className="mt-5 text-center">
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="View on GitHub (opens in a new tab)"
+            className="inline-flex link items-center gap-2 text-sm text-base-content/60 link-hover hover:text-base-content"
+          >
+            <Icon name="github" size={16} />
+            View on GitHub
+          </a>
         </div>
       </div>
     </main>

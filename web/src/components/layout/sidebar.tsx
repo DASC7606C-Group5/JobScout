@@ -2,6 +2,7 @@ import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-ro
 import { useRef, useState, type MouseEvent, type Ref, type RefObject } from 'react'
 
 import type { SessionSummary } from '../../lib/contracts'
+import { GITHUB_URL } from '../../lib/project-links'
 import { requestErrorMessage } from '../../lib/request-errors'
 import { flushPendingDrafts } from '../../state/draft-navigation'
 import { useNotifications } from '../../state/notifications'
@@ -177,7 +178,28 @@ export function Sidebar({
           historyHeading={historyHeading}
           onDelete={openDelete}
         />
-        <div className="mt-auto flex h-20 shrink-0 items-center gap-3 border-t border-base-300 px-3">
+        <nav aria-label="Project" className="mt-auto shrink-0 border-t border-base-300 pt-3">
+          <ul className="menu w-full menu-sm px-3 py-0">
+            <li
+              className="w-full is-drawer-close:tooltip is-drawer-close:tooltip-right"
+              data-tip="View on GitHub"
+            >
+              <a
+                href={GITHUB_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="View on GitHub (opens in a new tab)"
+                className="flex h-11 w-full flex-nowrap items-center gap-3 p-0 text-sm leading-normal text-base-content/75 shadow-none"
+              >
+                <span className="flex size-11 shrink-0 items-center justify-center">
+                  <Icon name="github" size={20} />
+                </span>
+                <span className="whitespace-nowrap is-drawer-close:hidden">GitHub</span>
+              </a>
+            </li>
+          </ul>
+        </nav>
+        <div className="mt-2 mb-4 flex h-11 shrink-0 items-center gap-3 px-3">
           <div
             className="shrink-0 is-drawer-close:tooltip is-drawer-close:tooltip-right"
             data-tip={drawerAction}
