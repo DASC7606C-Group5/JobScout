@@ -28,7 +28,7 @@ export function SourceOutcomes({ outcomes }: { outcomes: SourceOutcome[] }) {
         <ul className="divide-y divide-base-300 text-xs leading-6 text-base-content/70">
           {[...rows].map(([key, outcome]) => (
             <li key={key} className="px-4 py-3 first:pt-0 last:pb-0">
-              <div className="space-y-1 sm:flex sm:items-start sm:justify-between sm:gap-3 sm:space-y-0">
+              <div className="flex flex-col items-start gap-1 sm:flex-row sm:justify-between sm:gap-3">
                 <p className="font-medium break-words text-base-content">
                   {sourceLabel(outcome.source)} · {outcome.target_direction}
                 </p>

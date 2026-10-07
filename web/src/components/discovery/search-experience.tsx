@@ -3,10 +3,19 @@ import { useState } from 'react'
 
 import type { RecommendationItem, ScoutSession } from '../../lib/contracts'
 import { searchPresentation } from '../../lib/search-presentation'
+import { AsyncButton } from '../async-button'
 import { Icon } from '../icon'
 import { Results } from '../results'
 import { SearchActivity } from './search-activity'
 import { SearchRecord } from './search-record'
+
+type SearchView = 'activity' | 'results' | 'history'
+
+function initialView(session: ScoutSession, selectedJob: unknown): SearchView {
+  return selectedJob || (session.outcome === 'failed' && session.recommendation)
+    ? 'results'
+    : 'activity'
+}
 
 export function SearchExperience({
   session,
@@ -15,20 +24,21 @@ export function SearchExperience({
   saved,
   onToggle,
   onEdit,
+  onRetry,
 }: {
   session: ScoutSession
-  onStop: () => void
+  onStop: () => unknown
   stopping: boolean
   saved: RecommendationItem[]
   onToggle: (item: RecommendationItem) => boolean | Promise<boolean> | void
-  onEdit: () => void
+  onEdit: () => unknown
+  onRetry: () => unknown
 }) {
   const search = useSearch({ strict: false })
-  const [view, setView] = useState<'activity' | 'results' | 'history'>(
-    search.job ? 'results' : 'activity',
-  )
+  const [view, setView] = useState<SearchView>(() => initialView(session, search.job))
   const [snapshot, setSnapshot] = useState(session.recommendation)
   const completed = session.outcome === 'completed'
+  const settled = session.outcome !== 'running'
   const showResults = view === 'results' || (completed && view !== 'history')
   const presentation = searchPresentation(session)
   const hasResults = Boolean(
@@ -50,35 +60,58 @@ export function SearchExperience({
           stopping={stopping}
           onStop={onStop}
           onView={showResults ? () => setView('activity') : showMatches}
+          onEdit={onEdit}
+          onRetry={onRetry}
         />
       )}
       {showResults && (
         <div className="results-layout search-results-enter">
-          <Results
-            result={completed ? session.recommendation : snapshot}
+          <SearchMatches
+            session={session}
+            result={settled ? session.recommendation : snapshot}
             saved={saved}
             onToggle={onToggle}
             onEdit={onEdit}
-            notices={session.notices}
-            reviewActive={!completed}
-            footerActions={
-              completed ? (
-                <SearchResultActions
-                  session={session}
-                  hasResults={hasResults}
-                  onViewActivity={() => setView('history')}
-                />
-              ) : undefined
-            }
+            hasResults={hasResults}
+            onViewActivity={() => setView('history')}
           />
         </div>
       )}
-      {completed && (!showResults || !hasResults) && (
+      {settled && (!showResults || !hasResults) && (
         <div className="mt-3">
           <SearchRecord session={session} compact={hasResults} />
         </div>
       )}
     </>
+  )
+}
+
+function SearchMatches({
+  session,
+  hasResults,
+  onViewActivity,
+  ...props
+}: {
+  session: ScoutSession
+  hasResults: boolean
+  onViewActivity: () => void
+} & Pick<Parameters<typeof Results>[0], 'result' | 'saved' | 'onToggle' | 'onEdit'>) {
+  const settled = session.outcome !== 'running'
+  return (
+    <Results
+      {...props}
+      notices={session.notices}
+      reviewActive={!settled}
+      footerActions={
+        settled ? (
+          <SearchResultActions
+            session={session}
+            hasResults={hasResults}
+            onViewActivity={onViewActivity}
+          />
+        ) : undefined
+      }
+    />
   )
 }
 
@@ -108,25 +141,21 @@ function SearchResultActions({
   )
 }
 
-function SearchProgress({
-  session,
-  completed,
-  showResults,
-  hasResults,
-  presentation,
-  stopping,
-  onStop,
-  onView,
-}: {
+type SearchProgressProps = {
   session: ScoutSession
   completed: boolean
   showResults: boolean
   hasResults: boolean
   presentation: ReturnType<typeof searchPresentation>
   stopping: boolean
-  onStop: () => void
+  onStop: () => unknown
   onView: () => void
-}) {
+  onEdit: () => unknown
+  onRetry: () => unknown
+}
+
+function SearchProgress(props: SearchProgressProps) {
+  const { session, completed, showResults, presentation } = props
   return (
     <section
       aria-label="Search progress"
@@ -134,36 +163,72 @@ function SearchProgress({
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <SearchPhaseIndicator completed={completed} presentation={presentation} />
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            disabled={!hasResults && !showResults}
-            onClick={onView}
-          >
-            {showResults && <Icon name="arrow" className="rotate-180" size={16} />}
-            {showResults ? 'Back to search' : completed ? 'View matches' : 'View matches so far'}
-            {!showResults && <Icon name="arrow" size={16} />}
-          </button>
-          {(presentation.canFinish || presentation.finishing) && (
-            <button
-              type="button"
-              className="btn btn-sm"
-              disabled={stopping || presentation.finishing}
-              aria-busy={stopping || presentation.finishing}
-              onClick={onStop}
-            >
-              {stopping || presentation.finishing ? 'Finishing…' : 'Finish search'}
-            </button>
-          )}
-        </div>
+        <SearchProgressActions {...props} />
       </div>
       {!showResults && (
         <div className="mt-5 sm:mt-6">
-          <SearchActivity jobs={session.progress.activity} completed={completed} />
+          <SearchActivity
+            jobs={session.progress.activity}
+            completed={session.outcome !== 'running'}
+          />
         </div>
       )}
     </section>
+  )
+}
+
+function SearchProgressActions({
+  session,
+  showResults,
+  hasResults,
+  presentation,
+  stopping,
+  onStop,
+  onView,
+  onEdit,
+  onRetry,
+}: SearchProgressProps) {
+  const finishing = stopping || presentation.finishing
+  return (
+    <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        disabled={!hasResults && !showResults}
+        onClick={onView}
+      >
+        {showResults && <Icon name="arrow" className="rotate-180" size={16} />}
+        {showResults
+          ? 'Back to search'
+          : session.outcome !== 'running'
+            ? 'View matches'
+            : 'View matches so far'}
+        {!showResults && <Icon name="arrow" size={16} />}
+      </button>
+      {(presentation.canFinish || presentation.finishing) && (
+        <AsyncButton
+          type="button"
+          className="btn btn-sm"
+          disabled={finishing}
+          pending={finishing}
+          onClick={onStop}
+        >
+          {finishing ? 'Finishing…' : 'Finish search'}
+        </AsyncButton>
+      )}
+      {presentation.interrupted && (
+        <>
+          {session.retryable && (
+            <AsyncButton type="button" className="btn btn-sm" onClick={onRetry}>
+              Try again
+            </AsyncButton>
+          )}
+          <AsyncButton type="button" className="btn btn-ghost btn-sm" onClick={onEdit}>
+            Edit search criteria
+          </AsyncButton>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -176,7 +241,11 @@ function SearchPhaseIndicator({
 }) {
   return (
     <output className="flex items-center gap-3 text-sm text-base-content/75">
-      {completed ? (
+      {presentation.interrupted ? (
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-base-200 text-base-content/65">
+          <Icon name="info" size={17} />
+        </span>
+      ) : completed ? (
         <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/30 text-primary-content">
           <Icon name="check" size={17} />
         </span>

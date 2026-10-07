@@ -5,8 +5,6 @@ import type { RecommendationItem } from '../lib/contracts'
 export interface ScoutState {
   saved: RecommendationItem[]
   announcement: string
-  saveError: string
-  clearSaveError: () => void
   toggleSaved: (item: RecommendationItem) => Promise<boolean>
 }
 

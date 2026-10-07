@@ -6,7 +6,7 @@ export function PageHeading({ title, children }: { title: string; children?: Rea
       <div className="min-w-0">
         <h1
           tabIndex={-1}
-          className="text-2xl font-semibold tracking-tight outline-none sm:text-[28px] sm:leading-snug"
+          className="text-2xl font-semibold tracking-tight outline-none sm:text-[1.75rem] sm:leading-snug"
         >
           {title}
         </h1>

@@ -25,6 +25,7 @@ export function QuestionControl({
           {question.required ? 'Required' : 'Optional'}
         </span>
       </legend>
+      {/* oxlint-disable-next-line react-doctor/no-redundant-display-class -- Block overrides daisyUI's .label inline-flex display for this wrapping explanation. */}
       <p
         id={`${id}-reason`}
         className="label block text-xs leading-6 whitespace-normal text-base-content/60"
@@ -36,7 +37,7 @@ export function QuestionControl({
           <input
             id={id}
             aria-label={question.question}
-            className="input w-full border border-base-300 bg-base-200/25 text-sm sm:col-span-2"
+            className="input w-full border border-base-300 bg-base-200/25 text-base sm:col-span-2 sm:text-sm"
             value={typeof value === 'string' ? value : ''}
             maxLength={2000}
             onChange={(event) => onChange(event.target.value)}

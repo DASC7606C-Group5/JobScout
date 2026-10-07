@@ -1,7 +1,7 @@
 """Tests for normalization, duplicate merging, and freshness status.
 
 All inputs are fixed, self-made Mock records (plus the shared
-``data/mock_jobs.json`` sample); no external service is called.
+the synthetic job sample); no external service is called.
 
 Coverage follows the ten acceptance scenarios: normal conversion, cross-source
 fields, absent salary, source-based JD extraction, duplicate merging, distinct
@@ -21,7 +21,7 @@ from jobscout.schemas.job import FreshnessStatus
 from jobscout.services.job_processing_service import process_jobs
 
 NOW = datetime(2026, 9, 29, 12, 0, 0, tzinfo=UTC)
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def make_raw(**overrides: Any) -> dict[str, Any]:
@@ -600,7 +600,7 @@ def test_generates_stable_job_id_when_missing() -> None:
 
 
 def test_shared_mock_sample_stays_unknown_and_keeps_provenance() -> None:
-    raw_jobs: list[dict[str, Any]] = json.loads((DATA_DIR / "mock_jobs.json").read_text("utf-8"))
+    raw_jobs: list[dict[str, Any]] = json.loads((FIXTURES / "mock_jobs.json").read_text("utf-8"))
 
     result = process_jobs(raw_jobs, now=NOW)
 

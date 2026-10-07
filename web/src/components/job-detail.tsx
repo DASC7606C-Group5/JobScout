@@ -3,6 +3,7 @@ import type { Ref, RefObject, UIEventHandler } from 'react'
 import { uniqueNotices } from '../lib/applicant-notices'
 import type { ApplicantNotice, JobPosting, RecommendationItem } from '../lib/contracts'
 import { dateLabel, safeSourceUrl, sourceLabel } from '../lib/job-display'
+import { AsyncButton } from './async-button'
 import { Icon } from './icon'
 import { JobReviewStatus } from './job-review-status'
 import { MatchRadar, MatchScoreValue } from './match-score'
@@ -22,7 +23,7 @@ export function JobDetail({
 }: {
   item: RecommendationItem
   saved: boolean
-  onToggle: () => void
+  onToggle: () => unknown
   onBack: () => void
   notices: ApplicantNotice[]
   headingRef: RefObject<HTMLHeadingElement | null>
@@ -79,7 +80,7 @@ export function JobDetail({
             View job listing <Icon name="external" size={16} />
           </a>
         )}
-        <button
+        <AsyncButton
           className="btn btn-sm"
           aria-label={`${saved ? 'Remove saved job' : 'Save job'}: ${job.title}`}
           aria-pressed={saved}
@@ -87,7 +88,7 @@ export function JobDetail({
         >
           <Icon name="bookmark" size={17} className={saved ? 'fill-secondary' : ''} />
           {saved ? 'Saved' : 'Save job'}
-        </button>
+        </AsyncButton>
       </div>
       <section
         ref={scrollRef}

@@ -21,7 +21,7 @@ from jobscout.services.job_retrieval.web_transport import WebPage
 from jobscout.services.job_search_service import JobSearchService
 
 STAMP = datetime(2026, 10, 1, tzinfo=UTC)
-FIXTURE = Path(__file__).resolve().parents[1] / "data" / "group4" / "mock_local_sources.json"
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "local_sources.json"
 
 
 def test_detail_enrichment_retains_identity_and_rechecks_explicit_expiry() -> None:

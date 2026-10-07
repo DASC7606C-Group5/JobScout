@@ -1,5 +1,6 @@
 import type { UserProfile } from '../../lib/contracts'
 import { summaryDraft, summaryFields } from '../../lib/search-summary'
+import { AsyncButton } from '../async-button'
 import { Icon } from '../icon'
 import { SummaryValues } from '../profile/profile-summary'
 
@@ -10,7 +11,7 @@ export function SearchCriteria({
 }: {
   profile: UserProfile
   canEdit: boolean
-  onEdit: () => void
+  onEdit: () => unknown
 }) {
   const directions = profile.target_directions
   const location = profile.preferences.location_unrestricted
@@ -49,14 +50,14 @@ export function SearchCriteria({
           />
         </div>
       </details>
-      <button
+      <AsyncButton
         type="button"
         className="btn absolute top-3 right-2 btn-ghost text-primary-content btn-sm"
         disabled={!canEdit}
         onClick={onEdit}
       >
         Edit criteria
-      </button>
+      </AsyncButton>
     </section>
   )
 }

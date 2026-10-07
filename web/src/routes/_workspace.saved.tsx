@@ -27,49 +27,24 @@ function SavedPage() {
         Loading saved jobs…
       </output>
     )
-  if (query.isError && !query.data)
-    return (
-      <div className="alert alert-error" role="alert">
-        <span>
-          Saved jobs could not be loaded. Your saved jobs are still kept in the workspace.
-        </span>
-        <button
-          className="btn btn-sm"
-          type="button"
-          onClick={() => {
-            void query.refetch()
-          }}
-        >
-          Retry
-        </button>
-      </div>
-    )
   return (
     <>
-      <PageHeading title={`${saved.length} ${saved.length === 1 ? 'job' : 'jobs'} saved`} />
-      {query.isError && (
-        <div className="mb-5 alert alert-warning" role="alert">
-          <span>Saved jobs could not be refreshed. Showing the last loaded list.</span>
-          <button
-            className="btn btn-sm"
-            type="button"
-            onClick={() => {
-              void query.refetch()
-            }}
-          >
-            Retry
-          </button>
-        </div>
-      )}
-      <Results
-        result={null}
-        saved={saved}
-        savedOnly
-        onToggle={toggleSaved}
-        onEdit={() => {
-          void navigate({ to: '/new' })
-        }}
+      <PageHeading
+        title={
+          query.data ? `${saved.length} ${saved.length === 1 ? 'job' : 'jobs'} saved` : 'Saved jobs'
+        }
       />
+      {query.data && (
+        <Results
+          result={null}
+          saved={saved}
+          savedOnly
+          onToggle={toggleSaved}
+          onEdit={() => {
+            void navigate({ to: '/new' })
+          }}
+        />
+      )}
     </>
   )
 }

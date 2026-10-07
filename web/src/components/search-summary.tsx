@@ -10,6 +10,7 @@ import {
 } from '../lib/search-summary'
 import { useScoutSession } from '../state/session-context'
 import { useSessionDraft } from '../state/use-session-draft'
+import { AsyncButton, PendingSpinner } from './async-button'
 import { DraftStatus } from './draft-status'
 import { SummaryValues } from './profile/profile-summary'
 import { ResultCountField } from './profile/result-count-field'
@@ -87,7 +88,7 @@ function SummaryFields({
             {kind === 'array' ? (
               <textarea
                 id={id}
-                className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 text-sm leading-6"
+                className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 text-base leading-6 sm:text-sm"
                 rows={key === 'target_directions' ? 2 : 3}
                 value={value}
                 readOnly={!editable}
@@ -97,7 +98,7 @@ function SummaryFields({
             ) : options ? (
               <select
                 id={id}
-                className="select w-full border border-base-300 bg-base-100 text-sm"
+                className="select w-full border border-base-300 bg-base-100 text-base sm:text-sm"
                 value={value}
                 disabled={!editable || unrestricted}
                 onChange={(event) => onChange(key, event.target.value)}
@@ -117,7 +118,7 @@ function SummaryFields({
             ) : (
               <input
                 id={id}
-                className="input w-full border border-base-300 bg-base-200/25 text-sm"
+                className="input w-full border border-base-300 bg-base-200/25 text-base sm:text-sm"
                 value={value}
                 readOnly={!editable}
                 disabled={unrestricted}
@@ -147,7 +148,7 @@ function SummaryFields({
 }
 
 export function SearchSummary({ summary }: { summary: Summary }) {
-  const { answer, busy, session, refresh } = useScoutSession()
+  const { answer, busy, pending, session, refresh } = useScoutSession()
   const original = summaryDraft(summary.profile)
   const persisted = useSessionDraft('summary', { fields: original, message: '' })
   const { value: formDraft, setValue: setFormDraft } = persisted
@@ -202,7 +203,7 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           </label>
           <textarea
             id="summary-message"
-            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 text-sm leading-6"
+            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 text-base leading-6 sm:text-sm"
             value={message}
             onChange={(event) => setFormDraft({ ...formDraft, message: event.target.value })}
             maxLength={10000}
@@ -211,7 +212,13 @@ export function SearchSummary({ summary }: { summary: Summary }) {
         <div className="-mx-5 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 px-5 pt-5 sm:-mx-6 sm:px-6 sm:pt-6">
           <DraftStatus {...persisted} />
           {changed ? (
-            <button type="submit" disabled={!canSave} className="btn btn-primary">
+            <button
+              type="submit"
+              disabled={!canSave}
+              className="btn btn-primary"
+              aria-busy={pending}
+            >
+              <PendingSpinner pending={pending} />
               Update criteria
             </button>
           ) : (
@@ -219,10 +226,12 @@ export function SearchSummary({ summary }: { summary: Summary }) {
               type="button"
               disabled={!canConfirm}
               className="btn btn-primary"
+              aria-busy={pending}
               onClick={() => {
                 void answer({ action: 'confirm_search' })
               }}
             >
+              <PendingSpinner pending={pending} />
               Confirm and search
             </button>
           )}
@@ -230,9 +239,9 @@ export function SearchSummary({ summary }: { summary: Summary }) {
         {!current && (
           <div className="text-xs text-base-content/65">
             <p>Your search has changed. Reload it before confirming these criteria.</p>
-            <button type="button" className="btn mt-2 btn-ghost btn-sm" onClick={refresh}>
+            <AsyncButton type="button" className="btn mt-2 btn-ghost btn-sm" onClick={refresh}>
               Reload search
-            </button>
+            </AsyncButton>
           </div>
         )}
         {changed && (

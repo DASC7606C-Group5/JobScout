@@ -17,18 +17,22 @@ export function searchPresentation(session: ScoutSession) {
     limit,
   )
   const completed = session.outcome === 'completed'
+  const interrupted = session.outcome === 'failed'
   const phase = completed ? 'complete' : searchPhase(session)
   const comparing = confirmed >= limit
-  const finishing = session.progress.retrieval_stopped && !completed
-  const activity = completed
-    ? 'Search complete'
-    : finishing
-      ? 'Finishing the remaining job reviews'
-      : comparing
-        ? 'Comparing jobs to improve your list'
-        : 'Checking jobs against your search criteria'
+  const finishing = session.progress.retrieval_stopped && session.outcome === 'running'
+  const activity = interrupted
+    ? 'Search interrupted'
+    : completed
+      ? 'Search complete'
+      : finishing
+        ? 'Finishing the remaining job reviews'
+        : comparing
+          ? 'Comparing jobs to improve your list'
+          : 'Checking jobs against your search criteria'
   return {
     phase,
+    interrupted,
     comparing,
     finishing,
     canFinish: Boolean(session.run_id) && session.outcome === 'running' && !finishing,

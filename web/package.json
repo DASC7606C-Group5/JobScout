@@ -7,8 +7,7 @@
     "dev": "vite --port 3000",
     "test": "bun test src",
     "test:browser": "playwright test",
-    "generate-routes": "tsr generate",
-    "typecheck": "bun run generate-routes && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "lint": "oxlint --type-aware --deny-warnings",
     "lint:fix": "oxlint --type-aware --fix --deny-warnings",
     "format": "oxfmt --write .",
@@ -23,13 +22,13 @@
     "@tanstack/react-router": "^1.170.40",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-hook-form": "^7.89.0"
+    "react-hook-form": "^7.89.0",
+    "sonner": "^2.0.8"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@rolldown/plugin-babel": "^0.2.4",
     "@tailwindcss/vite": "^4.3.3",
-    "@tanstack/router-cli": "^1.167.39",
     "@tanstack/router-plugin": "^1.168.41",
     "@types/bun": "^1.4.2",
     "@types/react": "^19.3.0",

@@ -46,8 +46,12 @@ export function ResumeField({
               type="button"
               className="btn btn-ghost btn-sm"
               disabled={reading}
+              aria-busy={reading}
               onClick={() => fileRef.current?.click()}
             >
+              {reading && (
+                <span className="loading loading-xs loading-spinner" aria-hidden="true" />
+              )}
               Replace
             </button>
             <button
@@ -65,8 +69,8 @@ export function ResumeField({
         <button
           type="button"
           disabled={reading}
+          aria-busy={reading}
           aria-label="Add a PDF, DOCX, or TXT resume"
-          aria-describedby="resume-error"
           className={`flex w-full items-center gap-3 rounded-field border border-dashed px-6 py-4 text-left disabled:cursor-wait ${dragging ? 'border-primary-content bg-primary/15' : 'border-base-content/20 hover:bg-base-200/45'}`}
           onClick={() => fileRef.current?.click()}
           onDragOver={(event) => {
@@ -80,7 +84,11 @@ export function ResumeField({
             if (!reading) void attach(event.dataTransfer.files[0])
           }}
         >
-          <Icon name="upload" className="shrink-0" />
+          {reading ? (
+            <span className="loading loading-sm loading-spinner" aria-hidden="true" />
+          ) : (
+            <Icon name="upload" className="shrink-0" />
+          )}
           <span className="min-w-0">
             <span className="block text-sm font-medium">
               {reading ? 'Parsing resume…' : 'Add a resume or drop it here'}

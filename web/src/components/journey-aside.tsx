@@ -29,7 +29,7 @@ export function JourneyAside() {
           </div>
         </div>
         <div className="px-6 pb-6">
-          <p className="mb-2 text-[10px] font-bold tracking-[0.18em] text-secondary-content/70">
+          <p className="mb-2 text-xs font-bold tracking-[0.18em] text-secondary-content/70">
             A LITTLE GUIDANCE, A NEW BEGINNING
           </p>
           <h2 className="text-xl leading-relaxed font-semibold">

@@ -15,7 +15,7 @@ import { ResumeField } from './profile/resume-field'
 export function ProfileForm() {
   const draft = usePersistedDraft(workspaceDraftPath, createProfileDraft())
   const { setValue: saveDraft } = draft
-  const { start, busy } = useScoutSession()
+  const { start, busy, pending } = useScoutSession()
   const form = useForm<ProfileFormValues>({ values: draft.value })
   const { subscribe, handleSubmit } = form
   const [reading, setReading] = useState(false)
@@ -42,7 +42,7 @@ export function ProfileForm() {
           }
           void handleSubmit(
             (values) => {
-              void start(toScoutInput(values))
+              return start(toScoutInput(values))
             },
             () => {
               requestAnimationFrame(() => {
@@ -65,7 +65,15 @@ export function ProfileForm() {
           <PreferenceFields />
           <div className="-mx-5 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 px-5 pt-5 sm:-mx-6 sm:px-6 sm:pt-6">
             <DraftStatus {...draft} />
-            <button type="submit" className="btn min-w-40 border-0 btn-primary" disabled={reading}>
+            <button
+              type="submit"
+              className="btn min-w-40 border-0 btn-primary"
+              disabled={reading || pending}
+              aria-busy={reading || pending}
+            >
+              {(reading || pending) && (
+                <span className="loading loading-xs loading-spinner" aria-hidden="true" />
+              )}
               {reading ? 'Reading…' : 'Analyze and continue'}
               <Icon name="arrow" size={18} />
             </button>

@@ -46,3 +46,13 @@ test('completed searches can deliver useful results below the display ceiling', 
     canFinish: false,
   })
 })
+
+test('a failed search cannot remain in the finishing state or offer another stop', () => {
+  const session = createSessionFixture({ outcome: 'failed', run_id: 'failed-run' })
+  session.progress.retrieval_stopped = true
+  expect(searchPresentation(session)).toMatchObject({
+    interrupted: true,
+    finishing: false,
+    canFinish: false,
+  })
+})

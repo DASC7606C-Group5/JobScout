@@ -40,7 +40,7 @@ export function ResultFilters({
         )}
         <select
           aria-label="Filter by listing status"
-          className="select w-auto border border-base-300 bg-base-100 pl-3 text-xs select-sm"
+          className="select w-auto border border-base-300 bg-base-100 pl-3 text-base select-sm sm:text-xs"
           value={freshness}
           onChange={(event) => onFreshnessChange(event.target.value)}
         >

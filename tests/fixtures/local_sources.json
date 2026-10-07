@@ -1,0 +1,225 @@
+{
+  "zhaopin": {
+    "code": 200,
+    "data": {
+      "list": [
+        {
+          "jobId": "11",
+          "name": "Data Analyst Intern",
+          "companyName": "SYNTHETIC Co",
+          "workCity": "上海",
+          "salary60": "200/天",
+          "workType": "实习",
+          "positionURL": "https://jobs.zhaopin.com/11.htm",
+          "publishTime": "2026-10-01",
+          "jobDetailData": {
+            "position": {
+              "desc": {
+                "description": "数据分析 SQL, Data Analyst Intern"
+              }
+            }
+          }
+        },
+        {
+          "jobId": "10",
+          "name": "Data Analyst",
+          "companyName": "SYNTHETIC Co",
+          "workCity": "上海",
+          "salary60": "10000/月",
+          "workType": "全职",
+          "positionURL": "https://jobs.zhaopin.com/10.htm",
+          "publishTime": "2026-10-01",
+          "jobDetailData": {
+            "position": {
+              "desc": {
+                "description": "数据分析 SQL, Data Analyst"
+              }
+            }
+          }
+        },
+        {
+          "jobId": "21",
+          "name": "Business Analyst Intern",
+          "companyName": "SYNTHETIC Co",
+          "workCity": "上海",
+          "salary60": "200/天",
+          "workType": "实习",
+          "positionURL": "https://jobs.zhaopin.com/21.htm",
+          "publishTime": "2026-10-01",
+          "jobDetailData": {
+            "position": {
+              "desc": {
+                "description": "商业分析 SQL, Business Analyst Intern"
+              }
+            }
+          }
+        },
+        {
+          "jobId": "20",
+          "name": "Business Analyst",
+          "companyName": "SYNTHETIC Co",
+          "workCity": "上海",
+          "salary60": "10000/月",
+          "workType": "全职",
+          "positionURL": "https://jobs.zhaopin.com/20.htm",
+          "publishTime": "2026-10-01",
+          "jobDetailData": {
+            "position": {
+              "desc": {
+                "description": "商业分析 SQL, Business Analyst"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "liepin": {
+    "flag": 1,
+    "data": {
+      "data": {
+        "jobCardList": [
+          {
+            "job": {
+              "jobId": "11",
+              "title": "Data Analyst Intern",
+              "dq": "上海",
+              "salary": "200/天",
+              "link": "https://www.liepin.com/job/11.shtml",
+              "workType": "实习"
+            },
+            "comp": {
+              "compName": "SYNTHETIC Co"
+            }
+          },
+          {
+            "job": {
+              "jobId": "10",
+              "title": "Data Analyst",
+              "dq": "上海",
+              "salary": "200/天",
+              "link": "https://www.liepin.com/job/10.shtml",
+              "workType": "全职"
+            },
+            "comp": {
+              "compName": "SYNTHETIC Co"
+            }
+          },
+          {
+            "job": {
+              "jobId": "21",
+              "title": "Business Analyst Intern",
+              "dq": "上海",
+              "salary": "200/天",
+              "link": "https://www.liepin.com/job/21.shtml",
+              "workType": "实习"
+            },
+            "comp": {
+              "compName": "SYNTHETIC Co"
+            }
+          },
+          {
+            "job": {
+              "jobId": "20",
+              "title": "Business Analyst",
+              "dq": "上海",
+              "salary": "200/天",
+              "link": "https://www.liepin.com/job/20.shtml",
+              "workType": "全职"
+            },
+            "comp": {
+              "compName": "SYNTHETIC Co"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "jobsdb": {
+    "data": [
+      {
+        "id": "11",
+        "title": "Data Analyst Intern",
+        "locations": [
+          {
+            "label": "North Point, Hong Kong",
+            "countryCode": "HK"
+          }
+        ],
+        "workTypes": [
+          "Full time"
+        ],
+        "advertiser": {
+          "description": "SYNTHETIC HK Co"
+        },
+        "teaser": "SYNTHETIC excerpt",
+        "listingDate": "2026-10-01T00:00:00Z"
+      },
+      {
+        "id": "10",
+        "title": "Data Analyst",
+        "locations": [
+          {
+            "label": "North Point, Hong Kong",
+            "countryCode": "HK"
+          }
+        ],
+        "workTypes": [
+          "Full time"
+        ],
+        "advertiser": {
+          "description": "SYNTHETIC HK Co"
+        },
+        "teaser": "SYNTHETIC excerpt",
+        "listingDate": "2026-10-01T00:00:00Z"
+      },
+      {
+        "id": "21",
+        "title": "Business Analyst Intern",
+        "locations": [
+          {
+            "label": "North Point, Hong Kong",
+            "countryCode": "HK"
+          }
+        ],
+        "workTypes": [
+          "Full time"
+        ],
+        "advertiser": {
+          "description": "SYNTHETIC HK Co"
+        },
+        "teaser": "SYNTHETIC excerpt",
+        "listingDate": "2026-10-01T00:00:00Z"
+      },
+      {
+        "id": "20",
+        "title": "Business Analyst",
+        "locations": [
+          {
+            "label": "North Point, Hong Kong",
+            "countryCode": "HK"
+          }
+        ],
+        "workTypes": [
+          "Full time"
+        ],
+        "advertiser": {
+          "description": "SYNTHETIC HK Co"
+        },
+        "teaser": "SYNTHETIC excerpt",
+        "listingDate": "2026-10-01T00:00:00Z"
+      }
+    ]
+  },
+  "/job/11.shtml": "<dd data-selector=\"job-intro-content\">SYNTHETIC Data Analyst Intern SQL responsibilities</dd>",
+  "/job/11": "<div data-automation=\"jobAdDetails\">SYNTHETIC Data Analyst Intern SQL responsibilities</div>",
+  "/job/10.shtml": "<dd data-selector=\"job-intro-content\">SYNTHETIC Data Analyst SQL responsibilities</dd>",
+  "/job/10": "<div data-automation=\"jobAdDetails\">SYNTHETIC Data Analyst SQL responsibilities</div>",
+  "/intern/inn_1": "<h1>数据分析实习</h1><a href=\"/com/example\">SYNTHETIC Co</a><span class=\"job_position\">上海</span><div>200-300/天 2026-10-01 10:00:00 刷新 截止日期：2027-01-01</div><div class=\"job_detail\">SYNTHETIC SQL 数据分析职责</div>",
+  "/job/21.shtml": "<dd data-selector=\"job-intro-content\">SYNTHETIC Business Analyst Intern SQL responsibilities</dd>",
+  "/job/21": "<div data-automation=\"jobAdDetails\">SYNTHETIC Business Analyst Intern SQL responsibilities</div>",
+  "/job/20.shtml": "<dd data-selector=\"job-intro-content\">SYNTHETIC Business Analyst SQL responsibilities</dd>",
+  "/job/20": "<div data-automation=\"jobAdDetails\">SYNTHETIC Business Analyst SQL responsibilities</div>",
+  "/intern/inn_2": "<h1>商业分析实习</h1><a href=\"/com/example\">SYNTHETIC Co</a><span class=\"job_position\">上海</span><div>200-300/天 2026-10-01 10:00:00 刷新 截止日期：2027-01-01</div><div class=\"job_detail\">SYNTHETIC SQL 商业分析职责</div>",
+  "shixiseng": "<div class=\"intern-wrap\" data-intern-id=\"inn_1\"><a title=\"数据分析实习\" href=\"https://www.shixiseng.com/intern/inn_1\">数据分析实习</a><span class=\"city\">上海</span></div><div class=\"intern-wrap\" data-intern-id=\"inn_2\"><a title=\"商业分析实习\" href=\"https://www.shixiseng.com/intern/inn_2\">商业分析实习</a><span class=\"city\">上海</span></div>"
+}

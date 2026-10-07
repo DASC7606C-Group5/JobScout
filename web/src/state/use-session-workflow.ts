@@ -149,17 +149,24 @@ export function useSessionWorkflow(
       void cache.invalidateQueries({ queryKey: historyKey })
   }, [cache, sessionId, outcome])
 
-  function execute(command: Command) {
+  async function execute(command: Command) {
     const scope = operationScope(command)
-    if (inFlight.current.has(scope)) return
+    if (inFlight.current.has(scope)) return false
     inFlight.current.add(scope)
     previous.current.set(commandScope(command), command)
-    void cache
-      .cancelQueries({
+    let succeeded = false
+    try {
+      await cache.cancelQueries({
         queryKey: sessionKey(command.kind === 'start' ? null : command.sessionId),
         exact: true,
       })
-      .then(() => mutation.mutate(command))
+      await mutation.mutateAsync(command)
+      succeeded = true
+    } catch {
+      // The mutation exposes the request error to the notification layer.
+    }
+    inFlight.current.delete(scope)
+    return succeeded
   }
 
   async function prepare(command: Command) {
@@ -170,12 +177,12 @@ export function useSessionWorkflow(
     const saved = await flushPendingDrafts()
     preparations.current.delete(scope)
     setPreparing((current) => (current === command.origin ? null : current))
-    if (saved && command.origin === activeOrigin.current) execute(command)
+    return saved && command.origin === activeOrigin.current ? execute(command) : false
   }
 
   async function start(input: ScoutInput) {
     if (busy) return
-    await prepare({
+    return prepare({
       kind: 'start',
       origin,
       input: { ...structuredClone(input), request_id: crypto.randomUUID() },
@@ -184,7 +191,7 @@ export function useSessionWorkflow(
 
   async function answer(submission: Partial<ResumeSubmission>) {
     if (!session || (submission.action === 'edit_conditions' ? !canEdit : busy)) return
-    await prepare({
+    return prepare({
       kind: 'answer',
       origin,
       sessionId: session.session_id,
@@ -205,12 +212,12 @@ export function useSessionWorkflow(
     if (!sessionId || pending) return
     mutation.reset()
     stream.retry()
-    void query.refetch()
+    return query.refetch()
   }
 
   function stop() {
     if (!session?.run_id || session.outcome !== 'running' || command.pending) return
-    execute({
+    return execute({
       kind: 'stop',
       origin,
       sessionId: session.session_id,
@@ -224,14 +231,14 @@ export function useSessionWorkflow(
 
   function retry() {
     if (pending) return
-    if (recovery === 'refresh' || stream.error) refresh()
+    if (recovery === 'refresh' || stream.error) return refresh()
     else if (recovery === 'correct') mutation.reset()
-    else if (command.error && previous.current.has(key)) execute(previous.current.get(key)!)
-    else if (session?.outcome === 'failed' && session.retryable) void answer({ action: 'retry' })
+    else if (command.error && previous.current.has(key)) return execute(previous.current.get(key)!)
+    else if (session?.outcome === 'failed' && session.retryable) return answer({ action: 'retry' })
   }
 
   function deleteSession(id = sessionId) {
-    if (id) execute({ kind: 'delete', sessionId: id, origin })
+    if (id) return execute({ kind: 'delete', sessionId: id, origin })
   }
 
   return {
@@ -251,7 +258,7 @@ export function useSessionWorkflow(
     refresh,
     deleteSession,
     edit: () => {
-      if (session) void answer({ action: 'edit_conditions' })
+      if (session) return answer({ action: 'edit_conditions' })
     },
   }
 }

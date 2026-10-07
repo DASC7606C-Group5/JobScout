@@ -25,6 +25,149 @@ test.afterEach(async () => {
   await Promise.all(eventServers.splice(0).map((server) => server.close()))
 })
 
+test('history errors use one toast and retry stays busy until the request completes', async ({
+  page,
+}) => {
+  const state = await mockSessions(page)
+  let attempts = 0
+  let failing = true
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/api/v1/sessions?*', async (route) => {
+    attempts += 1
+    if (failing) {
+      await route.fulfill({ status: 503, json: { detail: { code: 'service_unavailable' } } })
+    } else {
+      await gate
+      await route.fallback()
+    }
+  })
+  await page.goto('/new')
+  const notice = page.getByRole('alert').filter({ hasText: 'Could not load your search history.' })
+  await expect(notice).toBeVisible()
+  await expect(notice).toHaveCount(1)
+  await expect(page.locator('#workspace-sidebar').getByRole('alert')).toHaveCount(0)
+  await mkdir('.tools/browser', { recursive: true })
+  await page.screenshot({
+    path: '.tools/browser/request-toast-desktop.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByRole('button', { name: 'Open sidebar', exact: true })).toBeVisible()
+  await expect(notice).toBeVisible()
+  await page.screenshot({
+    path: '.tools/browser/request-toast-mobile.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
+  const retry = notice.getByRole('button', { name: 'Try again', exact: true })
+  const beforeRetry = attempts
+  failing = false
+  await retry.click()
+  await expect(retry).toBeDisabled()
+  await expect(retry).toHaveAttribute('aria-busy', 'true')
+  await expect.poll(() => attempts).toBe(beforeRetry + 1)
+  release()
+  await expect(notice).toHaveCount(0)
+  expect(state.historyRequests).toHaveLength(1)
+})
+
+test('saving and toast recovery prevent duplicate requests and retain the selected job after failure', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  const session = resultSession()
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  const releases: (() => void)[] = []
+  const writes: string[] = []
+  await page.route('**/api/v1/saved-jobs/*', async (route) => {
+    if (route.request().method() !== 'PUT') return route.fallback()
+    writes.push(route.request().url())
+    const attempt = writes.length
+    await new Promise<void>((resolve) => {
+      releases.push(resolve)
+    })
+    if (attempt === 1)
+      await route.fulfill({
+        status: 500,
+        json: { detail: { code: 'service_unavailable', message: 'private-save-diagnostic' } },
+      })
+    else await route.fallback()
+  })
+  await page.goto('/searches/session-1')
+  const save = page.getByRole('button', { name: 'Save job: React Engineer', exact: true })
+  await save.click()
+  await expect(save).toBeDisabled()
+  await expect(save).toHaveAttribute('aria-busy', 'true')
+  expect(writes).toHaveLength(1)
+  releases[0]!()
+  const notice = page.getByRole('alert')
+  await expect(notice).toBeVisible()
+  await expect(page.locator('#main-content').getByRole('alert')).toHaveCount(0)
+  await expect(page.locator('body')).not.toContainText('private-save-diagnostic')
+  await expect(save).toBeEnabled()
+  const retry = notice.getByRole('button', { name: 'Retry', exact: true })
+  await retry.click()
+  await expect(retry).toBeDisabled()
+  await expect(retry).toHaveAttribute('aria-busy', 'true')
+  expect(writes).toEqual([writes[0], writes[0]])
+  releases[1]!()
+  await expect(
+    page.getByRole('button', { name: 'Remove saved job: React Engineer', exact: true }),
+  ).toBeVisible()
+  await expect(notice).toHaveCount(0)
+})
+
+test('interrupted searches retain their activity view and published results', async ({ page }) => {
+  const running = resultSession()
+  running.outcome = 'running'
+  running.current_stage = 'search'
+  running.run_id = 'interrupt-run'
+  running.progress.activity = [
+    {
+      job_id: 'activity-job',
+      sequence: 1,
+      title: 'Screened Engineer',
+      company: 'Example',
+      location: 'Hong Kong',
+      status: 'reviewing',
+      review_issue: null,
+      exclusion_reasons: [],
+      unknown_conditions: [],
+      recommendation_fit: 'unknown',
+    },
+  ]
+  const state = await mockSessions(page, running)
+  state.seedSession(running)
+  await page.goto('/searches/session-1')
+  const activity = page.getByRole('region', { name: 'Job screening activity', exact: true })
+  await expect(activity).toContainText('Screened Engineer')
+  const failed = structuredClone(running)
+  failed.outcome = 'failed'
+  failed.current_stage = 'failed'
+  failed.retryable = true
+  failed.progress.sequence += 1
+  failed.errors = [
+    { code: 'search_interrupted', message: 'private-interruption-diagnostic', action: 'retry' },
+  ]
+  state.publish(failed)
+  await expect(page.getByRole('alert')).toBeVisible()
+  await expect(activity).toContainText('Screened Engineer')
+  await expect(page.getByRole('button', { name: 'Finish search', exact: true })).toHaveCount(0)
+  await expect(page.locator('#main-content').getByRole('alert')).toHaveCount(0)
+  await expect(page.locator('body')).not.toContainText('private-interruption-diagnostic')
+  await page.getByRole('button', { name: 'Dismiss notification', exact: true }).click()
+  await page.getByRole('button', { name: 'View matches', exact: true }).click()
+  for (const item of failed.recommendation!.jobs)
+    await expect(
+      page.getByRole('button', { name: `View job: ${item.job.title}`, exact: true }),
+    ).toBeVisible()
+})
+
 const makeQuestion = (
   question_id: string,
   control_type: ClarificationMessage['control_type'],
@@ -639,9 +782,12 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
   finished.progress = { ...finished.progress, sequence: 4, retrieval_stopped: true }
   finished.recommendation!.pending_jobs[0]!.review_status = 'reviewed'
   state.publish(finished)
-  await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toContainText(
-    'Reviewed',
-  )
+  const pendingCard = page
+    .getByRole('article')
+    .filter({ has: page.getByRole('button', { name: 'View job: Pending Engineer', exact: true }) })
+  await expect(
+    pendingCard.getByRole('button', { name: 'Needs checking', exact: true }),
+  ).toBeVisible()
   expect(state.getCount()).toBe(reads)
   await page.getByRole('button', { name: 'View job: Pending Engineer' }).click()
   await expect(page).toHaveURL(/job=pending-job/)
@@ -1169,7 +1315,10 @@ test('workflow failure uses backend retry without creating a second session', as
     }),
   )
   await introduce(page)
-  await page.getByRole('button', { name: 'Try again' }).click()
+  await page
+    .getByRole('region', { name: 'Search progress', exact: true })
+    .getByRole('button', { name: 'Try again', exact: true })
+    .click()
   await expect(
     page.getByRole('heading', { name: 'Review your profile and search criteria' }),
   ).toBeVisible()
@@ -1685,13 +1834,17 @@ test('search failure preserves published job identities until editing the criter
   const state = await mockSessions(page, failed)
   state.seedSession(failed)
   await page.goto('/searches/session-1')
-  await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeVisible()
+  await expect(
+    page
+      .getByRole('region', { name: 'Search progress', exact: true })
+      .getByRole('button', { name: 'Try again', exact: true }),
+  ).toBeVisible()
   for (const item of failed.recommendation!.jobs)
     await expect(
       page.getByRole('button', { name: `View job: ${item.job.title}`, exact: true }),
     ).toBeVisible()
   await expect(page.locator('body')).not.toContainText('private-failure-detail')
-  await page.getByRole('button', { name: 'Edit search criteria', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit search criteria', exact: true }).first().click()
   await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
   await expect(page.getByLabel('Job interests', { exact: true })).toBeVisible()
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toHaveCount(0)
@@ -1802,6 +1955,15 @@ test('job notices and source coverage retain actionable details when analysis is
     },
   ]
   session.recommendation!.notices = session.notices
+  session.notices.push({
+    code: 'source_partial',
+    scope: 'source',
+    job_id: null,
+    source: 'jobsdb',
+    preference: null,
+    action: null,
+    message: 'Only some listings from JobsDB were available.',
+  })
   item.job.description_is_excerpt = true
   item.notices.push({
     code: 'listing_incomplete',
@@ -1842,7 +2004,11 @@ test('job notices and source coverage retain actionable details when analysis is
     }),
   ).toBeVisible()
   await expect(detail).not.toContainText('unsupported-preparation-sentinel')
-  await expect(detail.getByText(item.notices[0]!.message, { exact: false })).toHaveCount(1)
+  await expect(detail.getByText(item.notices[0]!.message, { exact: true })).toHaveCount(1)
+  await expect(
+    page.getByRole('complementary', { name: 'Search coverage', exact: true }),
+  ).toHaveCount(0)
+  await expect(page.getByRole('alert')).toHaveCount(0)
   const visible = await page.locator('body').innerText()
   for (const internalId of [item.job.job_id, 'private-document-id'])
     expect(visible).not.toContain(internalId)
@@ -1977,7 +2143,7 @@ test('deletion requires confirmation and a failed deletion preserves the search,
   expect(deletions).toEqual([])
   await trigger.click()
   await dialog.getByRole('button', { name: 'Delete search', exact: true }).click()
-  await expect(dialog.getByRole('alert')).toBeVisible()
+  await expect(page.getByRole('alert')).toBeVisible()
   await expect(dialog).not.toContainText('private-deletion-diagnostic')
   await dialog.getByRole('button', { name: 'Keep search', exact: true }).click()
   await expect(trigger).toBeFocused()
@@ -2035,8 +2201,8 @@ test('resume upload failures preserve typed input, hide diagnostics and allow a 
     )
     await upload()
     await failed
-    await expect(page.locator('#resume-error')).toBeVisible()
-    await expect(page.locator('#resume-error')).not.toContainText('private-parser-path')
+    await expect(page.getByRole('alert')).toBeVisible()
+    await expect(page.getByRole('alert')).not.toContainText('private-parser-path')
     await expect(page.getByLabel('About you', { exact: true })).toHaveValue(introduction)
     await expect(
       page.getByRole('button', { name: 'Analyze and continue', exact: true }),

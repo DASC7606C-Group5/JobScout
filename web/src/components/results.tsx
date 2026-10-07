@@ -26,7 +26,7 @@ export function Results({
   result: RecommendationResult | null
   saved: RecommendationItem[]
   onToggle: (item: RecommendationItem) => boolean | Promise<boolean> | void
-  onEdit: () => void
+  onEdit: () => unknown
   savedOnly?: boolean
   notices?: ApplicantNotice[]
   reviewActive?: boolean
@@ -121,7 +121,7 @@ function ResultItems({
   savedOnly: boolean
   saved: RecommendationItem[]
   selection: Selection
-  onEdit: () => void
+  onEdit: () => unknown
   notices: ApplicantNotice[]
   reviewActive: boolean
 }) {
@@ -182,15 +182,13 @@ function ResultItems({
         <JobDetail
           key={selected.job.job_id}
           item={selected}
-          reviewActive={reviewActive}
           notices={notices}
+          reviewActive={reviewActive}
           headingRef={detailHeading}
           scrollRef={detailScrollRef}
           onScroll={rememberDetailScroll}
           saved={saved.some((entry) => entry.job.job_id === selected.job.job_id)}
-          onToggle={() => {
-            void toggle(selected)
-          }}
+          onToggle={() => toggle(selected)}
           onBack={back}
         />
       </div>

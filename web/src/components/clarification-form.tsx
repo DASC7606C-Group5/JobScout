@@ -1,5 +1,3 @@
-import { useState } from 'react'
-
 import type { ClarificationMessage } from '../lib/contracts'
 import { collectAnswers, pendingQuestions } from '../lib/conversation'
 import { useScoutSession } from '../state/session-context'
@@ -11,7 +9,7 @@ import { QuestionControl } from './question-control'
 const emptyDraft: SessionDraftValues['clarification'] = { values: {}, skipped: [], message: '' }
 
 export function ClarificationForm({ questions }: { questions: ClarificationMessage[] }) {
-  const { answer, busy } = useScoutSession()
+  const { answer, busy, pending: submitting } = useScoutSession()
   const pending = pendingQuestions(questions)
   const draft = useSessionDraft('clarification', emptyDraft)
   const {
@@ -69,7 +67,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
           </label>
           <textarea
             id="conversation-message"
-            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 text-sm leading-6"
+            className="textarea field-sizing-content max-h-96 min-h-24 w-full resize-none border border-base-300 bg-base-200/25 text-base leading-6 sm:text-sm"
             value={message}
             onChange={(event) =>
               setDraft((previous) => ({ ...previous, message: event.target.value }))
@@ -85,7 +83,14 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
         )}
         <div className="-mx-5 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 px-5 pt-5 sm:-mx-6 sm:px-6 sm:pt-6">
           <DraftStatus {...draft} />
-          <button className="btn min-w-40 border-0 btn-primary" type="submit">
+          <button
+            className="btn min-w-40 border-0 btn-primary"
+            type="submit"
+            aria-busy={submitting}
+          >
+            {submitting && (
+              <span className="loading loading-xs loading-spinner" aria-hidden="true" />
+            )}
             Send and continue
             <Icon name="arrow" size={18} />
           </button>
@@ -94,3 +99,4 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
     </form>
   )
 }
+import { useState } from 'react'

@@ -2,8 +2,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type ReactNode } from 'react'
 
 import type { SessionClient } from '../lib/contracts'
+import { requestErrorMessage } from '../lib/request-errors'
 import { sessionClient } from '../lib/session-client'
 import { workspaceClient } from '../lib/workspace-client'
+import { useNotifications } from './notifications'
 import { ScoutContext } from './scout-context'
 import { SessionContext } from './session-context'
 import { useSessionWorkflow } from './use-session-workflow'
@@ -35,15 +37,14 @@ export function ScoutProvider({
   const savedQuery = useSavedJobs()
   const saved = savedQuery.data ?? []
   const [announcement, setAnnouncement] = useState('')
-  const [saveError, setSaveError] = useState('')
+  const { notify } = useNotifications()
   const saving = useRef(new Set<string>())
-  async function toggleSaved(item: (typeof saved)[number]) {
+  const toggleSaved = async (item: (typeof saved)[number]) => {
     const id = item.job.job_id
     if (saving.current.has(id)) return false
     const exists = saved.some((entry) => entry.job.job_id === id)
     if (!exists && !workflow.session) return false
     saving.current.add(id)
-    setSaveError('')
     let succeeded = false
     try {
       await cache.cancelQueries({ queryKey: savedJobsKey, exact: true })
@@ -66,10 +67,12 @@ export function ScoutProvider({
       setAnnouncement(`${exists ? 'Removed from saved jobs' : 'Saved job'}: ${item.job.title}`)
       succeeded = true
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Could not update saved jobs. Try again.'
-      setAnnouncement(message)
-      setSaveError(message)
+      notify({
+        id: `save-job:${id}`,
+        message: requestErrorMessage(error),
+        tone: 'error',
+        actions: [{ label: 'Retry', onClick: () => toggleSaved(item) }],
+      })
     }
     saving.current.delete(id)
     return succeeded
@@ -79,8 +82,6 @@ export function ScoutProvider({
       value={{
         saved,
         announcement,
-        saveError,
-        clearSaveError: () => setSaveError(''),
         toggleSaved,
       }}
     >

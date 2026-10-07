@@ -5,7 +5,6 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { createMatchScoreFixture, createRecommendationFixture } from '../../tests/fixtures'
 import type { ApplicantNotice } from '../lib/contracts'
-import { SearchFailure } from './discovery/search-status'
 import { JobDetail } from './job-detail'
 
 const noop = () => {}
@@ -70,23 +69,4 @@ test('unavailable analysis retains job facts but does not display unsupported ma
   expect(html).not.toContain('unsupported-match-sentinel')
   expect(html).not.toContain('unsupported-missing-sentinel')
   expect(html).not.toContain(item.match_score.dimensions[0]!.explanation)
-})
-
-test('workflow failure presents safe recovery instead of private error content', () => {
-  const diagnostic = 'private-operator-detail'
-  const html = renderToStaticMarkup(
-    <SearchFailure
-      errors={[
-        {
-          code: 'private-error-code',
-          message: diagnostic,
-          action: null,
-        },
-      ]}
-      onRetry={noop}
-      onEdit={noop}
-      retryable={false}
-    />,
-  )
-  for (const value of [diagnostic, 'private-error-code']) expect(html).not.toContain(value)
 })

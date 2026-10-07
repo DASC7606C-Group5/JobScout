@@ -1,12 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { useFormContext } from 'react-hook-form'
 
-import { ApplicantRequestError, applicantErrorMessage } from '../../lib/applicant-errors'
+import { ApplicantRequestError } from '../../lib/applicant-errors'
 import type { ProfileFormValues } from '../../lib/profile-form'
 import { readResume } from '../../lib/resume-client'
+import { useNotifications } from '../../state/notifications'
 
 export function useResumeUpload(onReadingChange: (reading: boolean) => void) {
   const { setValue, setError, clearErrors } = useFormContext<ProfileFormValues>()
+  const { notify, dismiss } = useNotifications()
   const fileRef = useRef<HTMLInputElement>(null)
   const readId = useRef(0)
   const request = useRef<AbortController | null>(null)
@@ -26,6 +28,7 @@ export function useResumeUpload(onReadingChange: (reading: boolean) => void) {
     request.current = controller
     onReadingChange(true)
     clearErrors('root.resume')
+    dismiss('resume-upload')
     try {
       const resume = await readResume(file, controller.signal)
       if (id === readId.current) {
@@ -33,13 +36,17 @@ export function useResumeUpload(onReadingChange: (reading: boolean) => void) {
         clearErrors('description')
       }
     } catch (cause) {
-      if (id === readId.current)
-        setError('root.resume', {
-          message:
-            cause instanceof ApplicantRequestError
-              ? cause.message
-              : applicantErrorMessage('invalid_file'),
-        })
+      if (id === readId.current) {
+        const error =
+          cause instanceof ApplicantRequestError ? cause : new ApplicantRequestError('invalid_file')
+        if (error.action === 'edit_conditions') setError('root.resume', { message: error.message })
+        else
+          notify({
+            id: 'resume-upload',
+            tone: 'error',
+            message: error.message,
+          })
+      }
     }
     if (id !== readId.current) return
     request.current = null
@@ -55,6 +62,7 @@ export function useResumeUpload(onReadingChange: (reading: boolean) => void) {
     if (fileRef.current) fileRef.current.value = ''
     setValue('resume', null, { shouldDirty: true })
     clearErrors('root.resume')
+    dismiss('resume-upload')
   }
   return { fileRef, attach, remove }
 }

@@ -28,7 +28,7 @@ from jobscout.services.job_search_service import JobSearchService
 from jobscout.services.location_service import get_location_catalog
 from tests.location_fixtures import bound_location, catalog_snapshot
 
-FIXTURE = Path(__file__).resolve().parents[1] / "data/group4/mock_local_sources.json"
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "local_sources.json"
 STAMP = datetime(2026, 10, 1, tzinfo=UTC)
 
 

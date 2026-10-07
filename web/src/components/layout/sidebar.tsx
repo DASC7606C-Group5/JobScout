@@ -1,10 +1,10 @@
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useRef, useState, type MouseEvent, type Ref, type RefObject } from 'react'
 
-import { applicantErrorMessage } from '../../lib/applicant-errors'
 import type { SessionSummary } from '../../lib/contracts'
-import { SessionHttpError } from '../../lib/session-client'
+import { requestErrorMessage } from '../../lib/request-errors'
 import { flushPendingDrafts } from '../../state/draft-navigation'
+import { useNotifications } from '../../state/notifications'
 import { useScoutSession } from '../../state/session-context'
 import { useDeleteSession, useSavedJobs, useSessionHistory } from '../../state/workspace-queries'
 import { Icon } from '../icon'
@@ -55,6 +55,7 @@ export function Sidebar({
   const deletion = useDeleteSession()
   const navigate = useNavigate()
   const router = useRouter()
+  const { notify, dismiss } = useNotifications()
   const dialog = useRef<HTMLDialogElement>(null)
   const cancel = useRef<HTMLButtonElement>(null)
   const deleteTrigger = useRef<HTMLButtonElement | null>(null)
@@ -87,6 +88,7 @@ export function Sidebar({
   }
 
   function closeDelete() {
+    dismiss('delete-search')
     setCandidate(null)
     deletion.reset()
     if (deleteConfirmed.current) {
@@ -96,7 +98,7 @@ export function Sidebar({
     else historyHeading.current?.focus()
   }
 
-  async function confirmDelete() {
+  const confirmDelete = async () => {
     if (!candidate || deletion.isPending) return
     const deletedId = candidate.session_id
     try {
@@ -108,14 +110,22 @@ export function Sidebar({
         onNavigate()
         await navigate({ to: '/new', search: {} })
       }
-    } catch {
-      // The query mutation preserves the error for retry in this dialog.
+    } catch (error) {
+      notify({
+        id: 'delete-search',
+        message: requestErrorMessage(error),
+        tone: 'error',
+        actions: [{ label: 'Retry', onClick: confirmDelete }],
+      })
+      return false
     }
+    return true
   }
 
   return (
     <div className="drawer-side z-40 lg:z-10 is-drawer-close:overflow-visible">
       <label htmlFor="workspace-drawer" aria-label="Close sidebar" className="drawer-overlay" />
+      {/* oxlint-disable-next-line react-doctor/no-tailwind-layout-transition -- Drawer width must reflow the adjacent content between the icon rail and expanded navigation; reduced motion disables the transition. */}
       <aside
         id="workspace-sidebar"
         ref={ref}
@@ -302,9 +312,7 @@ function HistoryMenu({
       <div className="-mx-3 h-full overflow-y-auto pl-3">
         {current && (
           <div className="mb-1.5 w-[100cqw]">
-            <h2 className="px-3 pb-4 text-[11px] font-semibold text-base-content/55">
-              Current search
-            </h2>
+            <h2 className="px-3 pb-4 text-xs font-semibold text-base-content/55">Current search</h2>
             <ul className="flex w-full flex-col gap-1.5">
               <HistoryRow
                 search={current}
@@ -349,23 +357,12 @@ function HistoryMenu({
             />
           ))}
         </ul>
-        {history.isError && (
-          <div role="alert" className="w-[100cqw] px-3 py-4 text-xs">
-            <p className="text-error">Could not load your search history.</p>
-            <button
-              type="button"
-              className="btn mt-2 btn-ghost btn-xs"
-              onClick={() => void history.refetch()}
-            >
-              Try again
-            </button>
-          </div>
-        )}
         {history.hasNextPage && (
           <button
             type="button"
             className="btn mt-3 w-[100cqw] btn-ghost btn-sm"
             disabled={history.isFetchingNextPage}
+            aria-busy={history.isFetchingNextPage}
             onClick={() => void history.fetchNextPage()}
           >
             {history.isFetchingNextPage && (
@@ -412,13 +409,6 @@ function DeleteSearchDialog({
         <p id="delete-search-consequence" className="mt-2 text-sm leading-6 text-base-content/70">
           This permanently removes this search. Your saved jobs will stay.
         </p>
-        {deletion.error && (
-          <p role="alert" className="mt-4 text-sm text-error">
-            {deletion.error instanceof SessionHttpError
-              ? applicantErrorMessage(deletion.error.code, deletion.error.status)
-              : applicantErrorMessage('connection_unavailable')}
-          </p>
-        )}
         <form method="dialog" className="modal-action" noValidate>
           <button
             type="submit"
@@ -433,6 +423,7 @@ function DeleteSearchDialog({
             className="btn btn-error"
             disabled={deletion.isPending}
             onClick={onConfirm}
+            aria-busy={deletion.isPending}
           >
             {deletion.isPending && (
               <span className="loading loading-xs loading-spinner" aria-hidden="true" />
@@ -477,7 +468,7 @@ function HistoryRow({
             {search.location}
           </span>
         )}
-        <span className="mt-2 flex min-h-4 items-center gap-2 pr-8 text-[11px] leading-4 font-normal text-base-content/65">
+        <span className="mt-2 flex min-h-4 items-center gap-2 pr-8 text-xs leading-4 font-normal text-base-content/65">
           <span className="flex min-w-0 items-center gap-1.5">
             <span className={`status size-1.5 shrink-0 ${status.tone}`} aria-hidden="true" />
             <span>{status.label}</span>

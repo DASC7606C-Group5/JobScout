@@ -82,9 +82,10 @@ function DimensionLabel({
       className={`tooltip absolute ${labelPositions[dimension.id]} ${open ? 'z-20 tooltip-open' : '[&::after]:hidden [&>.tooltip-content]:invisible [&>.tooltip-content]:opacity-0'}`}
       onMouseEnter={onHover}
     >
+      {/* oxlint-disable-next-line react-doctor/no-symmetric-text-button-padding -- Compact radar labels keep their tooltip anchors in place; min-h-11 supplies the touch target. */}
       <button
         type="button"
-        className="btn h-auto min-h-11 flex-col gap-0 rounded-sm border-0 btn-ghost px-1 py-1 text-xs leading-4 font-normal"
+        className="btn h-auto min-h-11 flex-col gap-0 rounded-sm border-0 btn-ghost p-1 text-xs leading-4 font-normal"
         aria-label={`${dimensionLabels[dimension.id]}: ${dimensionValue(dimension)}`}
         aria-describedby={tooltipId}
         onFocus={onOpen}
@@ -142,6 +143,7 @@ export function MatchRadar({ score }: { score: MatchScore }) {
   )
 
   return (
+    // oxlint-disable-next-line react-doctor/no-redundant-display-class -- Block overrides daisyUI's .card figure flex layout so the radar keeps its full width.
     <figure
       aria-label="Match scores for skills, responsibilities, experience, seniority, education and preferences, out of 100"
       className="mx-auto block w-full max-w-72 overflow-visible"
@@ -155,7 +157,7 @@ export function MatchRadar({ score }: { score: MatchScore }) {
       >
         <svg
           viewBox="0 0 200 200"
-          className="absolute top-13 left-1/2 h-44 w-44 -translate-x-1/2 text-base-content/55"
+          className="absolute top-13 left-1/2 size-44 -translate-x-1/2 text-base-content/55"
           aria-hidden="true"
         >
           {[25, 50, 75, 100].map((radius) => (

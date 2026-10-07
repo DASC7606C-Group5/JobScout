@@ -6,6 +6,7 @@ import { useScoutSession } from '../../state/session-context'
 import { useSessionHistory } from '../../state/workspace-queries'
 import { Icon } from '../icon'
 import { Sidebar } from './sidebar'
+import { WorkspaceNotifications } from './workspace-notifications'
 
 const sidebarPreferenceKey = 'jobscout.sidebar-expanded'
 
@@ -38,8 +39,6 @@ function focusDrawerTarget(sidebar: HTMLElement | null, sessionId: string | unde
 
 export function WorkspaceLayout() {
   const announcement = useScout((state) => state.announcement)
-  const saveError = useScout((state) => state.saveError)
-  const clearSaveError = useScout((state) => state.clearSaveError)
   const currentSession = useScoutSession().session
   const history = useSessionHistory()
   const { sessionId } = useParams({ strict: false })
@@ -132,7 +131,7 @@ export function WorkspaceLayout() {
   }, [desktop, mobileOpen])
 
   return (
-    <div className="drawer min-h-screen bg-base-200/25 text-base-content [overflow-anchor:none] lg:drawer-open">
+    <div className="drawer min-h-dvh bg-base-200/25 text-base-content [overflow-anchor:none] lg:drawer-open">
       <input
         id="workspace-drawer"
         type="checkbox"
@@ -165,15 +164,7 @@ export function WorkspaceLayout() {
           tabIndex={-1}
           className="workspace-page px-4 pt-16 pb-8 sm:px-5 lg:px-6 lg:pt-6"
         >
-          {saveError && (
-            <div className="mb-5 alert alert-error sm:alert-horizontal" role="alert">
-              <Icon name="info" size={18} />
-              <span>{saveError}</span>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={clearSaveError}>
-                Dismiss
-              </button>
-            </div>
-          )}
+          <WorkspaceNotifications />
           <Outlet />
         </main>
         <div className="sr-only" aria-live="polite">
