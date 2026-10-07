@@ -36,7 +36,6 @@ def settings() -> Settings:
         llm_decision_model="synthetic-decision",
         llm_decision_base_url="https://decision.example.invalid/v2",
         llm_decision_api_key="synthetic-decision-key",
-        llm_retry_delay=0,
     )
 
 

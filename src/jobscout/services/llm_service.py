@@ -25,6 +25,7 @@ _ERROR_MESSAGES = {
     "model_output": "The model provider did not return valid structured output.",
 }
 _TRANSIENT_STATUS = {408, 425, 429}
+_RETRY_DELAY_SECONDS = 0.25
 type ModelRole = Literal["semantic", "decision"]
 
 
@@ -97,7 +98,6 @@ class DeepSeekProvider:
         self._api_key = getattr(settings, f"llm_{role}_api_key")
         self._timeout = settings.llm_timeout
         self._max_tokens = settings.llm_max_tokens
-        self._retry_delay = settings.llm_retry_delay
         self._client = client
         self._usage = ModelUsage()
         self._run_usage: ContextVar[ModelUsage | None] = ContextVar("run_model_usage", default=None)
@@ -391,7 +391,7 @@ class DeepSeekProvider:
     async def _retry(self, deadline: float) -> None:
         remaining = self._remaining(deadline)
         self._count("retries", 1)
-        await asyncio.sleep(min(self._retry_delay, remaining))
+        await asyncio.sleep(min(_RETRY_DELAY_SECONDS, remaining))
 
     @staticmethod
     def _remaining(deadline: float) -> float:

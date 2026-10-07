@@ -44,7 +44,6 @@ def settings() -> Settings:
         llm_decision_model="synthetic-decision-model",
         llm_timeout=2,
         llm_max_tokens=100,
-        llm_retry_delay=0,
     )
 
 
@@ -355,7 +354,6 @@ def test_retry_sleep_does_not_reset_timeout(settings: Settings) -> None:
 
     async def scenario() -> None:
         settings.llm_timeout = 0.02
-        settings.llm_retry_delay = 1
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             provider = DeepSeekProvider(settings, client=client)
             with pytest.raises(ModelServiceError) as caught:
