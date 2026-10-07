@@ -17,6 +17,8 @@ class ModelInfo(WireModel):
     server_key_configured: bool
     thinking: bool
     server_thinking: bool
+    thinking_level: str
+    server_thinking_level: str
 
 
 class ModelRoles(WireModel):
@@ -28,6 +30,7 @@ class ModelEndpoint(WireModel):
     id: str
     name: str
     thinking_supported: bool
+    thinking_level_supported: bool
 
 
 class ModelSettingsResponse(WireModel):

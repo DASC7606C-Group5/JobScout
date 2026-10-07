@@ -42,6 +42,14 @@ async def database_lifespan(_: FastAPI, *, database_url: str | None = None) -> A
                 raise ValueError(
                     "This database contains a shared workspace. Use a new DATABASE_URL; existing private data is not migrated."
                 )
+            personal_columns = connection.execute("PRAGMA table_info(personalmodel)").fetchall()
+            if personal_columns and "thinking_level" not in {
+                column[1] for column in personal_columns
+            }:
+                connection.execute(
+                    "ALTER TABLE personalmodel ADD COLUMN thinking_level "
+                    "VARCHAR(32) NOT NULL DEFAULT 'high'"
+                )
     await Tortoise.init(config=tortoise_config(database_url))
     try:
         await Tortoise.generate_schemas(safe=True)

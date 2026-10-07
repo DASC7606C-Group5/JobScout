@@ -25,6 +25,7 @@ class ModelWrite(BaseModel):
     model: str = Field(min_length=1, max_length=128)
     api_key: str | None = Field(default=None, min_length=1, max_length=4096, repr=False)
     thinking: bool = False
+    thinking_level: str = Field(default="high", min_length=1, max_length=32)
 
 
 @dataclass
@@ -83,6 +84,10 @@ class ModelSettingsService:
                 "server_key_configured": bool(getattr(self.settings, f"llm_{role}_api_key")),
                 "thinking": row.thinking if row else getattr(self.settings, f"llm_{role}_thinking"),
                 "server_thinking": getattr(self.settings, f"llm_{role}_thinking"),
+                "thinking_level": row.thinking_level
+                if row
+                else getattr(self.settings, f"llm_{role}_thinking_level"),
+                "server_thinking_level": getattr(self.settings, f"llm_{role}_thinking_level"),
             }
         return {
             "roles": roles,
@@ -91,6 +96,7 @@ class ModelSettingsService:
                     "id": key,
                     "name": value["name"],
                     "thinking_supported": value["provider"] in {"deepseek", "openai"},
+                    "thinking_level_supported": value["provider"] in {"deepseek", "openai"},
                 }
                 for key, value in self.endpoints.items()
             ],
@@ -106,6 +112,8 @@ class ModelSettingsService:
             or any(char in (value.api_key or "") for char in "\r\n")
             or value.thinking
             and self.endpoints[value.endpoint_id]["provider"] not in {"deepseek", "openai"}
+            or value.thinking
+            and not value.thinking_level.strip()
         ):
             raise auth_error(422, "invalid_model_settings")
         async with in_transaction() as connection:
@@ -127,6 +135,7 @@ class ModelSettingsService:
                     "model": value.model.strip(),
                     "encrypted_key": encrypted,
                     "thinking": value.thinking,
+                    "thinking_level": value.thinking_level,
                 },
             )
 
@@ -149,6 +158,7 @@ class ModelSettingsService:
             setattr(active, f"llm_{row.role}_base_url", endpoint["base_url"])
             setattr(active, f"llm_{row.role}_model", row.model)
             setattr(active, f"llm_{row.role}_thinking", row.thinking)
+            setattr(active, f"llm_{row.role}_thinking_level", row.thinking_level)
             try:
                 key = self.cipher.decrypt(row.encrypted_key.encode()).decode()
             except InvalidToken:

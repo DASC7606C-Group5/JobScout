@@ -768,8 +768,8 @@ def test_thinking_uses_provider_parameters_and_preserves_private_tool_reasoning(
         observed.append(body)
         if provider_name == "deepseek":
             assert body["thinking"] == {"type": "enabled"}
+            assert body["reasoning_effort"] == "high"
             assert body["tool_choice"] == "auto"
-            assert "reasoning_effort" not in body
             if len(observed) == 2:
                 assert body["messages"][-2]["reasoning_content"] == "synthetic-private-reasoning"
         else:
@@ -819,3 +819,32 @@ def test_thinking_uses_provider_parameters_and_preserves_private_tool_reasoning(
             assert LangChainModelProvider(settings).thinking is False
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("provider_name", ["deepseek", "openai"])
+@pytest.mark.parametrize("level", ["low", "high", "max"])
+def test_thinking_level_sets_reasoning_effort_for_supported_providers(
+    settings: Settings, provider_name: str, level: str
+) -> None:
+    settings.llm_semantic_provider = provider_name
+    settings.llm_semantic_thinking = True
+    settings.llm_semantic_thinking_level = level
+    observed: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        observed.append(body)
+        assert body["reasoning_effort"] == level
+        if provider_name == "deepseek":
+            assert body["thinking"] == {"type": "enabled"}
+        else:
+            assert "thinking" not in body
+        return reply()
+
+    async def scenario() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = LangChainModelProvider(settings, client=client)
+            assert (await provider.structured(Answer, messages())).count == 2
+
+    asyncio.run(scenario())
+    assert observed

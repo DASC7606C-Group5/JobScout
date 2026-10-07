@@ -86,6 +86,7 @@ class PersonalModel(Model):
     model = fields.CharField(max_length=128)
     encrypted_key = fields.TextField()
     thinking = fields.BooleanField(default=False)
+    thinking_level = fields.CharField(max_length=32, default="high")
 
     class Meta:
         unique_together = (("owner_id", "role"),)

@@ -286,12 +286,14 @@ def test_model_settings_are_encrypted_and_never_inherit_keys_across_services(
             "model": "synthetic-semantic",
             "api_key": "synthetic-private-key",
             "thinking": True,
+            "thinking_level": "low",
         }
         assert client.put("/api/v1/settings/models/semantic", json=config).status_code == 204
         read = client.get("/api/v1/settings/models")
         assert "synthetic-private-key" not in read.text
         assert read.json()["roles"]["semantic"]["key_configured"] is True
         assert read.json()["roles"]["semantic"]["thinking"] is True
+        assert read.json()["roles"]["semantic"]["thinking_level"] == "low"
         assert read.json()["roles"]["decision"]["personal"] is False
         assert (
             client.put(
@@ -356,6 +358,7 @@ def test_operation_snapshots_limits_and_atomic_idempotent_allowance() -> None:
                     model="personal-semantic",
                     api_key="personal-semantic-key",
                     thinking=True,
+                    thinking_level="medium",
                 ),
             )
             await models.write(
@@ -383,6 +386,7 @@ def test_operation_snapshots_limits_and_atomic_idempotent_allowance() -> None:
             await task
             assert routers[-1].semantic.model == "personal-semantic"
             assert routers[-1].semantic.thinking is True
+            assert routers[-1].semantic.thinking_level == "medium"
             assert routers[-1].decision.model == "personal-decision"
             assert (await models.usage("workflow-owner"))["used"] == 1
             await models.clear("workflow-owner", "decision")

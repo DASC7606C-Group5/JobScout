@@ -438,11 +438,18 @@ const vModelInfo = v.object({
   server_key_configured: v.boolean(),
   thinking: v.boolean(),
   server_thinking: v.boolean(),
+  thinking_level: v.string(),
+  server_thinking_level: v.string(),
 })
 export const vModelSettings: v.GenericSchema<ModelSettingsResponse> = v.object({
   roles: v.object({ semantic: vModelInfo, decision: vModelInfo }),
   endpoints: v.array(
-    v.object({ id: v.string(), name: v.string(), thinking_supported: v.boolean() }),
+    v.object({
+      id: v.string(),
+      name: v.string(),
+      thinking_supported: v.boolean(),
+      thinking_level_supported: v.boolean(),
+    }),
   ),
   personal_available: v.boolean(),
 })

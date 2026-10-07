@@ -15,6 +15,7 @@ interface ModelFields {
   model: string
   api_key: string
   thinking: boolean
+  thinking_level: string
 }
 const settingsKey = ['model-settings'] as const
 
@@ -41,11 +42,15 @@ function useModelForm({ role, info, settings }: ModelFormProps) {
       model: info.personal ? info.model : '',
       api_key: '',
       thinking: info.personal && info.thinking,
+      thinking_level: info.personal && info.thinking ? info.thinking_level : 'high',
     },
   })
   const endpoint = useWatch({ control, name: 'endpoint_id' })
+  const thinking = useWatch({ control, name: 'thinking' })
   const thinkingSupported =
     settings.endpoints.find((item) => item.id === endpoint)?.thinking_supported ?? false
+  const thinkingLevelSupported =
+    settings.endpoints.find((item) => item.id === endpoint)?.thinking_level_supported ?? false
   const save = handleSubmit(async (values) => {
     setMessage('')
     setError('')
@@ -56,6 +61,7 @@ function useModelForm({ role, info, settings }: ModelFormProps) {
           endpoint_id: values.endpoint_id,
           model: values.model.trim(),
           thinking: thinkingSupported && values.thinking,
+          thinking_level: values.thinking_level.trim() || 'high',
           ...(values.api_key ? { api_key: values.api_key } : {}),
         })
       reset({ ...values, api_key: '' })
@@ -83,7 +89,9 @@ function useModelForm({ role, info, settings }: ModelFormProps) {
     isSubmitting,
     testing,
     endpoint,
+    thinking,
     thinkingSupported,
+    thinkingLevelSupported,
     save,
     test,
     message,
@@ -121,7 +129,9 @@ function ModelForm({ role, info, settings }: ModelFormProps) {
     isSubmitting,
     testing,
     endpoint,
+    thinking,
     thinkingSupported,
+    thinkingLevelSupported,
     save,
     test,
     message,
@@ -160,7 +170,13 @@ function ModelForm({ role, info, settings }: ModelFormProps) {
               <dt className="text-base-content/70">Server model</dt>
               <dd className="break-all">{info.server_model}</dd>
               <dt className="text-base-content/70">Thinking</dt>
-              <dd>{info.server_thinking ? 'Requested' : 'Not requested'}</dd>
+              <dd>{info.server_thinking ? 'true' : 'false'}</dd>
+              {info.server_provider !== 'openai_compatible' && info.server_thinking && (
+                <>
+                  <dt className="text-base-content/70">Reasoning effort</dt>
+                  <dd>{info.server_thinking_level}</dd>
+                </>
+              )}
             </dl>
           ) : (
             <>
@@ -187,18 +203,20 @@ function ModelForm({ role, info, settings }: ModelFormProps) {
                       className="checkbox checkbox-sm"
                       {...register('thinking')}
                     />
-                    Request thinking
+                    Thinking mode
                   </label>
-                  <p className="mt-2 text-base-content/70">
-                    Requires a model that supports reasoning. This can increase response time and
-                    token use.
-                  </p>
                 </div>
               )}
-              {info.personal && endpoint === info.endpoint_id && (
-                <p className="text-base-content/70">
-                  A key is saved. Leave this field empty to keep it.
-                </p>
+              {thinkingLevelSupported && thinking && (
+                <label className="flex flex-col gap-2">
+                  Reasoning effort
+                  <input
+                    className="input w-full"
+                    maxLength={32}
+                    placeholder="low, medium, high, max, ..."
+                    {...register('thinking_level')}
+                  />
+                </label>
               )}
             </>
           )}
@@ -405,7 +423,7 @@ function SettingsPage() {
             )}
             {(['semantic', 'decision'] as const).map((role) => (
               <ModelForm
-                key={`${role}:${settings.data.roles[role].personal}:${settings.data.roles[role].endpoint_id}:${settings.data.roles[role].model}:${settings.data.roles[role].thinking}`}
+                key={`${role}:${settings.data.roles[role].personal}:${settings.data.roles[role].endpoint_id}:${settings.data.roles[role].model}:${settings.data.roles[role].thinking}:${settings.data.roles[role].thinking_level}`}
                 role={role}
                 info={settings.data.roles[role]}
                 settings={settings.data}

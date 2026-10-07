@@ -745,6 +745,8 @@ export interface components {
       name: string
       /** Thinking Supported */
       thinking_supported: boolean
+      /** Thinking Level Supported */
+      thinking_level_supported: boolean
     }
     /** ModelInfo */
     ModelInfo: {
@@ -766,6 +768,10 @@ export interface components {
       thinking: boolean
       /** Server Thinking */
       server_thinking: boolean
+      /** Thinking Level */
+      thinking_level: string
+      /** Server Thinking Level */
+      server_thinking_level: string
     }
     /** ModelRoles */
     ModelRoles: {
@@ -793,6 +799,11 @@ export interface components {
        * @default false
        */
       thinking?: boolean
+      /**
+       * Thinking Level
+       * @default "high"
+       */
+      thinking_level?: string
     }
     /** PasswordChange */
     PasswordChange: {

@@ -173,14 +173,15 @@ class LangChainModelProvider:
         self.model: str = getattr(settings, f"llm_{role}_model")
         self.provider_name: str = getattr(settings, f"llm_{role}_provider")
         self.thinking: bool = getattr(settings, f"llm_{role}_thinking")
+        self.thinking_level: str = getattr(settings, f"llm_{role}_thinking_level", "high")
         if self.provider_name not in {"deepseek", "openai", "openai_compatible"} or (
             self.thinking and self.provider_name == "openai_compatible"
         ):
             raise ModelServiceError("model_configuration")
 
     @property
-    def cache_identity(self) -> tuple[str, str, str, bool]:
-        return (self.provider_name, self._base_url, self.model, self.thinking)
+    def cache_identity(self) -> tuple[str, str, str, bool, str]:
+        return (self.provider_name, self._base_url, self.model, self.thinking, self.thinking_level)
 
     async def aclose(self) -> None:
         """Models and owned clients close per call; injected clients belong to their caller."""
@@ -238,11 +239,13 @@ class LangChainModelProvider:
                 max_tokens=self._max_tokens,
                 extra_body={"thinking": {"type": "enabled" if self.thinking else "disabled"}},
             )
+            if self.thinking:
+                parameters["reasoning_effort"] = self.thinking_level
             return DeepSeekChatModel(**parameters)
         if self.provider_name == "openai":
             parameters["max_tokens"] = self._max_tokens
             if self.thinking:
-                parameters["reasoning_effort"] = "high"
+                parameters["reasoning_effort"] = self.thinking_level
         else:
             parameters["extra_body"] = {"max_tokens": self._max_tokens}
         return OpenAIChatModel(**parameters)
@@ -487,7 +490,7 @@ class ModelRouter:
         self.decision = decision
 
     @property
-    def cache_identity(self) -> tuple[str, str, str, bool]:
+    def cache_identity(self) -> tuple[str, str, str, bool, str]:
         return self.semantic.cache_identity
 
     @property
