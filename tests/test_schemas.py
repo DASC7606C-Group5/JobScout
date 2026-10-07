@@ -70,17 +70,33 @@ def test_client_cannot_supply_catalog_identities_or_native_codes() -> None:
 
 
 @pytest.mark.parametrize(
-    ("model", "payload"),
+    ("model", "payload", "required_fields"),
     [
-        (SearchRequest, {}),
-        (JobPosting, {"job_id": "job-1"}),
-        (WorkflowError, {"code": "error"}),
+        (SearchRequest, {}, {"target_direction"}),
+        (
+            JobPosting,
+            {"job_id": "job-1"},
+            {
+                "source",
+                "source_url",
+                "title",
+                "company",
+                "location",
+                "target_direction",
+                "fetched_at",
+            },
+        ),
+        (WorkflowError, {"code": "error"}, {"message", "stage"}),
     ],
 )
-def test_required_fields_are_enforced(model: type[BaseModel], payload: dict[str, object]) -> None:
+def test_required_fields_are_enforced(
+    model: type[BaseModel], payload: dict[str, object], required_fields: set[str]
+) -> None:
     with pytest.raises(ValidationError) as error:
         model.model_validate(payload)
-    assert all(item["type"] == "missing" for item in error.value.errors())
+    assert {(item["loc"], item["type"]) for item in error.value.errors()} == {
+        ((field,), "missing") for field in required_fields
+    }
 
 
 @pytest.mark.parametrize(

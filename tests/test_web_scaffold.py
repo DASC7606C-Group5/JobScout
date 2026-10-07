@@ -56,14 +56,7 @@ def settled(client: BaseTestClient, session_id: str) -> dict[str, Any]:
     raise AssertionError("Session did not settle")
 
 
-def test_health_endpoint() -> None:
-    with TestClient(create_app(graph=fixture_graph())) as client:
-        response = client.get("/api/v1/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
-
-
-def test_create_and_get_session() -> None:
+def test_session_creation_is_idempotent_then_can_resume_and_delete() -> None:
     with TestClient(create_app(graph=fixture_graph())) as client:
         created = client.post("/api/v1/sessions", json=SESSION_INPUT)
         assert created.status_code == 202
@@ -71,15 +64,10 @@ def test_create_and_get_session() -> None:
         session_id = created.json()["session_id"]
         fetched = settled(client, session_id)
         repeated = client.post("/api/v1/sessions", json=SESSION_INPUT)
+        assert repeated.status_code == 202
         assert repeated.json()["session_id"] == session_id
         assert fetched["outcome"] == "paused"
         assert fetched["revision"] == 1
-
-
-def test_session_can_pause_resume_and_delete() -> None:
-    with TestClient(create_app(graph=fixture_graph())) as client:
-        session_id = client.post("/api/v1/sessions", json=SESSION_INPUT).json()["session_id"]
-        fetched = settled(client, session_id)
         resumed = client.post(
             f"/api/v1/sessions/{session_id}/resume",
             json={
@@ -89,6 +77,7 @@ def test_session_can_pause_resume_and_delete() -> None:
             },
         )
         assert resumed.status_code == 202
+        assert resumed.json()["session_id"] == session_id
         assert settled(client, session_id)["outcome"] == "completed"
         assert client.delete(f"/api/v1/sessions/{session_id}").status_code == 204
         assert client.get(f"/api/v1/sessions/{session_id}").status_code == 404
@@ -97,7 +86,7 @@ def test_session_can_pause_resume_and_delete() -> None:
 def test_resume_rejects_stale_revision() -> None:
     with TestClient(create_app(graph=fixture_graph())) as client:
         session_id = client.post("/api/v1/sessions", json=SESSION_INPUT).json()["session_id"]
-        settled(client, session_id)
+        before = settled(client, session_id)
         response = client.post(
             f"/api/v1/sessions/{session_id}/resume",
             json={
@@ -107,6 +96,8 @@ def test_resume_rejects_stale_revision() -> None:
             },
         )
         assert response.status_code == 409
+        assert response.json()["detail"]["code"] == "search_changed"
+        assert client.get(f"/api/v1/sessions/{session_id}").json() == before
 
 
 def test_create_session_rejects_non_contract_fields() -> None:

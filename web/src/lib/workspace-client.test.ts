@@ -119,10 +119,11 @@ describe('persistent shared workspace API', () => {
   })
 })
 
-test('saved snapshots reject duplicate assessment axes and numeric unknown scores', async () => {
+test('saved snapshots reject missing or duplicate axes and numeric unknown scores', async () => {
   const score = createMatchScoreFixture()
   const first = score.dimensions[0]!
   const invalidScores = [
+    { ...score, dimensions: score.dimensions.slice(1) },
     { ...score, dimensions: score.dimensions.map(() => first) },
     {
       ...score,

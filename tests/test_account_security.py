@@ -11,14 +11,13 @@ import pytest
 from cryptography.fernet import Fernet
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from pydantic import ValidationError
 from replay.app import create_replay_app
 from tortoise import Tortoise
 
 from jobscout.config import Settings, get_settings
 from jobscout.database import tortoise_config
 from jobscout.manage import backup_database
-from jobscout.services.auth_service import PASSWORD_HASHER
+from jobscout.services.auth_service import PASSWORD_HASHER, token_hash
 from jobscout.services.identity import current_user_id
 from jobscout.services.llm_service import LangChainModelProvider
 from jobscout.services.model_settings_service import ModelSettingsService
@@ -44,6 +43,9 @@ def register(client: TestClient, username: str = "student") -> dict[str, Any]:
 
 def test_private_routes_require_login_and_writes_require_origin_and_csrf() -> None:
     with TestClient(create_replay_app()) as client:
+        health = client.get("/api/v1/health")
+        assert health.status_code == 200
+        assert health.json() == {"status": "ok"}
         for method, path in [
             ("GET", "/api/v1/sessions"),
             ("GET", "/api/v1/sessions/private/events"),
@@ -98,12 +100,52 @@ def test_registration_hashes_password_and_normalizes_username(tmp_path: Path) ->
         hashed = connection.execute('SELECT password_hash FROM "user"').fetchone()[0]
         assert hashed.startswith("$argon2id$v=19$m=65536,t=3,p=1$")
         assert PASSWORD_HASHER.verify(hashed, "synthetic-password-123")
-        assert (
-            connection.execute(
-                "SELECT token_hash FROM loginsession WHERE token_hash = ?", [cookie]
-            ).fetchall()
-            == []
+        stored = connection.execute(
+            "SELECT token_hash, owner_id, csrf_token FROM loginsession WHERE token_hash = ?",
+            [token_hash(cookie)],
+        ).fetchone()
+        assert stored == (token_hash(cookie), account["user_id"], account["csrf_token"])
+
+
+@pytest.mark.parametrize("rejected_header", ["Origin", "X-CSRF-Token"])
+def test_cross_origin_or_other_session_csrf_cannot_modify_draft(rejected_header: str) -> None:
+    application = create_replay_app()
+    with TestClient(application) as first:
+        register(first)
+        initial = {"request_id": "initial", "expected_revision": 0, "data": RAW_DRAFT}
+        assert first.put("/api/v1/workspace/draft", json=initial).status_code == 200
+        before = first.get("/api/v1/workspace/draft").json()
+        second = TestClient(application)
+        second.portal = first.portal
+        second.headers["Origin"] = get_settings().public_origin
+        login = second.post(
+            "/api/v1/auth/login",
+            json={"username": "student", "password": "synthetic-password-123"},
         )
+        assert login.status_code == 200
+        second.headers["X-CSRF-Token"] = login.json()["csrf_token"]
+        updates = {
+            "request_id": "protected-write",
+            "expected_revision": before["revision"],
+            "data": {**RAW_DRAFT, "description": "Changed by the second login session"},
+        }
+        response = second.put(
+            "/api/v1/workspace/draft",
+            json=updates,
+            headers={
+                rejected_header: "https://attacker.example"
+                if rejected_header == "Origin"
+                else first.headers["X-CSRF-Token"]
+            },
+        )
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == (
+            "invalid_origin" if rejected_header == "Origin" else "invalid_csrf_token"
+        )
+        assert first.get("/api/v1/workspace/draft").json() == before
+        accepted = second.put("/api/v1/workspace/draft", json=updates)
+        assert accepted.status_code == 200
+        assert accepted.json()["data"] == updates["data"]
 
 
 def test_login_failure_is_uniform_and_throttled() -> None:
@@ -464,17 +506,7 @@ def test_provider_sends_only_supported_service_parameters(provider_name: str) ->
     asyncio.run(scenario())
 
 
-def test_production_requires_secrets_and_backup_preserves_rows(tmp_path: Path) -> None:
-    with pytest.raises(ValidationError) as invalid:
-        Settings.model_validate(
-            {
-                "production": True,
-                "credentials_key": "",
-                "cookie_secure": False,
-                "llm_semantic_api_key": "synthetic-startup-secret",
-            }
-        )
-    assert "synthetic-startup-secret" not in str(invalid.value)
+def test_backup_preserves_rows_and_refuses_to_overwrite(tmp_path: Path) -> None:
     source = tmp_path / "original.sqlite3"
     destination = tmp_path / "backup.sqlite3"
     with sqlite3.connect(source) as connection:
@@ -485,8 +517,14 @@ def test_production_requires_secrets_and_backup_preserves_rows(tmp_path: Path) -
         assert connection.execute("SELECT id FROM private_data").fetchall() == [
             ("synthetic-account",)
         ]
+    with sqlite3.connect(source) as connection:
+        connection.execute("INSERT INTO private_data VALUES ('after-backup')")
     with pytest.raises(ValueError):
         backup_database(source, destination)
+    with sqlite3.connect(destination) as connection:
+        assert connection.execute("SELECT id FROM private_data").fetchall() == [
+            ("synthetic-account",)
+        ]
 
 
 def test_site_capacity_and_allowance_rejection_roll_back_acceptance() -> None:

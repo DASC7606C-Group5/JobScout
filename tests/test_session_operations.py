@@ -177,6 +177,7 @@ def test_stale_and_concurrent_operations_are_rejected() -> None:
                     ),
                 )
             assert error.value.status == 409
+            assert error.value.code == "operation_in_progress"
             await graph.started.wait()
             graph.release.set()
             await asyncio.sleep(0)
@@ -192,6 +193,7 @@ def test_stale_and_concurrent_operations_are_rejected() -> None:
                     ),
                 )
             assert error.value.status == 409
+            assert error.value.code == "search_changed"
             assert (await manager.get(session.session_id)).revision == completed.revision
         finally:
             await close_manager(manager)
@@ -299,13 +301,16 @@ def test_failed_edit_persistence_keeps_the_active_run(
                 action="edit_conditions",
             )
 
+            failure = OSError("Storage unavailable")
+
             async def fail_persist(current: _Session, **kwargs: Any) -> None:
-                raise OSError("Storage unavailable")
+                raise failure
 
             with monkeypatch.context() as patch:
                 patch.setattr(manager, "_persist", fail_persist)
-                with pytest.raises(OSError, match="Storage unavailable"):
+                with pytest.raises(OSError) as raised:
                     await manager.resume(created.session_id, payload)
+                assert raised.value is failure
             assert await manager.get(created.session_id) == before
             assert record.task is old_task
             assert old_task is not None and not old_task.done()

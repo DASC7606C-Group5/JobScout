@@ -25,9 +25,10 @@ def test_all_clients_close_on_lifecycle_failure(
             SessionService, failure.removeprefix("session_"), AsyncMock(side_effect=error)
         )
     application = create_app(provider=provider, search_service=search, graph=ControlledGraph())
-    with pytest.raises(RuntimeError, match="synthetic lifecycle failure"):
+    with pytest.raises(RuntimeError) as raised:
         with TestClient(application):
             pass
+    assert raised.value is error
     provider.aclose.assert_awaited_once()
     search.aclose.assert_awaited_once()
 
@@ -35,13 +36,15 @@ def test_all_clients_close_on_lifecycle_failure(
 def test_graph_startup_failure_closes_supplied_clients(monkeypatch: pytest.MonkeyPatch) -> None:
     provider = SimpleNamespace(aclose=AsyncMock())
     search = SimpleNamespace(aclose=AsyncMock())
+    error = RuntimeError("synthetic graph failure")
 
     def unavailable_graph(**_kwargs: object) -> None:
-        raise RuntimeError("synthetic graph failure")
+        raise error
 
     monkeypatch.setattr("jobscout.graph.live.build_live_graph", unavailable_graph)
-    with pytest.raises(RuntimeError, match="synthetic graph failure"):
+    with pytest.raises(RuntimeError) as raised:
         with TestClient(create_app(provider=provider, search_service=search)):
             pass
+    assert raised.value is error
     provider.aclose.assert_awaited_once()
     search.aclose.assert_awaited_once()

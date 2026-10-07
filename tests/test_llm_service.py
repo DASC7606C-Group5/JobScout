@@ -12,7 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from jobscout.config import Settings
 from jobscout.services.llm_service import (
     LangChainModelProvider,
-    LLMProvider,
     ModelRole,
     ModelRouter,
     ModelServiceError,
@@ -25,10 +24,6 @@ class Answer(BaseModel):
 
     name: str
     count: int = Field(ge=0)
-
-
-class AlternateAnswer(BaseModel):
-    enabled: bool
 
 
 @pytest.fixture
@@ -109,28 +104,6 @@ def test_json_wire_format_typed_response_and_borrowed_client(settings: Settings)
     assert "JSON" in body["messages"][0]["content"]
     assert body["messages"][1] == messages()[0]
     assert all(0 < value <= 2 for value in request.extensions["timeout"].values())
-
-
-def test_protocol_accepts_generic_fake_without_configuration() -> None:
-    class FakeProvider:
-        async def structured[SchemaT: BaseModel](
-            self,
-            schema: type[SchemaT],
-            messages: list[dict[str, str]],
-            *,
-            deadline: float | None = None,
-        ) -> SchemaT:
-            assert messages
-            assert deadline == 123.0
-            return schema.model_validate_json('{"enabled":true}')
-
-    async def scenario() -> None:
-        fake: LLMProvider = FakeProvider()
-        result = await fake.structured(AlternateAnswer, messages(), deadline=123.0)
-        assert_type(result, AlternateAnswer)
-        assert result.enabled
-
-    asyncio.run(scenario())
 
 
 @pytest.mark.parametrize(
@@ -473,22 +446,6 @@ def test_missing_or_unsafe_configuration_fails_before_io(
         assert "secret" not in str(caught.value)
         assert provider.usage.requests == 0
         assert provider.usage.failed_calls == 1
-
-    asyncio.run(scenario())
-
-
-def test_factory_missing_key_is_lazy_and_close_is_idempotent(settings: Settings) -> None:
-    settings.llm_semantic_api_key = ""
-    provider = get_llm_provider(settings)
-    assert isinstance(provider, ModelRouter)
-
-    async def scenario() -> None:
-        await provider.aclose()
-        await provider.aclose()
-        with pytest.raises(ModelServiceError) as caught:
-            await provider.structured(Answer, messages())
-        assert caught.value.code == "model_configuration"
-        assert provider.usage.requests == 0
 
     asyncio.run(scenario())
 

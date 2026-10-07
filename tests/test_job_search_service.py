@@ -346,14 +346,32 @@ def test_feed_retry_fetches_again_after_a_transient_failure(code: str) -> None:
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("bound", [{"result_limit": 1}, {"candidate_limit": 1}, {"max_pages": 1}])
-def test_bounds_are_reported(bound: dict[str, int]) -> None:
-    result = asyncio.run(
-        service(
-            Pages(page("arbeitnow", [row(), row()], next_page="next")), "arbeitnow", **bound
-        ).search_many_async([request(sources=["arbeitnow"])])
+@pytest.mark.parametrize(
+    ("bound", "expected_ids"),
+    [
+        pytest.param({"result_limit": 1, "max_pages": 2}, ["first"], id="result-limit"),
+        pytest.param({"candidate_limit": 1, "max_pages": 2}, ["first"], id="candidate-limit"),
+        pytest.param({"max_pages": 1}, ["first", "second"], id="page-limit"),
+    ],
+)
+def test_bounds_stop_retrieval_and_report_incomplete_results(
+    bound: dict[str, int], expected_ids: list[str]
+) -> None:
+    client = Pages(
+        page("arbeitnow", [row(slug="first"), row(slug="second")], next_page="next"),
+        page("arbeitnow", [row(slug="third")]),
     )
-    assert any("limit" in w for w in result.warnings)
+    result = asyncio.run(
+        service(client, "arbeitnow", **bound).search_many_async([request(sources=["arbeitnow"])])
+    )
+    assert [job.source_job_id for job in result.raw_jobs] == expected_ids
+    assert result.outcomes[0].candidate_count == len(expected_ids)
+    assert result.outcomes[0].returned_count == len(expected_ids)
+    assert [(notice.code, notice.source) for notice in result.notices] == [
+        ("coverage_limited", "arbeitnow")
+    ]
+    assert not result.errors
+    assert client.urls == ["https://www.arbeitnow.com/api/job-board-api?page=1"]
 
 
 async def no_wait(seconds: float) -> None:
@@ -410,47 +428,26 @@ def test_transport_invalid_json_and_size(body: bytes) -> None:
     assert exc.value.code == "SEARCH_RESPONSE_FORMAT"
 
 
-def test_disk_cache_preserves_actual_fetch_time(tmp_path: Path) -> None:
-    count = 0
-
-    async def respond(request: httpx.Request) -> httpx.Response:
-        nonlocal count
-        count += 1
-        return httpx.Response(200, json={"jobs": []})
-
-    async def scenario() -> None:
-        original = await HttpJsonClient(
-            cache_dir=tmp_path, transport=httpx.MockTransport(respond)
-        ).get("https://example.invalid")
-        cached = await HttpJsonClient(
-            cache_dir=tmp_path, transport=httpx.MockTransport(respond)
-        ).get("https://example.invalid")
-        assert count == 1 and cached.cached
-        assert cached.fetched_at == original.fetched_at
-
-    asyncio.run(scenario())
-
-
 def test_expired_cache_is_not_silently_used_on_failure(tmp_path: Path) -> None:
-    calls = 0
+    requested_urls: list[str] = []
+    url = "https://example.invalid/jobs"
 
     async def respond(request: httpx.Request) -> httpx.Response:
-        nonlocal calls
-        calls += 1
-        if calls > 1:
+        requested_urls.append(str(request.url))
+        if len(requested_urls) > 1:
             raise httpx.ReadTimeout("private")
-        return httpx.Response(200, json={"jobs": []})
+        return httpx.Response(200, json={"jobs": [{"id": "stale"}]})
 
     async def scenario() -> None:
-        await HttpJsonClient(cache_dir=tmp_path, transport=httpx.MockTransport(respond)).get(
-            "https://example.invalid"
-        )
-        with pytest.raises(RetrievalFailure):
+        await HttpJsonClient(cache_dir=tmp_path, transport=httpx.MockTransport(respond)).get(url)
+        with pytest.raises(RetrievalFailure) as error:
             await HttpJsonClient(
                 cache_dir=tmp_path,
                 cache_seconds=0,
                 retries=0,
                 transport=httpx.MockTransport(respond),
-            ).get("https://example.invalid")
+            ).get(url)
+        assert error.value.code == "SEARCH_TIMEOUT"
+        assert requested_urls == [url, url]
 
     asyncio.run(scenario())

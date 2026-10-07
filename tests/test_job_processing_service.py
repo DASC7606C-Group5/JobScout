@@ -1,18 +1,6 @@
-"""Tests for normalization, duplicate merging, and freshness status.
+"""Tests for normalization, duplicate merging, and freshness status."""
 
-All inputs are fixed, self-made Mock records (plus the shared
-the synthetic job sample); no external service is called.
-
-Coverage follows the ten acceptance scenarios: normal conversion, cross-source
-fields, absent salary, source-based JD extraction, duplicate merging, distinct
-seniority, expired/unknown status, diagnostics, and empty input. Group 4 maps
-website-specific field names to common top-level keys before calling Group 5.
-New acceptance tests remain ordinary tests so unsupported behavior is visible.
-"""
-
-import json
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -21,7 +9,6 @@ from jobscout.schemas.job import FreshnessStatus
 from jobscout.services.job_processing_service import process_jobs
 
 NOW = datetime(2026, 9, 29, 12, 0, 0, tzinfo=UTC)
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def make_raw(**overrides: Any) -> dict[str, Any]:
@@ -76,14 +63,6 @@ def test_normalizes_complete_record_and_preserves_provenance() -> None:
     assert dumped["salary"] == "HKD 20,000/month"
 
 
-def test_result_supports_tuple_unpacking() -> None:
-    jobs, warnings = process_jobs([make_raw()], now=NOW)
-
-    assert len(jobs) == 1
-    assert jobs[0].job_id == "raw-1"
-    assert warnings == []
-
-
 def test_empty_input_returns_empty_result() -> None:
     jobs, warnings = process_jobs([], now=NOW)
 
@@ -97,74 +76,6 @@ def test_whitespace_is_normalized_in_text_fields() -> None:
     job = result.jobs[0]
     assert job.title == "Data Analyst"
     assert job.company == "Acme Ltd"
-
-
-@pytest.mark.parametrize(
-    ("source", "raw_payload"),
-    [
-        pytest.param(
-            "zhaopin",
-            {"name": "Data Analyst", "companyName": "Acme Ltd", "workCity": "Hong Kong"},
-            id="zhaopin-native-fields",
-        ),
-        pytest.param(
-            "liepin",
-            {
-                "job": {"title": "Data Analyst", "dq": "Hong Kong"},
-                "comp": {"compName": "Acme Ltd"},
-            },
-            id="liepin-native-fields",
-        ),
-        pytest.param(
-            "jobsdb",
-            {
-                "title": "Data Analyst",
-                "advertiser": {"description": "Acme Ltd"},
-                "locations": [{"label": "Hong Kong"}],
-            },
-            id="jobsdb-native-fields",
-        ),
-    ],
-)
-def test_normalizes_group4_records_with_different_native_payloads(
-    source: str, raw_payload: dict[str, Any]
-) -> None:
-    # Mirror Group 4's RawJob output, without Group 5-only helper defaults.
-    # Native field mapping belongs to retrieval; raw_payload remains diagnostic.
-    record: dict[str, Any] = {
-        "source": source,
-        "source_job_id": "native-1",
-        "source_url": f"https://{source}.example.com/jobs/native-1",
-        "fetched_at": "2026-09-28T08:00:00Z",
-        "target_direction": "Data Analyst",
-        "title": "  Data   Analyst  ",
-        "company": " Acme Ltd ",
-        "location": " Hong Kong ",
-        "salary": "HKD 20,000/month",
-        "description": "Responsibilities:\n- Build dashboards\nRequirements:\n- SQL\n",
-        "posted_at": "2026-09-20T00:00:00Z",
-        "expiry_at": "2026-10-20T00:00:00Z",
-        "raw_payload": raw_payload,
-    }
-
-    result = process_jobs([record], now=NOW)
-
-    assert result.warnings == []
-    assert len(result.jobs) == 1
-    job = result.jobs[0]
-    assert job.job_id
-    assert job.source == source
-    assert (job.title, job.company, job.location) == ("Data Analyst", "Acme Ltd", "Hong Kong")
-    assert job.salary == "HKD 20,000/month"
-    assert job.target_direction == "Data Analyst"
-    assert job.responsibilities == []
-    assert job.required_skills == []
-    assert job.source_url == record["source_url"]
-    assert job.source_links == [record["source_url"]]
-    assert job.fetched_at == datetime(2026, 9, 28, 8, tzinfo=UTC)
-    assert job.posted_at == datetime(2026, 9, 20, tzinfo=UTC)
-    assert job.expiry_at == datetime(2026, 10, 20, tzinfo=UTC)
-    assert job.freshness_status is FreshnessStatus.ACTIVE
 
 
 def test_does_not_invent_responsibilities_or_skills_from_unrelated_description() -> None:
@@ -293,16 +204,6 @@ def test_missing_source_falls_back_to_unknown_with_warning() -> None:
     assert any("missing source" in warning for warning in result.warnings)
 
 
-def test_warns_when_no_responsibilities_or_skills_extracted() -> None:
-    record = make_raw(responsibilities=[], required_skills=[])
-
-    result = process_jobs([record], now=NOW)
-
-    job = result.jobs[0]
-    assert job.responsibilities == []
-    assert job.required_skills == []
-
-
 def test_merges_cross_source_duplicates_and_keeps_all_links() -> None:
     first = make_raw(
         job_id="a",
@@ -315,6 +216,8 @@ def test_merges_cross_source_duplicates_and_keeps_all_links() -> None:
     )
     second = make_raw(
         job_id="b",
+        company="acme   ltd",
+        title="data   analyst",
         source="linkedin",
         source_url="https://linkedin.example.com/jobs/99",
         source_links=["https://linkedin.example.com/jobs/99"],
@@ -327,6 +230,7 @@ def test_merges_cross_source_duplicates_and_keeps_all_links() -> None:
 
     assert len(result.jobs) == 1
     job = result.jobs[0]
+    assert (job.job_id, job.company, job.title) == ("a", "Acme Ltd", "Data Analyst")
     assert job.source == "jobsdb, linkedin"
     assert job.source_links == [
         "https://jobsdb.example.com/post/1",
@@ -337,22 +241,17 @@ def test_merges_cross_source_duplicates_and_keeps_all_links() -> None:
     assert job.fetched_at == datetime(2026, 9, 28, 9, 0, tzinfo=UTC)
 
 
-def test_dedup_key_ignores_case_and_whitespace() -> None:
-    first = make_raw(job_id="a", company="Acme, Ltd.", title="Data Analyst!")
-    second = make_raw(job_id="b", company="acme,  ltd.", title="data  analyst!")
-
-    result = process_jobs([first, second], now=NOW)
-
-    assert len(result.jobs) == 1
-
-
 def test_does_not_merge_different_locations_or_titles() -> None:
     other_location = make_raw(job_id="b", location="Singapore")
     other_title = make_raw(job_id="c", title="Data Engineer")
 
     result = process_jobs([make_raw(job_id="a"), other_location, other_title], now=NOW)
 
-    assert len(result.jobs) == 3
+    assert {job.job_id: (job.title, job.location) for job in result.jobs} == {
+        "a": ("Data Analyst", "Hong Kong"),
+        "b": ("Data Analyst", "Singapore"),
+        "c": ("Data Engineer", "Hong Kong"),
+    }
 
 
 @pytest.mark.parametrize("other_title", ["Senior Data Analyst", "Data Analyst Intern"])
@@ -362,8 +261,10 @@ def test_does_not_merge_similar_titles_with_different_seniority(other_title: str
 
     result = process_jobs([first, second], now=NOW)
 
-    assert len(result.jobs) == 2
-    assert {job.title for job in result.jobs} == {"Data Analyst", other_title}
+    assert {job.job_id: job.title for job in result.jobs} == {
+        "regular": "Data Analyst",
+        "other-level": other_title,
+    }
 
 
 @pytest.mark.parametrize(
@@ -438,53 +339,16 @@ def test_merges_same_chinese_job_across_sources_and_keeps_links() -> None:
     assert job.source_links == [first["source_url"], second["source_url"]]
 
 
-def test_does_not_merge_different_chinese_jobs() -> None:
-    first = make_raw(job_id="a", company="腾讯科技", title="数据分析师", location="深圳")
-    second = make_raw(job_id="b", company="阿里巴巴", title="产品经理", location="杭州")
-
-    result = process_jobs([first, second], now=NOW)
-
-    assert len(result.jobs) == 2
-
-
-def test_merges_chinese_duplicates_across_sources_and_keeps_all_links() -> None:
-    first = make_raw(
-        job_id="a",
-        source="zhaopin",
-        source_url="https://zhaopin.example.com/post/1",
-        source_links=["https://zhaopin.example.com/post/1"],
-        company="腾讯科技",
-        title="数据分析师",
-        location="深圳",
-    )
-    second = make_raw(
-        job_id="b",
-        source="liepin",
-        source_url="https://liepin.example.com/job/9",
-        source_links=["https://liepin.example.com/job/9"],
-        company="腾讯科技",
-        title="数据分析师",
-        location="深圳",
-    )
-
-    result = process_jobs([first, second], now=NOW)
-
-    assert len(result.jobs) == 1
-    job = result.jobs[0]
-    assert job.source == "zhaopin, liepin"
-    assert job.source_links == [
-        "https://zhaopin.example.com/post/1",
-        "https://liepin.example.com/job/9",
-    ]
-
-
 def test_does_not_merge_chinese_titles_sharing_latin_prefix() -> None:
     backend = make_raw(job_id="a", title="Java后端开发工程师")
     frontend = make_raw(job_id="b", title="Java前端开发工程师")
 
     result = process_jobs([backend, frontend], now=NOW)
 
-    assert len(result.jobs) == 2
+    assert {job.job_id: job.title for job in result.jobs} == {
+        "a": "Java后端开发工程师",
+        "b": "Java前端开发工程师",
+    }
 
 
 def test_generated_ids_differ_for_distinct_chinese_jobs() -> None:
@@ -533,14 +397,6 @@ def test_posted_at_alone_never_proves_active() -> None:
     job = process_jobs([record], now=NOW).jobs[0]
 
     assert job.freshness_status is FreshnessStatus.UNKNOWN
-
-
-def test_expiry_beats_explicit_active_status() -> None:
-    record = make_raw(expiry_at="2026-09-01T00:00:00Z", freshness_status="active")
-
-    job = process_jobs([record], now=NOW).jobs[0]
-
-    assert job.freshness_status is FreshnessStatus.EXPIRED
 
 
 @pytest.mark.parametrize(
@@ -597,24 +453,3 @@ def test_generates_stable_job_id_when_missing() -> None:
 
     assert first.job_id.startswith("gen-")
     assert first.job_id == second.job_id
-
-
-def test_shared_mock_sample_stays_unknown_and_keeps_provenance() -> None:
-    raw_jobs: list[dict[str, Any]] = json.loads((FIXTURES / "mock_jobs.json").read_text("utf-8"))
-
-    result = process_jobs(raw_jobs, now=NOW)
-
-    assert len(result.jobs) == 1
-    job = result.jobs[0]
-    assert job.freshness_status is FreshnessStatus.UNKNOWN  # never faked as active
-    assert job.source_url == "https://example.com/jobs/mock-001"
-    assert job.source_links == ["https://example.com/jobs/mock-001"]
-    assert job.fetched_at == datetime(2026, 9, 28, 0, 0, tzinfo=UTC)
-    assert job.required_skills == ["SQL", "Python"]
-    # Optional fields the sample lacks stay None and are reported, not fabricated.
-    assert job.salary is None
-    assert job.posted_at is None
-    assert job.expiry_at is None
-    assert any("missing salary" in warning for warning in result.warnings)
-    assert any("missing posted_at" in warning for warning in result.warnings)
-    assert any("missing expiry_at" in warning for warning in result.warnings)

@@ -230,6 +230,13 @@ describe('Session HTTP API', () => {
         recommendation: { ...recommendation, jobs: [{ ...item, analysis_status: 'fallback' }] },
       },
       ...[
+        { code: 'private_provider_message', stage: 'matching' },
+        { code: 'timeout', stage: 'private_stage' },
+      ].map((review_issue) => ({
+        ...current,
+        recommendation: { ...recommendation, jobs: [{ ...item, review_issue }] },
+      })),
+      ...[
         { ...reason, job_source_quotes: undefined },
         { ...reason, profile_source_quotes: undefined },
         { ...reason, level: 'unsupported' },

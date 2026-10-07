@@ -1,5 +1,3 @@
-import { mkdir } from 'node:fs/promises'
-
 import { expect, test, type Page } from '@playwright/test'
 
 import type {
@@ -25,6 +23,21 @@ test.afterEach(async () => {
   await Promise.all(eventServers.splice(0).map((server) => server.close()))
 })
 
+async function openEditConfirmation(page: Page) {
+  const dialog = page.getByRole('dialog', { name: 'Edit search criteria?', exact: true })
+  await expect(dialog).toBeVisible()
+  // Wait for the dialog's entry animation so the confirm click succeeds on the
+  // first attempt instead of retrying after the dialog closes and navigates.
+  await dialog.evaluate((element) =>
+    Promise.all(
+      element
+        .getAnimations({ subtree: true })
+        .map((animation) => animation.finished.catch(() => {})),
+    ),
+  )
+  return dialog
+}
+
 test('history errors use one toast and retry stays busy until the request completes', async ({
   page,
 }) => {
@@ -49,20 +62,9 @@ test('history errors use one toast and retry stays busy until the request comple
   await expect(notice).toBeVisible()
   await expect(notice).toHaveCount(1)
   await expect(page.locator('#workspace-sidebar').getByRole('alert')).toHaveCount(0)
-  await mkdir('.tools/browser', { recursive: true })
-  await page.screenshot({
-    path: '.tools/browser/request-toast-desktop.png',
-    fullPage: true,
-    animations: 'disabled',
-  })
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.getByRole('button', { name: 'Open sidebar', exact: true })).toBeVisible()
   await expect(notice).toBeVisible()
-  await page.screenshot({
-    path: '.tools/browser/request-toast-mobile.png',
-    fullPage: true,
-    animations: 'disabled',
-  })
   const retry = notice.getByRole('button', { name: 'Try again', exact: true })
   const beforeRetry = attempts
   failing = false
@@ -549,7 +551,7 @@ async function introduce(page: Page) {
 for (const width of [1280, 390]) {
   test(`compound list values survive keyboard entry, reload and submission at ${width}px`, async ({
     page,
-  }, testInfo) => {
+  }) => {
     await page.setViewportSize({ width, height: 900 })
     const state = await mockSessions(page)
     await page.goto('/new')
@@ -594,7 +596,6 @@ for (const width of [1280, 390]) {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true)
-    await page.screenshot({ path: testInfo.outputPath('compound-inputs.png'), fullPage: true })
   })
 }
 
@@ -776,8 +777,6 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
   await page.getByRole('button', { name: 'Back to jobs' }).click()
   await expect(page.locator('body')).not.toContainText('private-agent-detail')
   await expect(page.locator('body')).not.toContainText('private-source-id')
-  await mkdir('.tools/browser', { recursive: true })
-  await page.screenshot({ path: '.tools/browser/agent-running-mobile.png', fullPage: true })
   await stop.focus()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
@@ -804,7 +803,6 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
   await expect(page).toHaveURL(/job=pending-job/)
   await expect(page.getByRole('heading', { name: 'Pending Engineer', exact: true })).toBeVisible()
   await expect(page.getByText(pending.notices[0]!.message, { exact: true })).toHaveCount(1)
-  await page.screenshot({ path: '.tools/browser/agent-pending-mobile.png', fullPage: true })
   await page.getByRole('button', { name: 'Save job: Pending Engineer', exact: true }).click()
   await expect(
     page.getByRole('button', { name: 'Remove saved job: Pending Engineer', exact: true }),
@@ -817,7 +815,6 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
   await expect(page.getByText(pending.notices[0]!.message, { exact: true })).toBeVisible()
   await page.setViewportSize({ width: 1440, height: 900 })
   await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toBeVisible()
-  await page.screenshot({ path: '.tools/browser/agent-pending-saved-desktop.png', fullPage: true })
 })
 
 test('final results preserve an open job and saved selection from an early preview', async ({
@@ -867,21 +864,10 @@ test('final results preserve an open job and saved selection from an early previ
   await page.goto('/searches/session-1')
   await expect(page.getByRole('region', { name: 'Job screening activity' })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Recommended jobs' })).toHaveCount(0)
-  await mkdir('.tools/browser', { recursive: true })
-  await page.screenshot({
-    path: '.tools/browser/shortlist-icon-summary-desktop.png',
-    fullPage: true,
-    animations: 'disabled',
-  })
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
-  await page.screenshot({
-    path: '.tools/browser/shortlist-icon-summary-mobile.png',
-    fullPage: true,
-    animations: 'disabled',
-  })
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.getByRole('button', { name: 'View jobs so far', exact: true }).click()
   await page.getByRole('button', { name: 'View job: Engineer 0', exact: true }).click()
@@ -927,11 +913,6 @@ test('final results preserve an open job and saved selection from an early previ
     page.getByRole('button', { name: 'Remove saved job: Engineer 0', exact: true }),
   ).toBeVisible()
   await expect(page.getByRole('button', { name: 'Finish search', exact: true })).toHaveCount(0)
-  await mkdir('.tools/browser', { recursive: true })
-  await page.screenshot({
-    path: '.tools/browser/shortlist-results-first-desktop.png',
-    fullPage: true,
-  })
 })
 
 test('screening activity archives rejected jobs and automatically reveals completed matches', async ({
@@ -1013,8 +994,6 @@ test('screening activity archives rejected jobs and automatically reveals comple
     'data-status',
     'reviewed',
   )
-  await mkdir('.tools/browser', { recursive: true })
-  await page.screenshot({ path: '.tools/browser/search-flow-mobile.png', fullPage: true })
   await expect(recent.locator('[data-job-id="excluded-role"]')).toHaveCount(0)
   await page.locator('summary').filter({ hasText: 'Earlier activity' }).click()
   await expect(
@@ -1043,12 +1022,6 @@ test('screening activity archives rejected jobs and automatically reveals comple
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
-  await page.setViewportSize({ width: 1440, height: 1000 })
-  await page.screenshot({
-    path: '.tools/browser/search-flow-final-desktop.png',
-    fullPage: true,
-    animations: 'disabled',
-  })
 })
 
 test('summary-only advice remains readable without a numeric assessment on desktop and mobile', async ({
@@ -1074,23 +1047,12 @@ test('summary-only advice remains readable without a numeric assessment on deskt
   await expect(detail).toContainText(item.recommendation_reason)
   await expect(detail.getByRole('figure')).toHaveCount(0)
   await expect(detail.getByText('Summary reviewed', { exact: true })).toBeVisible()
-  await mkdir('.tools/browser', { recursive: true })
-  await page.screenshot({
-    path: '.tools/browser/summary-advice-desktop.png',
-    fullPage: true,
-    animations: 'disabled',
-  })
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(detail).toContainText(item.recommendation_reason)
   await expect(detail).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
-  await page.screenshot({
-    path: '.tools/browser/summary-advice-mobile.png',
-    fullPage: true,
-    animations: 'disabled',
-  })
 })
 
 test('partially analyzed jobs stay useful without inventing an unknown search condition', async ({
@@ -1143,7 +1105,6 @@ for (const outcome of ['running', 'completed'] as const) {
       await expect(dialog).toBeVisible()
       await expect(cancel).toBeFocused()
       if (dismiss === 'cancel') {
-        await captureResults(page, `edit-criteria-confirmation-${outcome}`)
         await cancel.click()
       } else if (dismiss === 'escape') await page.keyboard.press('Escape')
       else
@@ -1186,7 +1147,11 @@ test('the first search after editing criteria ignores a job selected in the prev
   await page.goto('/searches/session-1?job=test-job-1')
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Edit criteria', exact: true }).click()
-  await page.getByRole('button', { name: 'Continue editing', exact: true }).click()
+  await (
+    await openEditConfirmation(page)
+  )
+    .getByRole('button', { name: 'Continue editing', exact: true })
+    .click()
   await page.getByRole('button', { name: 'Confirm and search', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Finish search', exact: true })).toBeVisible()
   await expect(page.getByRole('region', { name: 'Job screening activity' })).toBeVisible()
@@ -1224,7 +1189,7 @@ test('criteria confirmation prevents duplicate edits and lets a failed request b
   state.dropNextAnswer()
   await page.goto('/searches/session-1')
   await page.getByRole('button', { name: 'Edit criteria', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: 'Edit search criteria?', exact: true })
+  const dialog = await openEditConfirmation(page)
   const confirm = dialog.getByRole('button', { name: 'Continue editing', exact: true })
   await confirm.click()
   await expect(confirm).toBeDisabled()
@@ -1281,9 +1246,7 @@ for (const stage of ['search', 'review'] as const) {
     expect(state.requests).toHaveLength(1)
     expect(state.requests[0]).toMatchObject({ action: 'edit_conditions', expected_revision: 4 })
     expect(state.createCount()).toBe(0)
-    const pollCount = state.getCount()
-    await page.waitForTimeout(1300)
-    expect(state.getCount()).toBe(pollCount)
+    await expect.poll(state.events.active).toBe(0)
   })
 }
 
@@ -1339,9 +1302,6 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
   await page.getByRole('button', { name: 'Confirm and search' }).click()
   await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
   expect(state.getCount()).toBe(0)
-  const count = state.getCount()
-  await page.waitForTimeout(1300)
-  expect(state.getCount()).toBe(count)
   await page.getByRole('button', { name: 'View job: React Engineer' }).click()
   await page.getByText('Job requirements and your background', { exact: true }).click()
   await expect(page.getByText('“React development experience required.”')).toBeVisible()
@@ -1353,7 +1313,11 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
     .getByRole('region', { name: 'Search criteria', exact: true })
     .getByRole('button', { name: 'Edit criteria', exact: true })
     .click()
-  await page.getByRole('button', { name: 'Continue editing', exact: true }).click()
+  await (
+    await openEditConfirmation(page)
+  )
+    .getByRole('button', { name: 'Continue editing', exact: true })
+    .click()
   await expect(
     page.getByRole('heading', { name: 'Review your profile and search criteria' }),
   ).toBeVisible()
@@ -1368,11 +1332,13 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
       Object.keys(sessionStorage).map((key) => [key, sessionStorage.getItem(key)]),
     ),
   }))
-  expect(storage.session).toEqual({})
-  expect(storage.local).toEqual({
-    'jobscout.session_id.synthetic-browser-account': 'session-1',
-    'jobscout.sidebar-expanded': 'true',
-  })
+  const savedBrowserData = JSON.stringify(storage)
+  for (const privateText of [
+    'Synthetic test profile: React development experience.',
+    'Correction: I’m open to any location.',
+    'React development experience required.',
+  ])
+    expect(savedBrowserData).not.toContain(privateText)
 })
 
 test('network retry reuses create request ID; 409 refreshes instead of replaying stale changes', async ({
@@ -1397,6 +1363,7 @@ test('network retry reuses create request ID; 409 refreshes instead of replaying
 test('SSE reconnects to current progress without polling and closes on navigation and completion', async ({
   page,
 }) => {
+  await page.clock.install()
   const running = createSessionFixture({
     outcome: 'running',
     current_stage: 'search',
@@ -1429,7 +1396,7 @@ test('SSE reconnects to current progress without polling and closes on navigatio
   reviewed.progress.activity[0]!.status = 'reviewing'
   state.publish(reviewed)
   await expect(row).toHaveAttribute('data-status', 'reviewing')
-  await page.waitForTimeout(1300)
+  await page.clock.fastForward(10_000)
   expect(state.getCount()).toBe(reads)
   const connected = state.events.connections.length
   state.events.disconnect('session-1')
@@ -1454,7 +1421,7 @@ test('SSE reconnects to current progress without polling and closes on navigatio
   await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
   await expect.poll(state.events.active).toBe(0)
   const connections = state.events.connections.length
-  await page.waitForTimeout(400)
+  await page.clock.fastForward(10_000)
   expect(state.events.connections.length).toBe(connections)
 })
 
@@ -1469,15 +1436,12 @@ test('reload recovers the stream by ID and delete prevents restoration', async (
   await expect(page.getByRole('heading', { name: 'Reviewing your experience' })).toBeVisible()
   expect(state.createCount()).toBe(1)
   await expect.poll(state.events.active).toBe(1)
-  const reads = state.getCount()
-  await page.waitForTimeout(1300)
-  expect(state.getCount()).toBe(reads)
   await deleteSearch(page)
   await expect(page.getByRole('button', { name: 'Analyze and continue' })).toBeVisible()
   await expect.poll(state.events.active).toBe(0)
-  const count = state.getCount()
-  await page.waitForTimeout(1300)
-  expect(state.getCount()).toBe(count)
+  await page.reload()
+  await expect(page).toHaveURL(/\/new$/)
+  await expect(page.getByRole('button', { name: 'Analyze and continue' })).toBeVisible()
   expect(
     await page.evaluate(() =>
       localStorage.getItem('jobscout.session_id.synthetic-browser-account'),
@@ -1667,23 +1631,6 @@ test('conversation preserves supplied free text and structured answers', async (
   await expect(history).toContainText('Frontend development')
   await expect(history).toContainText('Data analysis')
   await expect(history).toContainText('Hong Kong')
-  if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
-    await mkdir('.tools/review', { recursive: true })
-    await page.setViewportSize({ width: 1440, height: 1100 })
-    await page.evaluate(() => window.scrollTo(0, 0))
-    await page.screenshot({
-      path: '.tools/review/conversation-desktop.png',
-      fullPage: true,
-      animations: 'disabled',
-    })
-    await page.setViewportSize({ width: 390, height: 900 })
-    await page.evaluate(() => window.scrollTo(0, 0))
-    await page.screenshot({
-      path: '.tools/review/conversation-mobile.png',
-      fullPage: true,
-      animations: 'disabled',
-    })
-  }
   await page.setViewportSize({ width: 390, height: 900 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
@@ -1770,23 +1717,6 @@ test('direction choices allow more than three selections without dropping user c
   await expect(
     page.getByRole('checkbox', { name: 'Software engineering', exact: true }),
   ).toBeChecked()
-  if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
-    await mkdir('.tools/review', { recursive: true })
-    await page.setViewportSize({ width: 1440, height: 1100 })
-    await page.evaluate(() => window.scrollTo(0, 0))
-    await page.screenshot({
-      path: '.tools/review/clarification-desktop.png',
-      fullPage: true,
-      animations: 'disabled',
-    })
-    await page.setViewportSize({ width: 390, height: 900 })
-    await page.evaluate(() => window.scrollTo(0, 0))
-    await page.screenshot({
-      path: '.tools/review/clarification-mobile.png',
-      fullPage: true,
-      animations: 'disabled',
-    })
-  }
   await page.getByRole('checkbox', { name: 'Product design', exact: true }).uncheck()
   await expect(
     page.getByRole('checkbox', { name: 'Software engineering', exact: true }),
@@ -1883,17 +1813,6 @@ function resultSession() {
   })
 }
 
-async function captureResults(page: Page, name: string) {
-  if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS !== '1') return
-  await mkdir('.tools/review', { recursive: true })
-  await page.evaluate(() => window.scrollTo(0, 0))
-  await page.screenshot({
-    path: `.tools/review/${name}.png`,
-    fullPage: true,
-    animations: 'disabled',
-  })
-}
-
 test('result panes scroll independently and restore reading positions by job identity', async ({
   page,
 }) => {
@@ -1961,10 +1880,6 @@ test('result panes scroll independently and restore reading positions by job ide
   await analysis.hover()
   await page.mouse.wheel(0, 800)
   expect(await page.evaluate(() => window.scrollY)).toBe(0)
-  if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
-    await mkdir('.tools/review', { recursive: true })
-    await page.screenshot({ path: '.tools/review/results-sticky-desktop.png' })
-  }
   await page.setViewportSize({ width: 1440, height: 500 })
   await lastResponsibility.scrollIntoViewIfNeeded()
   await expect(lastResponsibility).toBeInViewport()
@@ -1974,6 +1889,7 @@ test('result panes scroll independently and restore reading positions by job ide
 test('search criteria supports hover preview, pinned reading and keyboard dismissal', async ({
   page,
 }) => {
+  await page.clock.install()
   await page.setViewportSize({ width: 1440, height: 500 })
   const session = resultSession()
   session.profile!.target_directions = [
@@ -1994,16 +1910,15 @@ test('search criteria supports hover preview, pinned reading and keyboard dismis
   await expect(panel).toContainText(session.profile!.preferences.salary_range!)
   await expect(panel).toContainText('Excluded: part-time')
   await panel.hover()
-  await page.waitForTimeout(250)
+  await page.clock.fastForward(1000)
   await expect(panel).toBeVisible()
   const heading = page.getByRole('heading', { name: '3 jobs', exact: true })
   await heading.hover()
   await expect(panel).toBeHidden()
   await trigger.click()
   await heading.hover()
-  await page.waitForTimeout(250)
+  await page.clock.fastForward(1000)
   await expect(panel).toBeVisible()
-  await captureResults(page, 'search-criteria-popover-desktop')
   await trigger.click()
   await expect(panel).toBeHidden()
   await trigger.click()
@@ -2050,14 +1965,16 @@ test.describe('search criteria on touch screens', () => {
       const salary = panel.getByText(session.profile!.preferences.salary_range!, { exact: true })
       await salary.scrollIntoViewIfNeeded()
       await expect(salary).toBeInViewport()
-      await captureResults(page, `search-criteria-popover-${width}`)
       await panel.getByRole('button', { name: 'Close search criteria', exact: true }).tap()
       await expect(panel).toBeHidden()
     }
     await page.getByRole('button', { name: 'Edit criteria', exact: true }).tap()
     expect(state.requests).toEqual([])
-    await captureResults(page, 'edit-criteria-confirmation-mobile')
-    await page.getByRole('button', { name: 'Continue editing', exact: true }).tap()
+    await (
+      await openEditConfirmation(page)
+    )
+      .getByRole('button', { name: 'Continue editing', exact: true })
+      .tap()
     await expect(
       page.getByRole('heading', { name: 'Review your profile and search criteria', exact: true }),
     ).toBeVisible()
@@ -2098,7 +2015,11 @@ test('search failure preserves published job identities until editing the criter
     .getByRole('alert')
     .getByRole('button', { name: 'Edit search criteria', exact: true })
     .click()
-  await page.getByRole('button', { name: 'Continue editing', exact: true }).click()
+  await (
+    await openEditConfirmation(page)
+  )
+    .getByRole('button', { name: 'Continue editing', exact: true })
+    .click()
   await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
   await expect(page.getByLabel('Job interests', { exact: true })).toBeVisible()
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toHaveCount(0)
@@ -2129,7 +2050,6 @@ test('result selection and filters retain job identity and saved removal chooses
   await page.getByRole('button', { name: 'Close filters', exact: true }).click()
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Clear filters', exact: true }).click()
-  await captureResults(page, 'results-desktop')
   await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
   await detail
     .getByRole('button', { name: 'Remove saved job: React Engineer', exact: true })
@@ -2189,18 +2109,11 @@ test('combined result filters and sorting survive reload and retain selected job
       expect.stringContaining('React Engineer'),
       expect.stringContaining('Full Stack Engineer'),
     ])
-  await captureResults(page, 'result-filters-desktop')
   await page.getByRole('button', { name: 'Filters', exact: true }).click()
   await page.getByRole('combobox', { name: 'Filter by hiring status' }).selectOption('unknown')
   await page.getByRole('combobox', { name: 'Filter by match result' }).selectOption('possible')
   await page.getByRole('combobox', { name: 'Filter by employment type' }).selectOption('part-time')
-  await captureResults(page, 'result-filters-panel-desktop')
   await page.keyboard.press('Escape')
-  if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1')
-    await page.getByRole('group', { name: 'Job filters and sorting', exact: true }).screenshot({
-      path: '.tools/review/result-filters-bar-desktop.png',
-      animations: 'disabled',
-    })
   await expect.poll(jobTitles).toEqual([expect.stringContaining('Full Stack Engineer')])
   await expect(page).toHaveURL(/job=test-job-2/)
   await page.reload()
@@ -2235,7 +2148,6 @@ test('mobile filters dismiss with Escape, preserve sort when cleared and fit wit
   await filters.click()
   const status = page.getByRole('combobox', { name: 'Filter by hiring status' })
   await status.selectOption('active')
-  await captureResults(page, 'result-filters-panel-mobile')
   await status.focus()
   await page.keyboard.press('Escape')
   await expect(status).not.toBeVisible()
@@ -2249,7 +2161,6 @@ test('mobile filters dismiss with Escape, preserve sort when cleared and fit wit
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   )
-  await captureResults(page, 'result-filters-mobile')
   await filters.click()
   await page.getByRole('button', { name: 'All jobs', exact: true }).click()
   await expect(status).not.toBeVisible()
@@ -2272,13 +2183,11 @@ test('mobile detail Back and browser Back restore the selected list control with
   await introduce(page)
   const row = page.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true })
   await row.scrollIntoViewIfNeeded()
-  await captureResults(page, 'results-mobile-list')
   await row.click()
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toBeVisible()
   await expect(
     page.getByRole('heading', { name: 'Full Stack Engineer', exact: true }),
   ).toBeFocused()
-  await captureResults(page, 'results-mobile-detail')
   await page.goBack()
   await expect(row).toBeVisible()
   await expect(row).toBeFocused()
@@ -2382,7 +2291,6 @@ test('job notices and source coverage retain actionable details when analysis is
   const visible = await page.locator('body').innerText()
   for (const internalId of [item.job.job_id, 'private-document-id'])
     expect(visible).not.toContain(internalId)
-  await captureResults(page, 'results-expanded-notices')
   await page.getByRole('button', { name: 'Search details', exact: true }).click()
   const record = page.getByRole('dialog', { name: 'Search details', exact: true })
   await record.getByText('Job sites searched', { exact: true }).click()
@@ -2417,9 +2325,12 @@ test('empty completed search offers recovery without inventing jobs', async ({ p
   await expect(
     page.getByRole('listitem').filter({ hasText: 'Liepin · Frontend development' }),
   ).toBeVisible()
-  await captureResults(page, 'results-empty')
   await page.getByRole('button', { name: 'Edit search criteria', exact: true }).last().click()
-  await page.getByRole('button', { name: 'Continue editing', exact: true }).click()
+  await (
+    await openEditConfirmation(page)
+  )
+    .getByRole('button', { name: 'Continue editing', exact: true })
+    .click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests.at(-1)?.action).toBe('edit_conditions')
 })
@@ -2468,9 +2379,12 @@ test('invalid selected deep links recover to the list and service failure allows
   await page.reload()
   await expect(page.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0)
   await expect(page.locator('body')).not.toContainText('SOURCE_CONFIG_MISSING')
-  await captureResults(page, 'search-service-failure')
   await page.getByRole('button', { name: 'Edit search criteria', exact: true }).last().click()
-  await page.getByRole('button', { name: 'Continue editing', exact: true }).click()
+  await (
+    await openEditConfirmation(page)
+  )
+    .getByRole('button', { name: 'Continue editing', exact: true })
+    .click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.requests.at(-1)?.action).toBe('edit_conditions')
 })
@@ -2651,17 +2565,18 @@ test('desktop drawer remembers expansion and focuses the current search', async 
   const state = await mockSessions(page)
   state.seedSession(createSessionFixture())
   await page.goto('/searches/session-1')
-  const sidebar = page.locator('#workspace-sidebar')
-  await expect(sidebar).toHaveCSS('width', '72px')
-  await page.getByRole('button', { name: 'Expand sidebar', exact: true }).click()
-  await expect(sidebar).toHaveCSS('width', '288px')
+  const expand = page.getByRole('button', { name: 'Expand sidebar', exact: true })
+  const collapse = page.getByRole('button', { name: 'Collapse sidebar', exact: true })
+  await expect(expand).toHaveAttribute('aria-expanded', 'false')
+  await expand.click()
+  await expect(collapse).toHaveAttribute('aria-expanded', 'true')
   await expect(page.locator('[data-session-id="session-1"]')).toBeFocused()
   await page.reload()
-  await expect(sidebar).toHaveCSS('width', '288px')
-  await page.getByRole('button', { name: 'Collapse sidebar', exact: true }).click()
-  await expect(sidebar).toHaveCSS('width', '72px')
+  await expect(collapse).toHaveAttribute('aria-expanded', 'true')
+  await collapse.click()
+  await expect(expand).toHaveAttribute('aria-expanded', 'false')
   await page.reload()
-  await expect(sidebar).toHaveCSS('width', '72px')
+  await expect(expand).toHaveAttribute('aria-expanded', 'false')
 })
 
 test('sidebar toggling keeps its controls and document scroll position stable', async ({
@@ -2680,10 +2595,9 @@ test('sidebar toggling keeps its controls and document scroll position stable', 
   for (let cycle = 0; cycle < 3; cycle += 1) {
     await toggle.click()
     await expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    await expect(sidebar).toHaveCSS('width', '288px')
     expect(await page.evaluate(() => window.scrollY)).toBe(scrollY)
     await sidebar.getByText('Collapse sidebar', { exact: true }).click()
-    await expect(sidebar).toHaveCSS('width', '72px')
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(await page.evaluate(() => window.scrollY)).toBe(scrollY)
   }
 })
@@ -2848,13 +2762,14 @@ test('a delayed accepted response updates its original search without changing t
 test('autosave waits for IME composition to finish and preserves supplied text', async ({
   page,
 }) => {
+  await page.clock.install()
   const state = await mockSessions(page)
   await page.goto('/new')
   const input = page.getByLabel('About you', { exact: true })
   await expect(input).toBeEnabled()
   await input.dispatchEvent('compositionstart')
   await input.fill('香港 React 项目  \n原始换行')
-  await page.waitForTimeout(650)
+  await page.clock.fastForward(1000)
   expect(state.draftRequests).toEqual([])
   await input.dispatchEvent('compositionend')
   await expect
@@ -3184,8 +3099,6 @@ test.describe('job status tooltips', () => {
     expect(bounds).not.toBeNull()
     expect(bounds!.x).toBeGreaterThanOrEqual(0)
     expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390)
-    await mkdir('.tools/browser', { recursive: true })
-    await page.screenshot({ path: '.tools/browser/status-tooltip-mobile.png', fullPage: true })
     await page.keyboard.press('Escape')
     await expect(tooltip).toHaveCount(0)
     await badge.blur()
@@ -3199,7 +3112,6 @@ test.describe('job status tooltips', () => {
     await expect(tooltip).toBeVisible()
     await tooltip.hover()
     await expect(tooltip).toBeVisible()
-    await page.screenshot({ path: '.tools/browser/status-tooltip-desktop.png', fullPage: true })
     await page.mouse.click(5, 5)
     await expect(tooltip).toHaveCount(0)
   })

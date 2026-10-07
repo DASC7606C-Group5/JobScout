@@ -20,6 +20,9 @@ def test_server_connection_is_rejected_without_creating_provider_or_charging(
     application = create_replay_app()
     with TestClient(application) as client:
         register(client)
+        application.state.model_settings.settings = (
+            application.state.model_settings.settings.model_copy(update={"production": True})
+        )
         setattr(application.state.model_settings.settings, f"llm_{role}_api_key", server_key)
         other_role = "decision" if role == "semantic" else "semantic"
         assert (
@@ -32,6 +35,7 @@ def test_server_connection_is_rejected_without_creating_provider_or_charging(
         factory = Mock(side_effect=AssertionError("Server tests must not create a provider"))
         monkeypatch.setattr("jobscout.services.model_settings_service.get_llm_provider", factory)
         usage = client.get("/api/v1/settings/usage").json()
+        assert usage["enabled"] is True
         response = client.post(f"/api/v1/settings/models/{role}/test")
         assert response.status_code == 422
         assert response.json()["detail"]["code"] == "personal_model_required"
@@ -55,6 +59,9 @@ def test_personal_connection_works_and_clearing_it_disables_testing(
     application = create_replay_app()
     with TestClient(application) as client:
         register(client)
+        application.state.model_settings.settings = (
+            application.state.model_settings.settings.model_copy(update={"production": True})
+        )
         assert (
             client.put(
                 f"/api/v1/settings/models/{role}",
@@ -63,6 +70,7 @@ def test_personal_connection_works_and_clearing_it_disables_testing(
             == 204
         )
         usage = client.get("/api/v1/settings/usage").json()
+        assert usage["enabled"] is True
         response = client.post(f"/api/v1/settings/models/{role}/test")
         assert response.status_code == 200
         assert response.json() == {"ok": True}

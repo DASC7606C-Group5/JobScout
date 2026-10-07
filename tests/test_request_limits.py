@@ -1,5 +1,6 @@
 """Reject oversized bodies before JSON parsing or unbounded multipart spooling."""
 
+import json
 from collections.abc import AsyncIterator
 
 import httpx
@@ -59,6 +60,22 @@ def test_streamed_json_cannot_bypass_limit_with_missing_or_false_length(
 
         assert client.portal is not None
         client.portal.call(scenario)
+
+
+def test_auth_body_limit_accepts_exact_boundary_without_registering_oversized_request() -> None:
+    credentials = {"username": "boundary-user", "password": "synthetic-password-123"}
+    content = json.dumps(credentials).encode().ljust(MAX_AUTH_BODY_BYTES, b" ")
+    with TestClient(create_replay_app()) as client:
+        headers = {"Origin": get_settings().public_origin, "Content-Type": "application/json"}
+        oversized = client.post("/api/v1/auth/register", content=content + b" ", headers=headers)
+        assert oversized.status_code == 413
+        assert oversized.json()["detail"]["code"] == "request_too_large"
+        accepted = client.post("/api/v1/auth/register", content=content, headers=headers)
+        assert accepted.status_code == 201
+        assert accepted.json()["username"] == credentials["username"]
+        identity = client.get("/api/v1/auth/me")
+        assert identity.status_code == 200
+        assert identity.json()["user_id"] == accepted.json()["user_id"]
 
 
 def test_streamed_multipart_is_bounded_and_closes_partial_files(

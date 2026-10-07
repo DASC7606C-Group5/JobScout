@@ -1,10 +1,7 @@
 import { expect, test } from 'bun:test'
 
-import { is } from 'valibot'
-
 import { createRecommendationFixture } from '../../tests/fixtures'
-import { vRecommendationItem } from './api-schemas'
-import { recommendationStatus, type ReviewIssue } from './job-status'
+import { recommendationStatus } from './job-status'
 
 test.each([
   ['timeout', 'timeout'],
@@ -50,7 +47,6 @@ test('a reviewed summary stays distinct from a full review even with source meta
     },
   ]
   expect(recommendationStatus(item, false)).toBe('summary_reviewed')
-  expect(is(vRecommendationItem, item)).toBe(true)
   item.job.description_is_excerpt = false
   expect(recommendationStatus(item, false)).toBe('partial')
 })
@@ -64,15 +60,4 @@ test('retry progress supersedes an old failure and stopped work stays unreviewed
   item.review_status = 'not_reviewed'
   item.review_issue = { code: 'stopped', stage: null }
   expect(recommendationStatus(item, false)).toBe('not_reviewed')
-})
-
-test('wire contracts reject unknown diagnostic codes and private stages', () => {
-  const item = createRecommendationFixture()
-  for (const issue of [
-    { code: 'private_provider_message', stage: 'matching' },
-    { code: 'timeout', stage: 'private_stage' },
-  ]) {
-    item.review_issue = issue as ReviewIssue
-    expect(is(vRecommendationItem, item)).toBe(false)
-  }
 })

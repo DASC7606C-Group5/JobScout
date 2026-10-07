@@ -1,5 +1,3 @@
-import { mkdir } from 'node:fs/promises'
-
 import { expect, test, type Page } from '@playwright/test'
 
 import type { ScoutSession } from '../../src/lib/contracts'
@@ -125,40 +123,15 @@ async function confirmAndVerifyResults(page: Page, id: string) {
     await expect(
       article.getByRole('heading', { name: lastSupportedReason.requirement, exact: true }).last(),
     ).toBeVisible()
-  if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
-    await mkdir('.tools/review', { recursive: true })
-    await page.setViewportSize({ width: 1440, height: 1100 })
-    await page.evaluate(() => window.scrollTo(0, 0))
-    await page.evaluate(() =>
-      Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => {}))),
-    )
-    await page.screenshot({
-      path: '.tools/review/replay-results-desktop.png',
-      fullPage: true,
-      animations: 'disabled',
-    })
-    await article.getByText('Job requirements and your background', { exact: true }).click()
-    await page.evaluate(() =>
-      Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => {}))),
-    )
-    await page.evaluate(() => window.scrollTo(0, 0))
-    await page.screenshot({
-      path: '.tools/review/replay-results-overview.png',
-      fullPage: true,
-      animations: 'disabled',
-    })
-  }
   await page.reload()
   await expect(page.getByRole('region', { name: 'Recommended jobs' })).toBeVisible()
   expect((await snapshot(page, id)).recommendation).toEqual(results.recommendation)
-  expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([])
-  const account = await (await page.request.get('/api/v1/auth/me')).json()
-  expect(
-    await page.evaluate(
-      (userId) => localStorage.getItem(`jobscout.session_id.${userId}`),
-      account.user_id,
-    ),
-  ).toBe(id)
+  const browserStorage = await page.evaluate(() =>
+    JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage)]),
+  )
+  expect(browserStorage).not.toContain(description)
+  for (const document of item.job.source_documents)
+    expect(browserStorage).not.toContain(document.text)
 }
 
 for (const complete of [true, false]) {

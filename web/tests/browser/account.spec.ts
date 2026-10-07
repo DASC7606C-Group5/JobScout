@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+import type { ModelSettingsResponse } from '../../src/api/types.gen'
+
 test('drafts remain private and editable after switching accounts and signing back in', async ({
   page,
   baseURL,
@@ -74,6 +76,9 @@ test('registration, independent model settings and sign-out protect the workspac
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await expect(page.getByText(`Signed in as ${username}.`)).toBeVisible()
   const semantic = page.getByRole('group', { name: 'Profile and job analysis' })
+  const originalModels = (await (
+    await page.request.get('/api/v1/settings/models')
+  ).json()) as ModelSettingsResponse
   await expect(page.getByRole('button', { name: 'Test', exact: true })).toHaveCount(0)
   await semantic.getByLabel('Model service').selectOption('openai')
   await expect(semantic.getByRole('button', { name: 'Test', exact: true })).toBeDisabled()
@@ -82,13 +87,19 @@ test('registration, independent model settings and sign-out protect the workspac
   await semantic.getByLabel('Request thinking').check()
   await semantic.getByRole('button', { name: 'Save configuration' }).click()
   await expect(semantic.getByLabel('API key')).toHaveValue('')
-  await expect(
-    semantic.getByText('A key is saved. Leave this field empty to keep it.'),
-  ).toBeVisible()
   await expect(semantic.getByRole('button', { name: 'Test', exact: true })).toBeEnabled()
   const response = await page.request.get('/api/v1/settings/models')
   expect(response.status()).toBe(200)
   expect(await response.text()).not.toContain('synthetic-personal-key')
+  const configuredModels = (await response.json()) as ModelSettingsResponse
+  expect(configuredModels.roles.semantic).toMatchObject({
+    personal: true,
+    endpoint_id: 'openai',
+    model: 'synthetic-personal-model',
+    key_configured: true,
+    thinking: true,
+  })
+  expect(configuredModels.roles.decision).toEqual(originalModels.roles.decision)
   await page.reload()
   await expect(semantic.getByLabel('Model name')).toHaveValue('synthetic-personal-model')
   await expect(semantic.getByLabel('Request thinking')).toBeChecked()
@@ -97,6 +108,11 @@ test('registration, independent model settings and sign-out protect the workspac
   await semantic.getByRole('button', { name: 'Save configuration' }).click()
   await expect(semantic.getByLabel('Model name')).toHaveCount(0)
   await expect(semantic.getByRole('button', { name: 'Save configuration' })).toBeEnabled()
+  const clearedModels = (await (
+    await page.request.get('/api/v1/settings/models')
+  ).json()) as ModelSettingsResponse
+  expect(clearedModels.roles.semantic.personal).toBe(false)
+  expect(clearedModels.roles.decision).toEqual(originalModels.roles.decision)
   await semantic.getByLabel('Model service').selectOption('openai')
   await expect(semantic.getByRole('button', { name: 'Test', exact: true })).toBeDisabled()
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()

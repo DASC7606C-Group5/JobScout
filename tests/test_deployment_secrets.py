@@ -37,13 +37,15 @@ def test_generated_credentials_key_is_valid_for_production(
     ],
 )
 def test_production_rejects_insecure_configuration(overrides: dict[str, object]) -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as invalid:
         Settings.model_validate(
             {
                 "production": True,
                 "public_origin": "https://jobscout.example.com",
                 "cookie_secure": True,
                 "credentials_key": Fernet.generate_key().decode(),
+                "llm_semantic_api_key": "synthetic-startup-secret",
                 **overrides,
             }
         )
+    assert "synthetic-startup-secret" not in str(invalid.value)

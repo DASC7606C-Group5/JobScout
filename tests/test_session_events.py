@@ -51,14 +51,8 @@ def test_authentication_ends_an_idle_event_stream_without_stopping_the_operation
             await asyncio.sleep(0)
             if reason == "logout":
                 identity.revoked.set()
-            # Expiry can emit the final heartbeat before ending the stream.
-            try:
+            with pytest.raises(StopAsyncIteration):
                 await asyncio.wait_for(pending, 1)
-            except StopAsyncIteration:
-                pass
-            else:
-                with pytest.raises(StopAsyncIteration):
-                    await asyncio.wait_for(anext(iterator), 1)
             assert created.session_id not in manager.subscribers
             assert not graph.cancelled.is_set()
             task = manager.sessions[created.session_id].task
@@ -177,13 +171,16 @@ def test_uncommitted_or_stale_progress_is_not_pushed(monkeypatch: pytest.MonkeyP
             await graph.callback({"run_id": "old-run", "progress": {"sequence": 100}})
             await graph.callback({"run_id": graph.run_id, "progress": {"sequence": 1}})
 
+            failure = OSError("storage unavailable")
+
             async def reject(*args: Any, **kwargs: Any) -> None:
-                raise RuntimeError("storage unavailable")
+                raise failure
 
             with monkeypatch.context() as patch:
                 patch.setattr(manager, "_persist", reject)
-                with pytest.raises(RuntimeError, match="storage unavailable"):
+                with pytest.raises(OSError) as raised:
                     await graph.callback({"run_id": graph.run_id, "progress": {"sequence": 2}})
+                assert raised.value is failure
             assert queue.empty()
             reconnected = await manager.subscribe(created.session_id)
             snapshot = await reconnected.get()

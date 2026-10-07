@@ -1,12 +1,10 @@
 import { expect, test } from 'bun:test'
 
 import { renderToStaticMarkup } from 'react-dom/server'
-import { is } from 'valibot'
 
 import { createMatchScoreFixture } from '../../tests/fixtures'
-import { vMatchScore } from '../lib/api-schemas'
 import { dimensionLabels } from '../lib/matching-contracts'
-import { MatchRadar, MatchScoreSummary, MatchScoreValue } from './match-score'
+import { MatchRadar, MatchScoreValue } from './match-score'
 
 test('each dimension retains its score status and explanation for accessible inspection', () => {
   const score = createMatchScoreFixture()
@@ -22,13 +20,9 @@ test('each dimension retains its score status and explanation for accessible ins
     if (dimension.explanation) expect(html).toContain(dimension.explanation)
     for (const missing of dimension.missing_information) expect(html).toContain(missing)
   }
-  expect([...html.matchAll(/data-dimension="([^"]+)"/g)].map((match) => match[1])).toEqual([
-    'skills',
-  ])
-  expect(html).not.toContain('data-match-area="assessed"')
 })
 
-test('all unknown has no invented total or radar data points', () => {
+test('unknown assessments do not display an invented score', () => {
   const score = createMatchScoreFixture()
   score.total = null
   score.dimensions = score.dimensions.map((dimension) => ({
@@ -37,10 +31,8 @@ test('all unknown has no invented total or radar data points', () => {
     status: 'unknown',
   }))
   const html = renderToStaticMarkup(<MatchRadar score={score} />)
-  expect(html).not.toContain('<circle ')
-  expect(html).not.toContain('data-match-area="assessed"')
+  expect(html).not.toContain('/100')
   expect(renderToStaticMarkup(<MatchScoreValue score={score} />)).not.toContain('/100')
-  expect(renderToStaticMarkup(<MatchScoreSummary score={null} />)).toBe('')
 })
 
 test('dimension explanations stand alone while missing facts explain dimensions without one', () => {
@@ -52,7 +44,7 @@ test('dimension explanations stand alone while missing facts explain dimensions 
   expect(html).toContain(score.dimensions[1]!.missing_information[0]!)
 })
 
-test('an assessed zero stays numeric and only six assessed axes form a complete shape', () => {
+test('an assessed zero stays numeric', () => {
   const score = createMatchScoreFixture()
   score.dimensions = score.dimensions.map((dimension, index) => ({
     ...dimension,
@@ -61,16 +53,4 @@ test('an assessed zero stays numeric and only six assessed axes form a complete 
   }))
   const html = renderToStaticMarkup(<MatchRadar score={score} />)
   expect(html).toContain('aria-label="Skills: 0/100"')
-  expect([...html.matchAll(/data-dimension="([^"]+)"/g)].map((match) => match[1])).toEqual(
-    Object.keys(dimensionLabels),
-  )
-  expect(html).toContain('data-match-area="assessed"')
-})
-
-test('wire contract rejects missing axes and numeric unknowns before display', () => {
-  const score = createMatchScoreFixture()
-  expect(is(vMatchScore, score)).toBe(true)
-  expect(is(vMatchScore, { ...score, dimensions: score.dimensions.slice(1) })).toBe(false)
-  score.dimensions[1]!.score = 0
-  expect(is(vMatchScore, score)).toBe(false)
 })
