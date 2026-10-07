@@ -6,6 +6,17 @@
   themes: cupcake --default;
 }
 
+@utility btn-primary {
+  --btn-fg: color-mix(in oklab, var(--color-primary-content), var(--color-base-content) 20%);
+  text-shadow: none;
+}
+
+@utility btn-error {
+  --btn-color: #b8264e;
+  --btn-fg: var(--color-base-100);
+  text-shadow: none;
+}
+
 @keyframes page-enter {
   from {
     opacity: 0;

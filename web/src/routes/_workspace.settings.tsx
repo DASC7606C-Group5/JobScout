@@ -327,7 +327,7 @@ function SettingsPage() {
     <section className="mx-auto w-full max-w-2xl py-2 sm:py-4">
       <PageHeading title="Settings">
         <button
-          className="btn text-sm font-medium btn-error [--btn-color:color-mix(in_oklab,var(--color-error),var(--color-base-content)_30%)] [--btn-fg:var(--color-base-100)] text-shadow-none"
+          className="btn text-sm font-medium btn-error"
           type="button"
           disabled={loggingOut}
           onClick={() => void logout()}
