@@ -4,7 +4,6 @@ from typing import Any
 
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel
-from tortoise.transactions import in_transaction
 
 from jobscout.services.auth_service import auth_error
 from jobscout.services.identity import owner_id
@@ -45,18 +44,11 @@ async def test_model(request: Request, role: Role) -> dict[str, bool]:
     limits = [(f"model-test:{owner_id()}", 10)]
     auth.check_rate(limits)
     auth.failed(limits)
-    models = await service(request).prepare(owner_id(), (role,))
+    models = await service(request).prepare(owner_id(), (role,), allow_server=False)
     provider = models.provider.semantic if role == "semantic" else models.provider.decision
     async with request.app.state.sessions.lock:
         request.app.state.sessions.check_capacity()
         request.app.state.sessions.testing_users.add(owner_id())
-        if models.uses_server:
-            try:
-                async with in_transaction() as connection:
-                    await service(request).charge(owner_id(), connection)
-            except BaseException:
-                request.app.state.sessions.testing_users.discard(owner_id())
-                raise
     try:
         result = await provider.structured(
             ConnectionResult, [{"role": "user", "content": 'Return JSON {"ok": true}.'}]

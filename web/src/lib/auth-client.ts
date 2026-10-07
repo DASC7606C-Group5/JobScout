@@ -103,6 +103,7 @@ export function accountErrorMessage(code: string): string {
     invalid_csrf_token: 'Your session changed. Reload and try again.',
     invalid_origin: 'This request is not allowed. Open the site using its configured address.',
     model_key_required: 'Provide a complete model configuration and API key.',
+    personal_model_required: 'Save a personal model configuration before testing the connection.',
     invalid_model_settings: 'Choose an available service and a valid model name.',
     personal_models_unavailable: 'Personal model settings are unavailable. Contact the site owner.',
     model_auth: 'The model service rejected the API key. Update Settings and retry.',

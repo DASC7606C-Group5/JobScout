@@ -133,9 +133,14 @@ class ModelSettingsService:
     async def clear(self, owner: str, role: Role) -> None:
         await PersonalModel.filter(owner_id=owner, role=role).delete()
 
-    async def prepare(self, owner: str, roles: tuple[Role, ...] = ROLES) -> OperationModels:
+    async def prepare(
+        self, owner: str, roles: tuple[Role, ...] = ROLES, *, allow_server: bool = True
+    ) -> OperationModels:
         active = self.settings.model_copy(deep=True)
         rows = await PersonalModel.filter(owner_id=owner, role__in=roles)
+        uses_server = any(role not in {row.role for row in rows} for role in roles)
+        if uses_server and not allow_server:
+            raise auth_error(422, "personal_model_required")
         for row in rows:
             endpoint = self.endpoints.get(row.endpoint_id)
             if endpoint is None or self.cipher is None:
@@ -151,9 +156,7 @@ class ModelSettingsService:
             setattr(active, f"llm_{row.role}_api_key", key)
         if any(not getattr(active, f"llm_{role}_api_key").strip() for role in roles):
             raise auth_error(422, "model_key_required")
-        return OperationModels(
-            get_llm_provider(active), any(role not in {row.role for row in rows} for role in roles)
-        )
+        return OperationModels(get_llm_provider(active), uses_server)
 
     @staticmethod
     def day() -> str:

@@ -114,6 +114,30 @@ function useModelForm({ role, info, settings }: ModelFormProps) {
   }
 }
 
+function ConnectionTestButton({
+  endpoint,
+  info,
+  testing,
+  test,
+}: {
+  endpoint: string
+  info: ModelInfo
+  testing: boolean
+  test: () => Promise<void>
+}) {
+  if (endpoint === 'server') return null
+  return (
+    <button
+      className="btn btn-ghost btn-sm"
+      type="button"
+      disabled={!info.personal || endpoint !== info.endpoint_id || !info.key_configured}
+      onClick={() => void test()}
+    >
+      {testing ? 'Testing…' : 'Test'}
+    </button>
+  )
+}
+
 function ModelForm({ role, info, settings }: ModelFormProps) {
   const {
     register,
@@ -202,14 +226,7 @@ function ModelForm({ role, info, settings }: ModelFormProps) {
             <button className="btn btn-sm" type="submit">
               {isSubmitting ? 'Saving…' : 'Save configuration'}
             </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              type="button"
-              disabled={!info.key_configured}
-              onClick={() => void test()}
-            >
-              {testing ? 'Testing…' : 'Test'}
-            </button>
+            <ConnectionTestButton endpoint={endpoint} info={info} testing={testing} test={test} />
             {message && (
               <output className="flex items-center gap-1.5 text-xs text-base-content/70">
                 <Icon name="check" size={16} className="shrink-0" />
