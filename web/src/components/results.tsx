@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 
 import { uniqueNotices } from '../lib/applicant-notices'
 import type { ApplicantNotice, RecommendationItem, RecommendationResult } from '../lib/contracts'
@@ -21,6 +21,7 @@ export function Results({
   savedOnly = false,
   notices = [],
   reviewActive = false,
+  footerActions,
 }: {
   result: RecommendationResult | null
   saved: RecommendationItem[]
@@ -29,6 +30,7 @@ export function Results({
   savedOnly?: boolean
   notices?: ApplicantNotice[]
   reviewActive?: boolean
+  footerActions?: ReactNode
 }) {
   const jobs = useMemo(
     () =>
@@ -46,7 +48,10 @@ export function Results({
     [...(result ? result.notices : []), ...notices].filter((notice) => notice.scope === 'job'),
   )
   return (
-    <section aria-label={savedOnly ? 'Saved jobs' : 'Recommended jobs'}>
+    <section
+      aria-label={savedOnly ? 'Saved jobs' : 'Recommended jobs'}
+      className={jobs.length ? 'results-workspace' : undefined}
+    >
       <FilterControls jobs={jobs} selection={selection} />
       <ResultItems
         hasJobs={jobs.length > 0}
@@ -57,11 +62,18 @@ export function Results({
         notices={jobNotices}
         reviewActive={reviewActive}
       />
-      {!savedOnly && result && (
-        <p className="mt-6 flex items-center gap-1.5 text-xs text-base-content/45">
-          <Icon name="clock" size={13} />
-          Updated {generatedLabel(result.generated_at)} · Hong Kong time
-        </p>
+      {((!savedOnly && result) || footerActions) && (
+        <footer className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-base-300/70 pt-2">
+          {!savedOnly && result && (
+            <p className="flex items-center gap-1.5 text-xs text-base-content/60">
+              <Icon name="clock" size={13} />
+              Updated {generatedLabel(result.generated_at)} · Hong Kong time
+            </p>
+          )}
+          {footerActions && (
+            <div className="flex flex-wrap items-center gap-1">{footerActions}</div>
+          )}
+        </footer>
       )}
     </section>
   )
@@ -119,6 +131,8 @@ function ResultItems({
     detailOpen,
     buttons,
     detailHeading,
+    detailScrollRef,
+    rememberDetailScroll,
     changeSearch,
     selectJob,
     back,
@@ -135,8 +149,13 @@ function ResultItems({
       </div>
     )
   return (
-    <div className="grid items-start gap-6 min-[1100px]:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-      <div className={`min-w-0 space-y-3 ${detailOpen ? 'hidden min-[1100px]:block' : ''}`}>
+    <div className="grid min-h-0 flex-1 gap-4 min-[1100px]:grid-cols-[minmax(0,0.36fr)_minmax(0,0.64fr)]">
+      <section
+        aria-label="Job list"
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Keyboard users must be able to scroll this independent pane.
+        tabIndex={0}
+        className={`min-h-0 min-w-0 space-y-3 min-[1100px]:[scrollbar-gutter:stable] min-[1100px]:overflow-y-auto min-[1100px]:overscroll-y-contain min-[1100px]:p-1 ${detailOpen ? 'hidden min-[1100px]:block' : ''}`}
+      >
         {filtered.map((item) => (
           <JobCard
             key={item.job.job_id}
@@ -151,9 +170,9 @@ function ResultItems({
             }}
           />
         ))}
-      </div>
+      </section>
       <div
-        className={`min-w-0 min-[1100px]:sticky min-[1100px]:top-[var(--job-detail-top,1.5rem)] ${detailOpen ? '' : 'hidden min-[1100px]:block'}`}
+        className={`min-h-0 min-w-0 flex-col min-[1100px]:flex ${detailOpen ? 'flex' : 'hidden'}`}
       >
         {selection.outsideList && (
           <output className="mb-3 block text-sm text-base-content/65">
@@ -166,6 +185,8 @@ function ResultItems({
           reviewActive={reviewActive}
           notices={notices}
           headingRef={detailHeading}
+          scrollRef={detailScrollRef}
+          onScroll={rememberDetailScroll}
           saved={saved.some((entry) => entry.job.job_id === selected.job.job_id)}
           onToggle={() => {
             void toggle(selected)

@@ -36,6 +36,50 @@
   view-transition-name: workspace-page;
 }
 
+@media (min-width: 1100px) {
+  .workspace-page:has(.results-workspace) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
+    padding-bottom: 1rem;
+    overflow: hidden;
+  }
+
+  .results-layout:has(.results-workspace),
+  .results-workspace {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: stretch;
+    min-height: 0;
+    min-width: 0;
+    gap: 0;
+  }
+
+  .workspace-page:has(.results-workspace) .search-criteria {
+    flex-shrink: 0;
+    min-height: 3.75rem;
+    z-index: 20;
+  }
+
+  /* Keep the closing animation out of the results layout as well. */
+  .workspace-page:has(.results-workspace) .search-criteria details {
+    position: absolute;
+    inset: 0 0 auto;
+    max-height: 65dvh;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+
+  .workspace-page:has(.results-workspace) .search-criteria details[open] {
+    border: 1px solid var(--color-base-300);
+    border-radius: var(--radius-box);
+    background: var(--color-base-100);
+    box-shadow: 0 8px 24px color-mix(in oklch, var(--color-base-content) 12%, transparent);
+  }
+}
+
 ::view-transition-group(root),
 ::view-transition-old(root),
 ::view-transition-new(root) {

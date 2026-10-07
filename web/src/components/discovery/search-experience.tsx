@@ -6,6 +6,7 @@ import { searchPresentation } from '../../lib/search-presentation'
 import { Icon } from '../icon'
 import { Results } from '../results'
 import { SearchActivity } from './search-activity'
+import { SearchRecord } from './search-record'
 
 export function SearchExperience({
   session,
@@ -52,7 +53,7 @@ export function SearchExperience({
         />
       )}
       {showResults && (
-        <div className="search-results-enter">
+        <div className="results-layout search-results-enter">
           <Results
             result={completed ? session.recommendation : snapshot}
             saved={saved}
@@ -60,19 +61,49 @@ export function SearchExperience({
             onEdit={onEdit}
             notices={session.notices}
             reviewActive={!completed}
+            footerActions={
+              completed ? (
+                <SearchResultActions
+                  session={session}
+                  hasResults={hasResults}
+                  onViewActivity={() => setView('history')}
+                />
+              ) : undefined
+            }
           />
-          {completed && session.progress.activity.length > 0 && (
-            <button
-              type="button"
-              className="btn mt-5 btn-ghost btn-sm"
-              onClick={() => setView('history')}
-            >
-              <Icon name="clock" size={16} />
-              View search activity
-            </button>
-          )}
         </div>
       )}
+      {completed && (!showResults || !hasResults) && (
+        <div className="mt-3">
+          <SearchRecord session={session} compact={hasResults} />
+        </div>
+      )}
+    </>
+  )
+}
+
+function SearchResultActions({
+  session,
+  hasResults,
+  onViewActivity,
+}: {
+  session: ScoutSession
+  hasResults: boolean
+  onViewActivity: () => void
+}) {
+  return (
+    <>
+      {session.progress.activity.length > 0 && (
+        <button
+          type="button"
+          className="btn gap-1.5 btn-ghost px-2 text-xs font-normal text-base-content/65 btn-sm"
+          onClick={onViewActivity}
+        >
+          <Icon name="clock" size={15} />
+          View search activity
+        </button>
+      )}
+      {hasResults && <SearchRecord session={session} compact />}
     </>
   )
 }

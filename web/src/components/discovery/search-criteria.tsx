@@ -18,7 +18,7 @@ export function SearchCriteria({
     : profile.preferences.location || 'Location not provided'
   return (
     <section
-      className="relative mb-4 min-w-0 rounded-box bg-primary/10"
+      className="search-criteria relative mb-4 min-w-0 rounded-box bg-primary/10"
       aria-label="Search criteria"
     >
       <details className="group collapse rounded-none">

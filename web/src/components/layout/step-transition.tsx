@@ -1,6 +1,14 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react'
 
-export function StepTransition({ step, children }: { step: string; children: ReactNode }) {
+export function StepTransition({
+  step,
+  children,
+  className,
+}: {
+  step: string
+  children: ReactNode
+  className?: string
+}) {
   const content = useRef<HTMLDivElement>(null)
   const previousStep = useRef(step)
 
@@ -16,5 +24,9 @@ export function StepTransition({ step, children }: { step: string; children: Rea
     return () => animation?.cancel()
   }, [step])
 
-  return <div ref={content}>{children}</div>
+  return (
+    <div ref={content} className={className}>
+      {children}
+    </div>
+  )
 }

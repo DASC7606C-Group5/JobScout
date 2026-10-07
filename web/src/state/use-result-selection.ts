@@ -1,5 +1,5 @@
 import { useNavigate, useRouter, useSearch } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type UIEvent } from 'react'
 
 import type { RecommendationItem } from '../lib/contracts'
 import {
@@ -26,6 +26,18 @@ export function useResultSelection(
   const detailOpen = Boolean(search.job && selected?.job.job_id === search.job)
   const buttons = useRef(new Map<string, HTMLButtonElement>())
   const detailHeading = useRef<HTMLHeadingElement>(null)
+  const detailPositions = useRef(new Map<string, number>())
+  const selectedId = selected?.job.job_id
+  const detailScrollRef = useCallback(
+    (node: HTMLElement | null) => {
+      if (node && selectedId) node.scrollTop = detailPositions.current.get(selectedId) ?? 0
+    },
+    [selectedId],
+  )
+  function rememberDetailScroll(event: UIEvent<HTMLElement>) {
+    if (selectedId && window.matchMedia('(min-width: 1100px)').matches)
+      detailPositions.current.set(selectedId, event.currentTarget.scrollTop)
+  }
   const previousJob = useRef<string | undefined>(undefined)
   const listScroll = useRef(0)
   const openedFromList = useRef(false)
@@ -93,6 +105,8 @@ export function useResultSelection(
     detailOpen,
     buttons,
     detailHeading,
+    detailScrollRef,
+    rememberDetailScroll,
     changeSearch,
     filterTo,
     selectJob,

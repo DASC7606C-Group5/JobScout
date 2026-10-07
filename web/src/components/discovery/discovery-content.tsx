@@ -8,9 +8,9 @@ import { Icon } from '../icon'
 import { ProfileForm } from '../profile-form'
 import { ProfileSummary } from '../profile/profile-summary'
 import { Results } from '../results'
-import { SourceOutcomes } from '../results/source-outcomes'
 import { SearchSummary } from '../search-summary'
 import { SearchExperience } from './search-experience'
+import { SearchRecord } from './search-record'
 import { SearchFailure, SearchLoading } from './search-status'
 
 export function DiscoveryContent() {
@@ -49,23 +49,24 @@ function SessionContent() {
   const saved = useScout((state) => state.saved)
   const toggleSaved = useScout((state) => state.toggleSaved)
   if (!session) return <ProfileForm />
+  const sessionKey = `${session.session_id}:${session.run_id ?? 'profile'}`
   const hasResults = Boolean(
     session.recommendation?.jobs.length || session.recommendation?.pending_jobs.length,
   )
   const results = (
     <Results
-      key={`${session.session_id}:${session.run_id ?? 'profile'}`}
+      key={sessionKey}
       result={session.recommendation}
       notices={session.notices}
       saved={saved}
       onToggle={toggleSaved}
       onEdit={edit}
-      reviewActive={session.outcome === 'running' && Boolean(session.run_id)}
+      footerActions={<SearchRecord session={session} compact />}
     />
   )
   const searchExperience = (
     <SearchExperience
-      key={`${session.session_id}:${session.run_id ?? 'profile'}`}
+      key={sessionKey}
       session={session}
       onStop={stop}
       stopping={stopping}
@@ -114,21 +115,10 @@ function SessionContent() {
             compact={hasResults}
           />
           {hasResults && results}
-          <div className="mt-5 space-y-5">
-            <SourceOutcomes outcomes={session.source_outcomes} />
-            <ConversationHistory session={session} collapsed />
-          </div>
+          {!hasResults && <SearchRecord session={session} compact={false} />}
         </>
       )
     case 'completed':
-      return (
-        <>
-          {searchExperience}
-          <div className="mt-6 space-y-5">
-            <SourceOutcomes outcomes={session.source_outcomes} />
-            <ConversationHistory session={session} collapsed />
-          </div>
-        </>
-      )
+      return searchExperience
   }
 }

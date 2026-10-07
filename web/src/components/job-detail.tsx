@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import type { Ref, RefObject, UIEventHandler } from 'react'
 
 import { uniqueNotices } from '../lib/applicant-notices'
 import type { ApplicantNotice, JobPosting, RecommendationItem } from '../lib/contracts'
@@ -16,6 +16,8 @@ export function JobDetail({
   onBack,
   notices,
   headingRef,
+  scrollRef,
+  onScroll,
   reviewActive = false,
 }: {
   item: RecommendationItem
@@ -24,6 +26,8 @@ export function JobDetail({
   onBack: () => void
   notices: ApplicantNotice[]
   headingRef: RefObject<HTMLHeadingElement | null>
+  scrollRef?: Ref<HTMLElement>
+  onScroll?: UIEventHandler<HTMLElement>
   reviewActive?: boolean
 }) {
   const { job } = item
@@ -39,9 +43,9 @@ export function JobDetail({
   return (
     <article
       aria-label="Job details"
-      className="card min-w-0 border border-base-300 bg-base-100 min-[1100px]:max-h-[calc(100dvh-var(--job-detail-top,1.5rem)-1.5rem)] min-[1100px]:scroll-pt-24 min-[1100px]:[scrollbar-gutter:stable] min-[1100px]:overflow-y-auto"
+      className="card min-h-0 min-w-0 flex-1 border border-base-300 bg-base-100 min-[1100px]:overflow-hidden"
     >
-      <div className="p-5 pb-0 sm:p-6 sm:pb-0">
+      <div className="shrink-0 p-4 pb-0 sm:px-5">
         <button className="btn mb-5 btn-ghost btn-sm min-[1100px]:hidden" onClick={onBack}>
           <Icon name="arrow" size={15} className="rotate-180" />
           Back to jobs
@@ -57,19 +61,26 @@ export function JobDetail({
         >
           {job.title}
         </h2>
-        <p className="mt-3 text-sm text-base-content/65">
-          {[job.location, job.employment_type].filter(Boolean).join(' · ')}
-        </p>
-        <p className="mt-4 text-lg font-semibold">{job.salary || 'Salary not provided'}</p>
+        <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+          <p className="font-semibold">{job.salary || 'Salary not provided'}</p>
+          <p className="text-base-content/65">
+            {[job.location, job.employment_type].filter(Boolean).join(' · ')}
+          </p>
+        </div>
       </div>
-      <div className="sticky top-0 z-10 flex flex-wrap gap-2 border-b border-base-300 bg-base-100 p-5 sm:p-6">
+      <div className="sticky top-0 z-10 flex shrink-0 flex-wrap gap-2 border-b border-base-300 bg-base-100 p-4 min-[1100px]:static sm:px-5">
         {links[0] && (
-          <a className="btn btn-primary" href={links[0]} target="_blank" rel="noopener noreferrer">
+          <a
+            className="btn btn-primary btn-sm"
+            href={links[0]}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             View job listing <Icon name="external" size={16} />
           </a>
         )}
         <button
-          className="btn"
+          className="btn btn-sm"
           aria-label={`${saved ? 'Remove saved job' : 'Save job'}: ${job.title}`}
           aria-pressed={saved}
           onClick={onToggle}
@@ -78,20 +89,29 @@ export function JobDetail({
           {saved ? 'Saved' : 'Save job'}
         </button>
       </div>
-      <div className="space-y-5 p-5 text-sm leading-6 sm:space-y-6 sm:p-6">
-        <JobMatch item={item} />
-        <ResultWarnings
-          notices={jobNotices}
-          listingUrl={links[0]}
-          undocumented={(item.analysis_status === 'unavailable' ? [] : item.matching_reasons)
-            .filter((reason) => reason.level === 'not_documented')
-            .map((reason) => reason.explanation)}
-        />
-        <Responsibilities job={job} />
-        <Preparation item={item} />
-        <MatchingSourceQuotes reasons={item.matching_reasons} />
-      </div>
-      <ListingMetadata job={job} links={links} />
+      <section
+        ref={scrollRef}
+        onScroll={onScroll}
+        aria-label="Job analysis"
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Keyboard users must be able to scroll this independent pane.
+        tabIndex={0}
+        className="min-h-0 min-[1100px]:flex-1 min-[1100px]:[scrollbar-gutter:stable] min-[1100px]:overflow-y-auto min-[1100px]:overscroll-y-contain"
+      >
+        <div className="space-y-5 p-5 text-sm leading-6 sm:space-y-6">
+          <JobMatch item={item} />
+          <ResultWarnings
+            notices={jobNotices}
+            listingUrl={links[0]}
+            undocumented={(item.analysis_status === 'unavailable' ? [] : item.matching_reasons)
+              .filter((reason) => reason.level === 'not_documented')
+              .map((reason) => reason.explanation)}
+          />
+          <Responsibilities job={job} />
+          <Preparation item={item} />
+          <MatchingSourceQuotes reasons={item.matching_reasons} />
+        </div>
+        <ListingMetadata job={job} links={links} />
+      </section>
     </article>
   )
 }

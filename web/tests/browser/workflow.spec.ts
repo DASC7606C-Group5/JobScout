@@ -865,7 +865,11 @@ test('screening activity archives rejected jobs and automatically reveals comple
     true,
   )
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await page.screenshot({ path: '.tools/browser/search-flow-final-desktop.png', fullPage: true })
+  await page.screenshot({
+    path: '.tools/browser/search-flow-final-desktop.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
 })
 
 test('partially analyzed jobs stay useful without inventing an unknown search condition', async ({
@@ -894,7 +898,7 @@ test('partially analyzed jobs stay useful without inventing an unknown search co
   await page.goto('/searches/session-1')
   await page.getByRole('button', { name: 'View job: React Engineer' }).click()
   const details = page.getByRole('article', { name: 'Job details' })
-  await expect(details).toContainText(partial.matching_reasons[0]!.explanation)
+  await expect(details).toContainText(partial.recommendation_reason)
   await expect(details.getByText(partial.notices[0]!.message, { exact: true })).toHaveCount(1)
   await expect(page.locator('body')).not.toContainText('some search conditions')
   await expect(page.locator('body')).not.toContainText('0 jobs to explore')
@@ -1532,7 +1536,7 @@ async function captureResults(page: Page, name: string) {
   })
 }
 
-test('long result lists keep selected details reachable and changing jobs resets detail scrolling', async ({
+test('result panes scroll independently and restore reading positions by job identity', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -1552,25 +1556,53 @@ test('long result lists keep selected details reachable and changing jobs resets
   await mockSessions(page, session)
   await introduce(page)
   const detail = page.getByRole('article', { name: 'Job details', exact: true })
+  const analysis = detail.getByRole('region', { name: 'Job analysis', exact: true })
+  const list = page.getByRole('region', { name: 'Job list', exact: true })
   const later = page.getByRole('button', { name: 'View job: Engineer 9', exact: true })
   await later.scrollIntoViewIfNeeded()
   await expect(detail.getByRole('heading', { name: 'Engineer 1', exact: true })).toBeInViewport()
   const pageScroll = await page.evaluate(() => window.scrollY)
+  expect(pageScroll).toBe(0)
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+  ).toBe(true)
+  const listPosition = await list.evaluate((element) => element.scrollTop)
+  expect(listPosition).toBeGreaterThan(0)
   const listing = detail.getByRole('link', { name: 'View job listing', exact: true })
-  await listing.focus()
+  await analysis.focus()
   await page.keyboard.press('PageDown')
-  await expect.poll(() => detail.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await expect.poll(() => analysis.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
   expect(await page.evaluate(() => window.scrollY)).toBe(pageScroll)
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(listPosition)
   await later.click()
   await expect(page).toHaveURL(/job=long-list-8/)
   await expect(detail.getByRole('heading', { name: 'Engineer 9', exact: true })).toBeInViewport()
-  expect(await detail.evaluate((element) => element.scrollTop)).toBe(0)
+  expect(await analysis.evaluate((element) => element.scrollTop)).toBe(0)
+  expect(await list.evaluate((element) => element.scrollTop)).toBe(listPosition)
   const lastResponsibility = detail.getByText('Engineer 9: supplied responsibility 30.', {
     exact: true,
   })
   await lastResponsibility.scrollIntoViewIfNeeded()
   await expect(lastResponsibility).toBeInViewport()
   await expect(listing).toBeInViewport()
+  await expect(detail.getByRole('heading', { name: 'Engineer 9', exact: true })).toBeInViewport()
+  await expect(page.getByRole('combobox', { name: 'Filter by listing status' })).toBeInViewport()
+  const readingPosition = await analysis.evaluate((element) => element.scrollTop)
+  await page.getByRole('button', { name: 'View job: Engineer 10', exact: true }).click()
+  await expect(analysis).toHaveJSProperty('scrollTop', 0)
+  await later.click()
+  await expect(analysis).toHaveJSProperty('scrollTop', readingPosition)
+  await detail.getByRole('button', { name: 'Save job: Engineer 9', exact: true }).click()
+  await expect(
+    detail.getByRole('button', { name: 'Remove saved job: Engineer 9', exact: true }),
+  ).toBeVisible()
+  await expect(analysis).toHaveJSProperty('scrollTop', readingPosition)
+  await analysis.evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await analysis.hover()
+  await page.mouse.wheel(0, 800)
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
   if (process.env.JOBSCOUT_REVIEW_SCREENSHOTS === '1') {
     await mkdir('.tools/review', { recursive: true })
     await page.screenshot({ path: '.tools/review/results-sticky-desktop.png' })
@@ -1579,6 +1611,50 @@ test('long result lists keep selected details reachable and changing jobs resets
   await lastResponsibility.scrollIntoViewIfNeeded()
   await expect(lastResponsibility).toBeInViewport()
   await expect(listing).toBeInViewport()
+  const analysisHeight = await analysis.evaluate((element) => element.clientHeight)
+  await page.getByRole('region', { name: 'Search criteria' }).locator('summary').click()
+  expect(await analysis.evaluate((element) => element.clientHeight)).toBe(analysisHeight)
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+  ).toBe(true)
+})
+
+test('closing search criteria keeps results stationary throughout the collapse animation', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await mockSessions(page, resultSession())
+  await introduce(page)
+  const criteria = page.getByRole('region', { name: 'Search criteria', exact: true })
+  await criteria.locator('summary').click()
+  await criteria.evaluate(async (element) => {
+    await Promise.all(
+      element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+    )
+  })
+  const positions = await criteria.evaluate(async (element) => {
+    const results = document.querySelector<HTMLElement>('[aria-label="Recommended jobs"]')!
+    const summary = element.querySelector('summary')!
+    const samples = [results.getBoundingClientRect().top]
+    summary.click()
+    samples.push(results.getBoundingClientRect().top)
+    const started = performance.now()
+    await new Promise<void>((resolve) => {
+      function sample(now: number) {
+        samples.push(results.getBoundingClientRect().top)
+        if (now - started >= 350) resolve()
+        else requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    })
+    return samples
+  })
+  expect(Math.max(...positions) - Math.min(...positions)).toBeLessThanOrEqual(1)
+  await expect(criteria.locator('details')).not.toHaveAttribute('open')
+  await expect(
+    page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
+  ).toBeInViewport()
 })
 
 test('search failure preserves published job identities until editing the criteria', async ({
@@ -1740,7 +1816,7 @@ test('job notices and source coverage retain actionable details when analysis is
   await introduce(page)
   const detail = page.getByRole('article', { name: 'Job details', exact: true })
   await expect(detail).toBeVisible()
-  for (const summary of await page.locator('details > summary').all()) await summary.click()
+  for (const summary of await detail.locator('details > summary').all()) await summary.click()
   await expect(detail.getByRole('link', { name: 'View job listing', exact: true })).toHaveAttribute(
     'href',
     item.job.source_url,
@@ -1751,14 +1827,21 @@ test('job notices and source coverage retain actionable details when analysis is
       exact: true,
     }),
   ).toBeVisible()
-  const source = page.getByRole('listitem').filter({ hasText: 'Liepin · Frontend development' })
-  await expect(source).toBeVisible()
   await expect(detail).not.toContainText('unsupported-preparation-sentinel')
   await expect(detail.getByText(item.notices[0]!.message, { exact: false })).toHaveCount(1)
   const visible = await page.locator('body').innerText()
   for (const internalId of [item.job.job_id, 'private-document-id'])
     expect(visible).not.toContain(internalId)
   await captureResults(page, 'results-expanded-notices')
+  await page.getByRole('button', { name: 'Search details', exact: true }).click()
+  const record = page.getByRole('dialog', { name: 'Search details', exact: true })
+  await record.getByText('Sources and search coverage', { exact: true }).click()
+  await expect(
+    record.getByRole('listitem').filter({ hasText: 'Liepin · Frontend development' }),
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(record).not.toBeVisible()
+  await expect(page.getByRole('button', { name: 'Search details', exact: true })).toBeFocused()
 })
 
 test('empty completed search offers recovery without inventing jobs', async ({ page }) => {
@@ -1874,7 +1957,7 @@ test('deletion requires confirmation and a failed deletion preserves the search,
   await openHistory(page)
   const trigger = page.getByRole('button', { name: /^Delete search:/ }).first()
   await trigger.click()
-  const dialog = page.locator('dialog')
+  const dialog = page.getByRole('dialog', { name: /^Delete/ })
   await dialog.getByRole('button', { name: 'Keep search', exact: true }).click()
   await expect(trigger).toBeFocused()
   expect(deletions).toEqual([])
