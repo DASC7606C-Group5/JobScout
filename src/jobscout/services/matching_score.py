@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from jobscout.services.job_assessment_service import JobAnalysis
 
 
-def fingerprint(value: object) -> str:
+def hash_inputs(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
@@ -29,17 +29,17 @@ def aggregate(dimensions: list[MatchDimension], *, incomplete: bool = False) -> 
     numerator = sum(d.weight * d.score for d in dimensions if d.score is not None)
     # Integer half-up rounding avoids runtime-dependent or banker's rounding.
     total = (2 * numerator + assessed) // (2 * assessed) if assessed else None
-    coverage = (200 * assessed + applicable) // (2 * applicable) if applicable else 0
+    assessed_percentage = (200 * assessed + applicable) // (2 * applicable) if applicable else 0
     provisional = incomplete or assessed != applicable or total is None
     return MatchScore(
         total=total,
         dimensions=dimensions,
         assessed_weight=assessed,
         applicable_weight=applicable,
-        coverage=coverage,
+        assessed_percentage=assessed_percentage,
         provisional=provisional,
         completeness="unknown" if total is None else "partial" if provisional else "complete",
-        input_fingerprint=fingerprint([d.input_fingerprint for d in dimensions]),
+        input_hash=hash_inputs([d.input_hash for d in dimensions]),
     )
 
 
@@ -129,7 +129,7 @@ def build_match_score(
             )
         }
         inputs = {
-            "rubric": "six-dimension-v1",
+            "scoring_rules": "six-dimension-v1",
             "explanation_version": 2,
             "dimension": identity,
             "requirements": [r.model_dump(mode="json") for r in requirements],
@@ -140,7 +140,7 @@ def build_match_score(
             }
             if identity == "preferences"
             else background,
-            "profile_evidence": {
+            "profile_fact_sources": {
                 text: sorted(
                     key
                     for key, document in profile_documents.items()
@@ -155,8 +155,8 @@ def build_match_score(
             if identity not in {"education", "preferences"}
             else {},
         }
-        key = fingerprint(inputs)
-        dimension = MatchDimension(**row.model_dump(), weight=weight, input_fingerprint=key)
+        key = hash_inputs(inputs)
+        dimension = MatchDimension(**row.model_dump(), weight=weight, input_hash=key)
         if dimension_cache is not None:
             cached = dimension_cache.get(key)
             if cached is not None and all(

@@ -181,8 +181,8 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           })
       }}
     >
-      {summary.coverage_notice && (
-        <p className="mb-4 text-sm leading-6 text-base-content/65">{summary.coverage_notice}</p>
+      {summary.search_limitations && (
+        <p className="mb-4 text-sm leading-6 text-base-content/65">{summary.search_limitations}</p>
       )}
       <fieldset
         disabled={busy || persisted.status === 'loading'}

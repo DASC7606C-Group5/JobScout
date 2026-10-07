@@ -974,7 +974,7 @@ def test_conversation_keeps_free_text_and_displays_choice_labels_without_interna
                             {
                                 "field": "target_directions",
                                 "question": "What kind of roles are you looking for?",
-                                "reason": "Confirm your job directions.",
+                                "reason": "Confirm your job interests.",
                                 "control_type": "multiple_choice",
                                 "options": [
                                     {"id": "data", "label": "Data Analyst"},
@@ -1064,7 +1064,7 @@ def test_required_questions_are_retained_and_empty_choices_allow_text() -> None:
                         {
                             "field": "target_directions",
                             "question": "What kind of roles are you looking for?",
-                            "reason": "Confirm your job directions.",
+                            "reason": "Confirm your job interests.",
                             "control_type": "multiple_choice",
                             "options": [],
                         }

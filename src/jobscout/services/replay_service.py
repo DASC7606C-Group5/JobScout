@@ -316,7 +316,7 @@ class ReplayProvider:
                         )
                     ]
                 label = {
-                    "target_directions": "Choose job directions.",
+                    "target_directions": "Choose job interests.",
                     "preferences.location": "Where would you like to work?",
                     "preferences.employment_type": "What type of employment are you looking for?",
                 }.get(field, f"Please provide information for {field}.")

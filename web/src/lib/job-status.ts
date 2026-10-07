@@ -23,7 +23,7 @@ export const reviewIssueCodes = [
   'timeout',
   'service_unavailable',
   'invalid_output',
-  'invalid_evidence',
+  'unverifiable_claims',
   'insufficient_job_information',
   'incomplete_review',
   'failed',
@@ -45,29 +45,30 @@ export type ExclusionReason = (typeof exclusionReasons)[number]
 
 export const statusLabels: Record<JobStatus, string> = {
   found: 'Found',
-  queued: 'Queued',
+  queued: 'Waiting',
   reviewing: 'Reviewing',
   reviewed: 'Reviewed',
-  not_reviewed: 'Unreviewed',
-  partial: 'Partial',
-  timeout: 'Timeout',
-  unavailable: 'Unavailable',
-  invalid: 'Invalid',
-  insufficient: 'Insufficient',
-  failed: 'Failed',
+  not_reviewed: 'Not reviewed',
+  partial: 'Incomplete',
+  timeout: 'Timed out',
+  unavailable: 'Review unavailable',
+  invalid: 'Review error',
+  insufficient: 'Missing details',
+  failed: 'Review failed',
   excluded: 'Excluded',
-  unverified: 'Unverified',
+  unverified: 'Needs checking',
   expired: 'Expired',
   duplicate: 'Duplicate',
-  not_shortlisted: 'Unlisted',
+  not_shortlisted: 'Not shortlisted',
 }
 const issueLabels: Record<ReviewIssue['code'], string> = {
   timeout: 'The review exceeded its time limit.',
   service_unavailable: 'The review service could not complete the request.',
-  invalid_output: 'The review returned an invalid or incomplete response.',
-  invalid_evidence: 'Some conclusions failed source or evidence checks.',
+  invalid_output: 'The review response could not be read or was missing required information.',
+  unverifiable_claims:
+    'Some conclusions could not be verified against the job listing or your information.',
   insufficient_job_information:
-    'No assessable requirements were extracted from the job information.',
+    'The available job information did not provide requirements we could compare with your background.',
   incomplete_review: 'The review did not assess all requirements.',
   failed: 'The review failed; the cause could not be determined.',
   stopped: 'The search was stopped before this review finished.',
@@ -79,7 +80,7 @@ const conditionLabels: Record<string, string> = {
   employment_type: 'Employment type',
 }
 const exclusionLabels: Record<ExclusionReason, string> = {
-  role: 'The role does not match your selected job directions.',
+  role: 'The role does not match your selected job interests.',
   location: 'The location conflicts with your search criteria.',
   employment_type: 'The employment type conflicts with your search criteria.',
   expired: 'The listing has expired.',
@@ -93,7 +94,7 @@ function issueStatus(issue: ReviewIssue | null): JobStatus {
     case 'service_unavailable':
       return 'unavailable'
     case 'invalid_output':
-    case 'invalid_evidence':
+    case 'unverifiable_claims':
       return 'invalid'
     case 'insufficient_job_information':
       return 'insufficient'
@@ -135,27 +136,30 @@ export function statusTooltip(
   if (details.review_issue) {
     const stage =
       details.review_issue.stage === 'jd_analysis'
-        ? 'Job analysis'
+        ? 'Reading job requirements'
         : details.review_issue.stage === 'matching'
-          ? 'Profile matching'
+          ? 'Comparing your background'
           : null
     messages.push(`${stage ? `${stage}: ` : ''}${issueLabels[details.review_issue.code]}`)
   }
   if (status === 'unverified' || status === 'partial') {
     for (const condition of details.unknown_conditions) {
-      messages.push(`${conditionLabels[condition] ?? 'Search condition'} has not been verified.`)
+      messages.push(
+        `${conditionLabels[condition] ?? 'Search criterion'} still needs checking against your preferences.`,
+      )
     }
   }
   if (messages.length) return messages.join(' ')
   if (status === 'partial') return 'Only part of the review could be completed.'
-  if (status === 'unverified') return 'Some search conditions have not been verified.'
+  if (status === 'unverified')
+    return 'Some job details still need checking against your search preferences.'
   if (status === 'not_reviewed') return 'This job has not completed a review.'
   return issueLabels.failed
 }
 
 export const fitLabels: Record<RecommendationItem['recommendation_fit'], string> = {
   recommended: 'Recommended',
-  possible: 'Possible',
-  unlikely: 'Limited',
-  unknown: 'Unknown',
+  possible: 'Worth exploring',
+  unlikely: 'Weak match',
+  unknown: 'Match unclear',
 }

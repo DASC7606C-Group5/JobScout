@@ -25,7 +25,7 @@ export function ResultWarnings({
       </ul>
       {missing.length > 0 && (
         <div className={unique.length ? 'mt-3' : ''}>
-          <h4 className="mb-2 text-xs font-medium">Not documented in your materials</h4>
+          <h4 className="mb-2 text-xs font-medium">Details you haven't provided</h4>
           <ul className="space-y-2">
             {missing.map((message) => (
               <li key={message}>{message}</li>

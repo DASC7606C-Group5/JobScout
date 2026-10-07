@@ -15,7 +15,7 @@ _PREFERENCES = {
     "industry": "industry",
     "location": "work location",
     "employment_type": "employment type",
-    "target_direction": "job direction",
+    "target_direction": "type of job",
 }
 _SOURCES = {
     "jobsdb": "JobsDB",

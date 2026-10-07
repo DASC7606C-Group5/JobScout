@@ -8,7 +8,7 @@ test.each([
   ['timeout', 'timeout'],
   ['service_unavailable', 'unavailable'],
   ['invalid_output', 'invalid'],
-  ['invalid_evidence', 'invalid'],
+  ['unverifiable_claims', 'invalid'],
   ['insufficient_job_information', 'insufficient'],
   ['failed', 'failed'],
 ] as const)('an unavailable assessment preserves the %s classification', (code, expected) => {
@@ -23,7 +23,7 @@ test('partial results survive diagnostics and uncertain conditions', () => {
   item.analysis_status = 'partial'
   item.verification_status = 'pending'
   item.unknown_conditions = ['location']
-  item.review_issue = { code: 'invalid_evidence', stage: 'matching' }
+  item.review_issue = { code: 'unverifiable_claims', stage: 'matching' }
   expect(recommendationStatus(item, false)).toBe('partial')
   item.analysis_status = 'complete'
   item.review_issue = null

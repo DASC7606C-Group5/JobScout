@@ -591,7 +591,7 @@ async def evaluate(
         "dataset_sha256": hashlib.sha256(raw).hexdigest(),
         "implementation_sha256": implementation_hashes,
         "provenance": dataset["provenance"],
-        "model_quality_evidence": mode == "live",
+        "measures_model_quality": mode == "live",
         "metric_definitions": {
             "precision_at_n": "Returned jobs that are relevant and meet confirmed search criteria divided by all returned jobs; null when no jobs are returned.",
             "relevant_recall": "Correct returned job IDs divided by relevant job IDs available in at least one accessible source snapshot.",

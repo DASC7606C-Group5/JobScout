@@ -1,4 +1,4 @@
-"""Job status reasons distinguish service failures, evidence and search conditions."""
+"""Job status reasons distinguish service failures, source checks and search conditions."""
 
 import asyncio
 from typing import Any
@@ -48,14 +48,14 @@ def test_model_failures_preserve_the_job_and_public_failure_reason(
     assert item.display_status(active=False) == status
 
 
-def test_invalid_evidence_and_missing_job_information_have_different_reasons() -> None:
+def test_unverifiable_claims_and_missing_job_information_have_different_reasons() -> None:
     def invalid(task: str, response: dict[str, Any]) -> None:
         if task == "matching":
             response["jobs"][0]["matches"][0]["profile_source_quotes"][0]["excerpt"] = "Invented"
 
     broken = assess(ReplayProvider(invalid), [job("invalid")]).jobs[0]
     assert broken.display_status(active=False) == "invalid"
-    assert broken.review_issue == ReviewIssue(code="invalid_evidence", stage="matching")
+    assert broken.review_issue == ReviewIssue(code="unverifiable_claims", stage="matching")
 
     def empty(task: str, response: dict[str, Any]) -> None:
         if task == "jd_analysis":

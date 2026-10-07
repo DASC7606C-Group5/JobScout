@@ -1,4 +1,4 @@
-"""Evidence contracts use model-normalized meanings, never local language vocabularies."""
+"""Requirement comparisons use model-normalized meanings, never local language vocabularies."""
 
 from typing import Any
 
@@ -108,7 +108,7 @@ def test_strong_education_match_requires_sufficient_normalized_qualification(
         ("至少半年", 6, None, False),
     ],
 )
-def test_work_duration_compares_normalized_months_with_employment_evidence(
+def test_work_duration_compares_normalized_months_with_work_history(
     wording: str,
     minimum: int,
     actual: int | None,
@@ -153,7 +153,7 @@ def test_project_duration_cannot_be_counted_as_employment() -> None:
     assert result.jobs[0].analysis_status == "unavailable"
 
 
-def test_semantically_linked_short_evidence_and_unlisted_skill_advice_are_preserved() -> None:
+def test_related_short_quotes_and_unlisted_skill_advice_are_preserved() -> None:
     applicant = profile()
     applicant.skills = ["OpenTelemetry"]
     advice = "Instrument a small service with OpenTelemetry and explain the resulting traces."
@@ -219,7 +219,7 @@ def test_native_employment_mapping_preserves_unknown_or_multiple_types(
         assert [row.job_id for row in eligible_jobs(applicant, [normalized])] == [normalized.job_id]
 
 
-def test_local_source_keeps_listing_and_detail_employment_evidence_together() -> None:
+def test_local_source_keeps_listing_and_detail_employment_types_together() -> None:
     raw = RawJob(
         source="jobsdb",
         source_url="https://example.org/job",

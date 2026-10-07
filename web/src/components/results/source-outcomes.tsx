@@ -2,15 +2,15 @@ import type { SourceOutcome } from '../../lib/contracts'
 import { sourceLabel } from '../../lib/job-display'
 
 const labels: Record<string, string> = {
-  ok: 'Complete',
-  success: 'Complete',
-  partial: 'Partial',
-  empty: 'Empty',
+  ok: 'Search completed',
+  success: 'Search completed',
+  partial: 'Search incomplete',
+  empty: 'No jobs',
   blocked: 'Unavailable',
   unavailable: 'Unavailable',
-  failed: 'Failed',
-  error: 'Failed',
-  timeout: 'Timeout',
+  failed: 'Search failed',
+  error: 'Search failed',
+  timeout: 'Timed out',
 }
 
 export function SourceOutcomes({ outcomes }: { outcomes: SourceOutcome[] }) {
@@ -23,7 +23,7 @@ export function SourceOutcomes({ outcomes }: { outcomes: SourceOutcome[] }) {
   )
   return (
     <details className="collapse-arrow collapse border border-base-300 bg-base-100">
-      <summary className="collapse-title text-sm font-medium">Sources and search coverage</summary>
+      <summary className="collapse-title text-sm font-medium">Job sites searched</summary>
       <div className="collapse-content px-0">
         <ul className="divide-y divide-base-300 text-xs leading-6 text-base-content/70">
           {[...rows].map(([key, outcome]) => (
@@ -35,7 +35,7 @@ export function SourceOutcomes({ outcomes }: { outcomes: SourceOutcome[] }) {
                 <span className="badge h-auto shrink-0 py-1 text-xs badge-sm">
                   {(outcome.status === 'ok' || outcome.status === 'success') &&
                   outcome.returned_count === 0
-                    ? 'Empty'
+                    ? 'No jobs'
                     : (labels[outcome.status] ?? 'Unknown')}
                 </span>
               </div>

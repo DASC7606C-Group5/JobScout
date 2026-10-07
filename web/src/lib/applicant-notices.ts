@@ -14,7 +14,7 @@ export function uniqueNotices(notices: ApplicantNotice[]) {
   const referenced = [
     ...new Map(notices.map((notice) => [noticeIdentity(notice), notice])).values(),
   ]
-  // Two source references may produce the same coverage notice. Show that consequence once.
+  // Several job sites may report the same search limitation. Show the message once.
   return [
     ...new Map(
       referenced.map((notice) => [

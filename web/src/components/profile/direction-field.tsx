@@ -13,7 +13,7 @@ export function DirectionField() {
         <h2 className="text-sm font-semibold">Job preferences</h2>
       </div>
       <label htmlFor="directions" className="mb-2 block text-sm">
-        Job directions <span className="ml-1 text-xs text-base-content/50">Optional</span>
+        Job interests <span className="ml-1 text-xs text-base-content/50">Optional</span>
       </label>
       <textarea
         id="directions"

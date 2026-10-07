@@ -80,20 +80,20 @@ class Requirement(_StrictModel):
     minimum_experience_months: int | None = Field(default=None, ge=0, le=1200, strict=True)
 
 
-class LocationEvidence(_StrictModel):
+class JobLocation(_StrictModel):
     query: str
     source_quotes: list[SourceQuote] = Field(min_length=1)
 
 
-class EmploymentEvidence(_StrictModel):
+class JobEmploymentType(_StrictModel):
     value: EmploymentType
     source_quotes: list[SourceQuote] = Field(min_length=1)
 
 
 class ConditionAssessment(_StrictModel):
     job_id: str
-    locations: list[LocationEvidence] = Field(default_factory=list)
-    employment: list[EmploymentEvidence] = Field(default_factory=list)
+    locations: list[JobLocation] = Field(default_factory=list)
+    employment: list[JobEmploymentType] = Field(default_factory=list)
     direction: Literal["match", "mismatch", "unknown"] = "unknown"
     direction_quotes: list[SourceQuote] = Field(default_factory=list)
 
@@ -156,7 +156,7 @@ class _InvalidAssessment(ValueError):
 
 class AssessmentDiagnostic(_StrictModel):
     code: Literal[
-        "invalid_analysis", "model_failure", "insufficient_evidence", "condition_mismatch"
+        "invalid_analysis", "model_failure", "insufficient_job_information", "condition_mismatch"
     ]
     stage: str
     detail: str
@@ -249,14 +249,14 @@ def _validate_analysis(analysis: JobAnalysis, documents: dict[str, SourceDocumen
     incomplete = analysis.incomplete
     source_texts = {key: value.text for key, value in documents.items()}
     for field in ("locations", "employment"):
-        retained_evidence = []
-        for evidence in getattr(analysis, field):
+        retained_conditions = []
+        for condition in getattr(analysis, field):
             try:
-                _references(evidence.source_quotes, source_texts)
+                _references(condition.source_quotes, source_texts)
             except _InvalidAssessment:
                 continue
-            retained_evidence.append(evidence)
-        setattr(analysis, field, retained_evidence)
+            retained_conditions.append(condition)
+        setattr(analysis, field, retained_conditions)
     try:
         _references(analysis.direction_quotes, source_texts)
     except _InvalidAssessment:
@@ -682,7 +682,7 @@ class JobAssessmentService:
             {
                 key: item.model_copy(deep=True)
                 for key, item in value.dimension_scores.items()
-                if key == item.input_fingerprint
+                if key == item.input_hash
             }
         )
 
@@ -773,7 +773,7 @@ class JobAssessmentService:
                         detail="The supplied documents do not support some conclusions; correct only those conclusions.",
                         retryable=True,
                         public_issue=ReviewIssue(
-                            code="invalid_evidence"
+                            code="unverifiable_claims"
                             if original != found[0]
                             else "incomplete_review",
                             stage="jd_analysis" if schema is JDAnalysisBatch else "matching",
@@ -801,8 +801,8 @@ class JobAssessmentService:
         unknown = ["target_direction"] if row.direction == "unknown" else []
         actual_locations = []
         unresolved = False
-        for evidence in row.locations:
-            candidates = await self.catalog.lookup(evidence.query, deadline=deadline)
+        for location in row.locations:
+            candidates = await self.catalog.lookup(location.query, deadline=deadline)
             if len(candidates) != 1:
                 unresolved = True
             else:
@@ -870,7 +870,7 @@ class JobAssessmentService:
                     stage="jd_analysis",
                     detail="Source document identifiers are invalid.",
                     retryable=False,
-                    public_issue=ReviewIssue(code="invalid_evidence", stage="jd_analysis"),
+                    public_issue=ReviewIssue(code="unverifiable_claims", stage="jd_analysis"),
                 )
                 continue
             key = self._cache_key(job, documents[job.job_id], profile.target_directions)

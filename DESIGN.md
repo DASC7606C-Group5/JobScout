@@ -18,7 +18,7 @@ omitted:
 
 ## Overview
 
-Help applicants compare roles and prepare applications. Put job facts, relevant evidence and clear next actions first. Use English for interface copy; preserve the language of supplied content.
+Help applicants compare roles and prepare applications. Put job requirements, related applicant experience and clear next actions first. Use English for interface copy; preserve the language of supplied content.
 
 ## Colors
 
@@ -44,7 +44,7 @@ Use daisyUI radii and control shapes consistently. Keep icons aligned and touch 
 
 Reuse shared job views, `Icon` and native daisyUI controls. Give controls accessible names, visible focus and consistent states. Preserve input during errors, confirm destructive actions and respect reduced motion. Global interaction styles belong in the application stylesheet.
 
-| Capability | Canonical owner | Source of truth | Allowed variants | Verification |
+| UI behavior | Component or file | Reads from | Variants | Checks |
 | --- | --- | --- | --- | --- |
 | Select/Listbox | Native daisyUI select | Form schemas | OS popup | Keyboard flows |
 | Form | Shared forms and DraftStatus | API schemas | Create/edit | Input and recovery tests |

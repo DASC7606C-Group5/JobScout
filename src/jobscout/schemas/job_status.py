@@ -32,7 +32,7 @@ class ReviewIssue(BaseModel):
         "timeout",
         "service_unavailable",
         "invalid_output",
-        "invalid_evidence",
+        "unverifiable_claims",
         "insufficient_job_information",
         "incomplete_review",
         "failed",
@@ -50,7 +50,7 @@ def issue_status(issue: ReviewIssue | None) -> JobStatus:
             return "timeout"
         case "service_unavailable":
             return "unavailable"
-        case "invalid_output" | "invalid_evidence":
+        case "invalid_output" | "unverifiable_claims":
             return "invalid"
         case "insufficient_job_information":
             return "insufficient"

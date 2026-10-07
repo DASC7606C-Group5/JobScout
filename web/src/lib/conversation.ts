@@ -5,7 +5,7 @@ const fieldLabels: Record<string, string> = {
   skills: 'Skills',
   internships: 'Internships',
   projects: 'Projects',
-  target_directions: 'Job directions',
+  target_directions: 'Job interests',
   'preferences.location': 'Work location',
   'preferences.location_unrestricted': 'Work location',
   'preferences.employment_type': 'Employment type',

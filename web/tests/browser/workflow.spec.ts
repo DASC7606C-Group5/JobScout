@@ -941,7 +941,7 @@ for (const stage of ['search', 'review'] as const) {
     if (stage === 'review') await edit.press('Enter')
     else await edit.click()
     await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
-    await expect(page.getByLabel('Job directions', { exact: true })).toHaveValue(
+    await expect(page.getByLabel('Job interests', { exact: true })).toHaveValue(
       running.profile!.target_directions.join('\n'),
     )
     await expect(page.getByLabel('Work location', { exact: true })).toHaveValue(
@@ -1015,7 +1015,7 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
   await page.waitForTimeout(1300)
   expect(state.getCount()).toBe(count)
   await page.getByRole('button', { name: 'View job: React Engineer' }).click()
-  await page.getByText('View source excerpts', { exact: true }).click()
+  await page.getByText('Job requirements and your background', { exact: true }).click()
   await expect(page.getByText('“React development experience required.”')).toBeVisible()
   await page.getByRole('button', { name: 'Save job: React Engineer', exact: true }).click()
   await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
@@ -1306,7 +1306,7 @@ test('conversation preserves supplied free text and structured answers', async (
         created_at: '2026-10-03T00:00:00Z',
         responses: [
           {
-            label: 'Job directions',
+            label: 'Job interests',
             value: ['Frontend development', 'Data analysis'],
             status: 'answered',
           },
@@ -1469,7 +1469,7 @@ test('summary edits preserve all directions across navigation and submission, an
   const state = await mockSessions(page)
   await introduce(page)
   await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
-  const directions = page.getByLabel('Job directions', { exact: true })
+  const directions = page.getByLabel('Job interests', { exact: true })
   await directions.fill('Frontend development\nData analysis\nProduct design\nSoftware engineering')
   await expect(page.getByRole('button', { name: 'Update criteria' })).toBeEnabled()
   await expect(directions).toHaveValue(
@@ -1693,7 +1693,7 @@ test('search failure preserves published job identities until editing the criter
   await expect(page.locator('body')).not.toContainText('private-failure-detail')
   await page.getByRole('button', { name: 'Edit search criteria', exact: true }).click()
   await page.getByRole('button', { name: 'Edit search conditions', exact: true }).click()
-  await expect(page.getByLabel('Job directions', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Job interests', { exact: true })).toBeVisible()
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toHaveCount(0)
   expect(state.requests.at(-1)?.action).toBe('edit_conditions')
 })
@@ -1849,7 +1849,7 @@ test('job notices and source coverage retain actionable details when analysis is
   await captureResults(page, 'results-expanded-notices')
   await page.getByRole('button', { name: 'Search details', exact: true }).click()
   const record = page.getByRole('dialog', { name: 'Search details', exact: true })
-  await record.getByText('Sources and search coverage', { exact: true }).click()
+  await record.getByText('Job sites searched', { exact: true }).click()
   await expect(
     record.getByRole('listitem').filter({ hasText: 'Liepin · Frontend development' }),
   ).toBeVisible()
@@ -1877,7 +1877,7 @@ test('empty completed search offers recovery without inventing jobs', async ({ p
   const state = await mockSessions(page, empty)
   await introduce(page)
   await expect(page.getByRole('article', { name: 'Job details', exact: true })).toHaveCount(0)
-  await page.getByText('Sources and search coverage', { exact: true }).click()
+  await page.getByText('Job sites searched', { exact: true }).click()
   await expect(
     page.getByRole('listitem').filter({ hasText: 'Liepin · Frontend development' }),
   ).toBeVisible()
@@ -2621,7 +2621,7 @@ test.describe('job status tooltips', () => {
     const card = page.locator('article').filter({
       has: page.getByRole('button', { name: `View job: ${item.job.title}`, exact: true }),
     })
-    const badge = card.getByRole('button', { name: 'Timeout', exact: true })
+    const badge = card.getByRole('button', { name: 'Timed out', exact: true })
     const tooltip = page.getByRole('tooltip')
     await badge.tap()
     await expect(tooltip).toBeVisible()

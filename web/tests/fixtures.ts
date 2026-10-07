@@ -9,10 +9,10 @@ export function createMatchScoreFixture(): MatchScore {
     total: 80,
     assessed_weight: 30,
     applicable_weight: 95,
-    coverage: 32,
+    assessed_percentage: 32,
     provisional: true,
     completeness: 'partial',
-    input_fingerprint: 'input',
+    input_hash: 'input',
     dimensions: Object.keys(dimensionLabels).map((id, index) => ({
       id: id as keyof typeof dimensionLabels,
       score: index === 0 ? 80 : null,
@@ -28,7 +28,7 @@ export function createMatchScoreFixture(): MatchScore {
           ? [{ document_id: 'resume', excerpt: 'Built a React interface', source_url: null }]
           : [],
       missing_information: index === 1 ? ['Daily duties not provided'] : [],
-      input_fingerprint: id,
+      input_hash: id,
     })),
   }
 }
@@ -201,7 +201,7 @@ export function createSessionFixture(overrides: Partial<ScoutSession> = {}): Sco
       confirmed: false,
       editable_fields: summaryFields.map(([key]) => key),
       missing_fields: [],
-      coverage_notice: '',
+      search_limitations: '',
     },
     source_outcomes: [],
     recommendation: null,

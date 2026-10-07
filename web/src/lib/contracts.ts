@@ -105,7 +105,7 @@ export interface SearchSummary {
   confirmed: boolean
   editable_fields: string[]
   missing_fields: string[]
-  coverage_notice: string
+  search_limitations: string
 }
 
 export interface SourceQuoteReference {

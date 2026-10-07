@@ -256,7 +256,7 @@ def test_requested_count_and_source_facts_are_preserved(count: int) -> None:
         "experience",
     ],
 )
-def test_invalid_evidence_removes_only_the_analysis_and_preserves_source_vacancy(
+def test_unverifiable_quotes_remove_only_the_analysis_and_preserve_source_vacancy(
     damage: str,
 ) -> None:
     def corrupt(task: str, response: dict[str, Any]) -> None:
@@ -441,7 +441,7 @@ def test_city_metadata_cannot_prove_requested_district_and_exclusions_take_prece
     assert [row.job.job_id for row in result.pending_jobs] == ["broad"]
 
 
-def test_empty_user_evidence_never_credits_supplied_profile_alone() -> None:
+def test_missing_profile_quotes_never_credit_supplied_profile_alone() -> None:
     result = assess(ReplayProvider(), [job("a")], documents={})
     reason = result.jobs[0].matching_reasons[0]
     assert reason.level == "not_documented"

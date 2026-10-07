@@ -30,7 +30,7 @@ from jobscout.services.prompts import (
 BACKGROUND_FIELDS = ("education", "skills", "internships", "projects")
 REQUIRED_FIELDS = ("target_directions", "preferences.location", "preferences.employment_type")
 _REQUIRED_QUESTIONS = {
-    "target_directions": "Choose specific job directions.",
+    "target_directions": "Choose specific job interests.",
     "preferences.location": "Specify your work location (Hong Kong, mainland China, or any location).",
     "preferences.employment_type": "Specify your employment type (full-time, internship, part-time, contract, freelance, or no preference).",
 }

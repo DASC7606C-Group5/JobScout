@@ -470,7 +470,7 @@ def test_new_details_allow_reassessment_without_reusing_summary_analysis() -> No
     asyncio.run(scenario())
 
 
-def test_cross_source_duplicates_preserve_all_source_evidence() -> None:
+def test_cross_source_duplicates_preserve_all_source_documents() -> None:
     class Sources(SnapshotSearch):
         supported_sources = ["first", "second"]
 

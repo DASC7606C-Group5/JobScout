@@ -135,7 +135,7 @@ function JobMatch({ item }: { item: RecommendationItem }) {
           )}
           {score?.provisional && score.total !== null && (
             <p className="mt-3 text-xs leading-5 text-base-content/60">
-              The score uses the information available.
+              Some details are missing, so this score may change with more information.
             </p>
           )}
         </div>

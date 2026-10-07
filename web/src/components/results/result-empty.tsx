@@ -12,7 +12,7 @@ export function ResultEmpty({ savedOnly, onEdit }: { savedOnly: boolean; onEdit:
       <p className="mt-3 max-w-sm text-sm leading-7 text-base-content/60">
         {savedOnly
           ? 'Save jobs that interest you to compare them here.'
-          : 'Try another job direction or broaden your location preferences.'}
+          : 'Try another type of job or broaden your location preferences.'}
       </p>
       <button className="btn mt-7 border-0 btn-primary" onClick={onEdit}>
         {savedOnly ? 'Explore jobs' : 'Edit search criteria'}

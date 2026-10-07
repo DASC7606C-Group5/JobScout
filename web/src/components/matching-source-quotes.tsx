@@ -34,7 +34,7 @@ function SourceQuoteList({
             </cite>
             {url && (
               <a className="ml-2 link" href={url} target="_blank" rel="noopener noreferrer">
-                Check source
+                {kind === 'job' ? 'Open job listing' : 'Open original document'}
               </a>
             )}
           </blockquote>
@@ -51,14 +51,16 @@ export function MatchingSourceQuotes({ reasons }: { reasons: MatchingReason[] })
   if (!reasonsWithQuotes.length) return null
   return (
     <details className="collapse-arrow collapse border border-base-300 bg-base-100">
-      <summary className="collapse-title text-sm font-medium">View source excerpts</summary>
+      <summary className="collapse-title text-sm font-medium">
+        Job requirements and your background
+      </summary>
       <div className="collapse-content space-y-5">
         {reasonsWithQuotes.map((reason) => (
           <section key={JSON.stringify(reason)} className="space-y-3">
             <h4 className="text-sm font-semibold break-words">{reason.requirement}</h4>
             <SourceQuoteList title="Job requirement" quotes={reason.job_source_quotes} kind="job" />
             <SourceQuoteList
-              title="Your experience"
+              title="What you provided"
               quotes={reason.profile_source_quotes}
               kind="profile"
             />

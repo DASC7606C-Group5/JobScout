@@ -19,7 +19,7 @@ export function ResultFilters({
     <div className="mb-4 flex min-w-0 flex-wrap items-center justify-between gap-2">
       <fieldset
         className="flex max-w-full min-w-0 gap-2 overflow-x-auto py-1"
-        aria-label="Filter by job direction"
+        aria-label="Filter by type of job"
       >
         {directions.map((value) => (
           <button

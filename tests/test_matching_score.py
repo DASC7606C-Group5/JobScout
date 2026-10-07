@@ -1,4 +1,4 @@
-"""Deterministic arithmetic, evidence isolation and score input contracts."""
+"""Deterministic arithmetic, source isolation and score input contracts."""
 
 import asyncio
 import json
@@ -39,7 +39,7 @@ def dimensions(
             else "assessed"
             if scores.get(identity) is not None
             else "unknown",
-            input_fingerprint=identity,
+            input_hash=identity,
         )
         for identity, weight in DIMENSION_WEIGHTS.items()
     ]
@@ -59,17 +59,21 @@ def test_exact_weights_half_up_and_partial_denominator() -> None:
         )
     )
     assert result.total == 63
-    assert result.coverage == 100 and not result.provisional
+    assert result.assessed_percentage == 100 and not result.provisional
     partial = aggregate(dimensions({"skills": 80, "preferences": 50}, {"education"}))
     assert partial.total == 73  # 2900 / 40 = 72.5
-    assert (partial.assessed_weight, partial.applicable_weight, partial.coverage) == (40, 95, 42)
+    assert (partial.assessed_weight, partial.applicable_weight, partial.assessed_percentage) == (
+        40,
+        95,
+        42,
+    )
     assert partial.provisional and partial.completeness == "partial"
     unknown = aggregate(dimensions({}))
-    assert unknown.total is None and unknown.coverage == 0
+    assert unknown.total is None and unknown.assessed_percentage == 0
     assert unknown.completeness == "unknown"
 
 
-def test_low_coverage_does_not_outrank_supported_fit_and_ties_use_job_id() -> None:
+def test_low_assessed_percentage_does_not_outrank_supported_fit_and_ties_use_job_id() -> None:
     sparse = RecommendationItem(
         job=job("a"),
         recommendation_fit="recommended",
@@ -98,7 +102,7 @@ def judgment(identity: str, requirement: str, fact: str, excerpt: str) -> Dimens
             "id": identity,
             "status": "assessed",
             "score": 80,
-            "explanation": "Direct evidence",
+            "explanation": "Directly meets the requirement",
             "requirement_ids": [requirement],
             "profile_fact_ids": [fact],
             "job_source_quotes": [{"document_id": "jd", "excerpt": requirement}],
@@ -143,19 +147,13 @@ def test_bad_reference_isolated_and_input_changes_invalidate() -> None:
     first = score()
     assert first.dimensions[0].score == 80
     assert first.dimensions[4].status == "unknown"
-    assert first.total == 80 and first.coverage == 30 and first.provisional
+    assert first.total == 80 and first.assessed_percentage == 30 and first.provisional
     applicant.preferences.location = "Shanghai"
     preference_change = score()
-    assert (
-        first.dimensions[0].input_fingerprint == preference_change.dimensions[0].input_fingerprint
-    )
-    assert (
-        first.dimensions[5].input_fingerprint != preference_change.dimensions[5].input_fingerprint
-    )
+    assert first.dimensions[0].input_hash == preference_change.dimensions[0].input_hash
+    assert first.dimensions[5].input_hash != preference_change.dimensions[5].input_hash
     applicant.skills = ["SQL"]
-    assert (
-        preference_change.dimensions[0].input_fingerprint != score().dimensions[0].input_fingerprint
-    )
+    assert preference_change.dimensions[0].input_hash != score().dimensions[0].input_hash
     assert "interest" not in DimensionAssessment.model_fields
     rows[0].profile_source_quotes[0].excerpt = "absent"
     assert score().total is None
@@ -212,17 +210,17 @@ def test_cached_dimension_survives_checkpoint_preferences_and_unrelated_backgrou
         next_result = await restarted.assess(applicant, [job("j")], PROFILE_DOCUMENTS, "s")
         continued = next_result.jobs[0].match_score
         assert continued is not None and continued.dimensions[0] == initial.dimensions[0]
-        assert continued.dimensions[4].input_fingerprint != initial.dimensions[4].input_fingerprint
-        assert continued.dimensions[5].input_fingerprint != initial.dimensions[5].input_fingerprint
+        assert continued.dimensions[4].input_hash != initial.dimensions[4].input_hash
+        assert continued.dimensions[5].input_hash != initial.dimensions[5].input_hash
         applicant.skills.append("SQL")
         changed = await restarted.assess(applicant, [job("j")], PROFILE_DOCUMENTS, "s")
         assert changed.jobs[0].match_score is not None
         assert changed.jobs[0].match_score.dimensions[0].score == 30
-        changed_evidence = await restarted.assess(
+        changed_background = await restarted.assess(
             applicant, [job("j")], {"resume": "Bachelor of Computer Science"}, "s"
         )
-        assert changed_evidence.jobs[0].match_score is not None
-        assert changed_evidence.jobs[0].match_score.total is None
+        assert changed_background.jobs[0].match_score is not None
+        assert changed_background.jobs[0].match_score.total is None
 
     asyncio.run(scenario())
 
@@ -296,7 +294,7 @@ def test_holistic_dimensions_accept_normalized_facts_and_cross_category_requirem
     assert score.dimensions[0].score == 80
     assert score.dimensions[1].score == 80
     assert score.dimensions[3].status == "not_applicable"
-    assert score.applicable_weight == 90 and score.coverage == 61
+    assert score.applicable_weight == 90 and score.assessed_percentage == 61
     assert (
         score.dimensions[1].profile_source_quotes[0].excerpt
         == "presenting a weekly reporting dashboard"

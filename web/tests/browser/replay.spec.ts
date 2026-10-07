@@ -16,7 +16,7 @@ async function snapshot(page: Page, id: string): Promise<ScoutSession> {
 async function createFromForm(page: Page, complete: boolean) {
   await page.goto('/new')
   await page.getByLabel('About you', { exact: true }).fill(description)
-  await page.getByLabel('Job directions', { exact: false }).fill(complete ? 'Data Analyst' : '')
+  await page.getByLabel('Job interests', { exact: false }).fill(complete ? 'Data Analyst' : '')
   await page.getByLabel('Work location', { exact: true }).fill(complete ? 'Hong Kong' : '')
   await page.getByLabel('Employment type', { exact: true }).fill(complete ? 'internship' : '')
   const accepted = page.waitForResponse(
@@ -93,7 +93,7 @@ async function confirmAndVerifyResults(page: Page, id: string) {
   }
   await page.getByRole('button', { name: 'View job: ' + item.job.title, exact: true }).click()
   const article = page.getByRole('article', { name: 'Job details', exact: true })
-  await article.getByText('View source excerpts', { exact: true }).click()
+  await article.getByText('Job requirements and your background', { exact: true }).click()
   await expect(article.getByRole('link', { name: 'Check source' }).first()).toHaveAttribute(
     'href',
     /^https?:\/\//,
@@ -117,7 +117,7 @@ async function confirmAndVerifyResults(page: Page, id: string) {
       fullPage: true,
       animations: 'disabled',
     })
-    await article.getByText('View source excerpts', { exact: true }).click()
+    await article.getByText('Job requirements and your background', { exact: true }).click()
     await page.evaluate(() =>
       Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => {}))),
     )

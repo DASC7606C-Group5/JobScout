@@ -1,4 +1,4 @@
-"""Evidence-based dimension scores; totals are calculated by the server."""
+"""Dimension scores comparing applicant background with job requirements; totals are calculated by the server."""
 
 from typing import Literal, Self
 
@@ -41,7 +41,7 @@ class DimensionAssessment(BaseModel):
 
 class MatchDimension(DimensionAssessment):
     weight: int
-    input_fingerprint: str
+    input_hash: str
 
 
 class MatchScore(BaseModel):
@@ -51,10 +51,10 @@ class MatchScore(BaseModel):
     dimensions: list[MatchDimension] = Field(min_length=6, max_length=6)
     assessed_weight: int
     applicable_weight: int
-    coverage: int = Field(ge=0, le=100)
+    assessed_percentage: int = Field(ge=0, le=100)
     provisional: bool
     completeness: Literal["complete", "partial", "unknown"]
-    input_fingerprint: str
+    input_hash: str
 
     @model_validator(mode="after")
     def fixed_dimensions(self) -> Self:

@@ -6,7 +6,7 @@ export const summaryFields = [
   ['skills', 'Skills', 'array'],
   ['internships', 'Internships', 'array'],
   ['projects', 'Projects', 'array'],
-  ['target_directions', 'Job directions', 'array'],
+  ['target_directions', 'Job interests', 'array'],
   ['preferences.location', 'Work location', 'text'],
   ['preferences.location_unrestricted', 'Any location', 'boolean'],
   ['preferences.employment_type', 'Employment type', 'text'],

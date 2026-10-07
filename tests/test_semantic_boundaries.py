@@ -16,8 +16,8 @@ from jobscout.services.search_agent import SearchAgent
 from tests.test_conditions_and_locations import MeaningProvider
 from tests.test_job_assessment_service import profile as assessment_profile
 from tests.test_job_processing_service import make_raw
+from tests.test_requirement_matching import evaluate
 from tests.test_search_agent import Assessment, SnapshotSearch, profile, raw, run
-from tests.test_semantic_evidence import evaluate
 
 
 @pytest.mark.parametrize(
@@ -158,7 +158,7 @@ def test_global_ranking_uses_overall_fit_instead_of_requirement_support_ratios()
     def reasons(level: str, count: int) -> list[MatchingReason]:
         return [
             MatchingReason.model_validate(
-                {"requirement": f"r{index}", "level": level, "explanation": "Evidence"}
+                {"requirement": f"r{index}", "level": level, "explanation": "Meets the requirement"}
             )
             for index in range(count)
         ]

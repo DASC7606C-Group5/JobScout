@@ -14,7 +14,7 @@ import { SearchRecord } from './search-record'
 import { SearchFailure, SearchLoading } from './search-status'
 
 export function DiscoveryContent() {
-  const { session, busy, error, retry, recovery } = useScoutSession()
+  const { error, retry, recovery } = useScoutSession()
   const errorCode =
     error instanceof ApplicantRequestError || error instanceof SessionHttpError
       ? error.code
@@ -35,9 +35,6 @@ export function DiscoveryContent() {
                   : 'Retry'}
           </button>
         </div>
-      )}
-      {busy && session?.outcome !== 'running' && (
-        <output className="mb-4 block text-sm">Working…</output>
       )}
       <SessionContent />
     </>

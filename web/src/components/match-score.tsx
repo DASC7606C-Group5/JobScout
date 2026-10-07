@@ -15,7 +15,7 @@ export function MatchScoreValue({
   prominent?: boolean
 }) {
   if (score.total === null)
-    return <span className="text-xs text-base-content/65">Match not yet available</span>
+    return <span className="text-xs text-base-content/65">Match score unavailable</span>
   return (
     <span className="inline-flex items-baseline gap-1.5 text-xs text-base-content/65">
       Match
@@ -143,7 +143,7 @@ export function MatchRadar({ score }: { score: MatchScore }) {
 
   return (
     <figure
-      aria-label="Six-dimension match scores out of 100"
+      aria-label="Match scores for skills, responsibilities, experience, seniority, education and preferences, out of 100"
       className="mx-auto block w-full max-w-72 overflow-visible"
     >
       <div

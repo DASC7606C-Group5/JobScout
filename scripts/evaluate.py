@@ -569,9 +569,9 @@ async def evaluate(
         "provider": "deepseek" if mode == "live" else "replay",
         "models": models,
         "measures_model_quality": mode in {"live", "recorded-replay"},
-        "quality_caveat": "Synthetic machine annotations are unreviewed; no real-world quality claim.",
-        "ranking_protocol": "Fixed candidate pool and annotation-confirmed profile for both arms; not end-to-end.",
-        "profile_protocol": "Direct schema extraction prompt; not the production graph conversation prompt.",
+        "quality_caveat": "A model annotated these synthetic examples; people have not reviewed them. These results do not establish performance on real applications.",
+        "ranking_protocol": "Both implementations rank the same jobs using the profile specified by the dataset. This does not test job retrieval or profile extraction.",
+        "profile_protocol": "Extracts the profile in one model call; does not test the application conversation.",
         "latency": {
             "elapsed_seconds": elapsed,
             "kind": "live_synthetic_components" if mode == "live" else "local_execution_only",

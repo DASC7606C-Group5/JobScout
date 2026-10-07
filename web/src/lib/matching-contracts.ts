@@ -22,7 +22,7 @@ export interface MatchDimension {
   job_source_quotes: SourceQuoteReference[]
   profile_source_quotes: SourceQuoteReference[]
   missing_information: string[]
-  input_fingerprint: string
+  input_hash: string
 }
 
 export interface MatchScore {
@@ -30,10 +30,10 @@ export interface MatchScore {
   dimensions: MatchDimension[]
   assessed_weight: number
   applicable_weight: number
-  coverage: number
+  assessed_percentage: number
   provisional: boolean
   completeness: 'complete' | 'partial' | 'unknown'
-  input_fingerprint: string
+  input_hash: string
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -63,11 +63,11 @@ export function isMatchScore(value: unknown): value is MatchScore {
   const ids = Object.keys(dimensionLabels)
   return (
     (value.total === null || percentage(value.total)) &&
-    percentage(value.coverage) &&
+    percentage(value.assessed_percentage) &&
     percentage(value.assessed_weight) &&
     percentage(value.applicable_weight) &&
     typeof value.provisional === 'boolean' &&
-    typeof value.input_fingerprint === 'string' &&
+    typeof value.input_hash === 'string' &&
     ['complete', 'partial', 'unknown'].includes(String(value.completeness)) &&
     Array.isArray(value.dimensions) &&
     value.dimensions.length === 6 &&
@@ -81,7 +81,7 @@ export function isMatchScore(value: unknown): value is MatchScore {
           : ['unknown', 'not_applicable'].includes(String(dimension.status)) &&
             dimension.score === null) &&
         typeof dimension.explanation === 'string' &&
-        typeof dimension.input_fingerprint === 'string' &&
+        typeof dimension.input_hash === 'string' &&
         strings(dimension.requirement_ids) &&
         strings(dimension.profile_fact_ids) &&
         strings(dimension.missing_information) &&
