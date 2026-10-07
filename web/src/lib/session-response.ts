@@ -1,4 +1,5 @@
 import type { RecommendationItem, ScoutSession } from './contracts'
+import { isMatchScore } from './matching-contracts'
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -166,6 +167,7 @@ export function isRecommendationItem(value: unknown): value is RecommendationIte
   return (
     record(value) &&
     record(value.job) &&
+    (value.match_score === null || isMatchScore(value.match_score)) &&
     string(value.job.job_id) &&
     member(value.analysis_status, ['complete', 'partial', 'unavailable']) &&
     member(value.review_status, ['queued', 'reviewing', 'reviewed', 'not_reviewed']) &&

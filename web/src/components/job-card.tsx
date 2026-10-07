@@ -1,6 +1,7 @@
 import type { RecommendationItem } from '../lib/contracts'
 import { Icon } from './icon'
 import { JobReviewStatus } from './job-review-status'
+import { MatchScoreSummary } from './match-score'
 
 export function JobCard({
   item,
@@ -53,6 +54,7 @@ export function JobCard({
         {reason && (
           <span className="mt-2 line-clamp-2 text-sm leading-6 text-base-content/70">{reason}</span>
         )}
+        <MatchScoreSummary score={item.match_score} />
         {saved && (
           <span className="mt-2 inline-flex items-center gap-1.5 text-xs text-base-content/60">
             <Icon name="bookmark" size={14} /> Saved

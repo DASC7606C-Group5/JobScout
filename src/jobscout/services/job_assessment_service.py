@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from jobscout.schemas.conversation import MatchingReason, SourceQuoteReference
 from jobscout.schemas.job import FreshnessStatus, JobPosting, SourceDocument
+from jobscout.schemas.matching import DimensionAssessment, MatchDimension
 from jobscout.schemas.profile import EmploymentType, UserProfile
 from jobscout.schemas.recommendation import (
     RecommendationFit,
@@ -23,6 +24,7 @@ from jobscout.schemas.recommendation import (
 from jobscout.services.job_processing_service import select_candidates
 from jobscout.services.llm_service import LLMProvider, ModelRouter, ModelServiceError
 from jobscout.services.location_service import get_location_catalog, within
+from jobscout.services.matching_score import build_match_score
 from jobscout.services.notice_service import finalize_recommendation, make_notice
 from jobscout.services.prompts import JOB_ANALYSIS_PROMPT, MATCHING_PROMPT
 from jobscout.services.ranking import recommendation_key
@@ -68,7 +70,9 @@ class Requirement(_StrictModel):
     requirement_id: str = Field(min_length=1)
     text: str = Field(min_length=1)
     skill_terms: list[str] = Field(default_factory=list, max_length=8)
-    category: Literal["skill", "experience", "education", "other"] = "skill"
+    category: Literal[
+        "skill", "responsibility", "experience", "seniority", "education", "preference", "other"
+    ] = "skill"
     source_quotes: list[SourceQuote] = Field(min_length=1, max_length=5)
     qualification_options: list[str] = Field(default_factory=list, max_length=10)
     minimum_experience_months: int | None = Field(default=None, ge=0, le=1200, strict=True)
@@ -123,6 +127,7 @@ class PreparationSuggestion(_StrictModel):
 
 class JobMatch(_StrictModel):
     job_id: str
+    dimensions: list[DimensionAssessment] = Field(default_factory=list, max_length=6)
     recommendation_fit: RecommendationFit = "unknown"
     recommendation_reason: str = Field(default="", max_length=600)
     matches: list[RequirementMatch] = Field(default_factory=list, max_length=30)
@@ -140,6 +145,7 @@ class _JDCacheSnapshot(_StrictModel):
     version: str
     session_id: str
     entries: dict[str, JobAnalysis]
+    dimension_scores: dict[str, MatchDimension] = Field(default_factory=dict)
 
 
 class _InvalidAssessment(ValueError):
@@ -442,6 +448,7 @@ def _render(
     profile_documents: dict[str, str],
     diagnostics: list[str],
     analysis_status: Literal["complete", "partial", "unavailable"] = "complete",
+    dimension_cache: dict[str, MatchDimension] | None = None,
 ) -> _Ranked:
     reasons: list[MatchingReason] = []
     suggestions: list[str] = []
@@ -507,6 +514,15 @@ def _render(
             preparation_suggestions=suggestions,
             matching_reasons=reasons,
             analysis_status=analysis_status,
+            match_score=build_match_score(
+                match.dimensions,
+                analysis,
+                profile,
+                {key: value.text for key, value in documents.items()},
+                profile_documents,
+                incomplete=match.incomplete,
+                dimension_cache=dimension_cache,
+            ),
             recommendation_fit=match.recommendation_fit
             if analysis_status != "unavailable"
             else "unknown",
@@ -533,6 +549,7 @@ class JobAssessmentService:
             self.decision_provider = provider
         self.catalog = getattr(provider, "location_catalog", None) or get_location_catalog()
         self.cache: dict[str, JobAnalysis] = {}
+        self.dimension_scores: dict[str, MatchDimension] = {}
         self.diagnostics: dict[str, AssessmentDiagnostic] = {}
         self._analyzed_ids: set[str] = set()
         self._session_id: str | None = None
@@ -583,6 +600,7 @@ class JobAssessmentService:
         self._closed = True
         async with self._lock:
             self.cache.clear()
+            self.dimension_scores.clear()
             self.diagnostics.clear()
             self._analyzed_ids.clear()
             self._search_id = None
@@ -596,7 +614,10 @@ class JobAssessmentService:
                 "Only session caches with completed evaluations can be exported.",
             )
         return _JDCacheSnapshot(
-            version=_SCHEMA_VERSION, session_id=self._session_id, entries=self.cache
+            version=_SCHEMA_VERSION,
+            session_id=self._session_id,
+            entries=self.cache,
+            dimension_scores=self.dimension_scores,
         ).model_dump(mode="json")
 
     def import_cache(self, snapshot: object, session_id: str) -> None:
@@ -631,6 +652,13 @@ class JobAssessmentService:
             )
         self._session_id = session_id
         self.cache.update({key: item.model_copy(deep=True) for key, item in value.entries.items()})
+        self.dimension_scores.update(
+            {
+                key: item.model_copy(deep=True)
+                for key, item in value.dimension_scores.items()
+                if key == item.input_fingerprint
+            }
+        )
 
     def _cache_key(
         self, job: JobPosting, documents: dict[str, SourceDocument], directions: list[str]
@@ -902,6 +930,7 @@ class JobAssessmentService:
                 profile_documents,
                 [],
                 "partial" if analysis.incomplete or match.incomplete else "complete",
+                self.dimension_scores,
             )
             missing = eligible[job.job_id]
             rendered.item.verification_status = "pending" if missing else "confirmed"
@@ -947,6 +976,8 @@ class JobAssessmentService:
                 )
             self._session_id = session_id
             candidates: list[JobPosting] = []
+            if repair_feedback:
+                self.dimension_scores.clear()
             unique = eligible_jobs(profile, jobs)
             for job in jobs:
                 self.diagnostics.pop(job.job_id, None)

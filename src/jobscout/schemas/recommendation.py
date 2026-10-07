@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from jobscout.schemas.conversation import MatchingReason
 from jobscout.schemas.job import JobPosting
+from jobscout.schemas.matching import MatchScore
 from jobscout.schemas.notices import ApplicantNotice
 
 RecommendationFit = Literal["recommended", "possible", "unlikely", "unknown"]
@@ -25,6 +26,7 @@ class RecommendationItem(BaseModel):
     unknown_conditions: list[str] = Field(default_factory=list)
     recommendation_fit: RecommendationFit = "unknown"
     recommendation_reason: str = ""
+    match_score: MatchScore | None = None
 
 
 class RecommendationResult(BaseModel):

@@ -162,6 +162,8 @@ does not tell you its duties. Never invent source facts or missing requirements.
   within each job.
   Only skill requirements have skill_terms. For education, preserve accepted alternatives in
   qualification_options. Set minimum_experience_months only for an explicit minimum duration.
+  Extract actual duties as responsibility and stated autonomy or leadership as seniority.
+  Keep preference requirements separate from ability requirements.
 - locations and employment: quote the actual work location and employment type when stated.
   Keep a stated district rather than replacing it with the city. An employer's headquarters is
   not automatically the work site; missing employment type is not automatically full-time.
@@ -193,16 +195,47 @@ or an employer's willingness to hire them.
 Consider duties, desired roles, experience useful in this job, stated preferences and missing
 skills or qualifications that would affect the recommendation. Do not average match levels or
 reward a short requirement list.
-- recommended: the role suits the applicant's stated interests and documented background.
+- recommended: the role suits the applicant's stated interests and supplied background.
 - possible: the role is worth exploring despite missing experience, skills or details that need checking.
 - unlikely: supplied facts show a substantial mismatch, not merely a sparse resume or listing.
 - unknown: too little information to make an overall judgment.
-In recommendation_reason, address the applicant in one or two English sentences explaining whether
-the role is worth exploring and the main missing experience, skill, qualification or unanswered
-question. Discuss a gap only when the job asks for that experience, skill or qualification.
+In recommendation_reason, address the applicant in one or two English sentences, aiming for 35-50
+words. Explain whether the role is worth exploring, the strongest reason to consider it and the
+one gap or unanswered question that most affects that decision. Discuss a gap only when the job
+asks for that experience, skill or qualification. Use the same facts and uncertainty as the
+dimension explanations, but do not summarize every dimension or list individual requirements.
 An unfamiliar industry or tool is not automatically a barrier. This is advice, not a hiring verdict.
-Use plain English in applicant-facing explanations. Name the relevant skill, task or qualification,
-where the applicant used it and what the job asks for. Say what is missing or needs checking.
+Use plain English in all applicant-facing explanations. Say what the applicant has done, what the
+job asks for and what needs checking. Prefer concrete descriptions to phrases such as "supplied
+evidence", "documented fit" or "experience bar". Preserve original wording in source quotes.
+
+## Six-dimension scores
+Return six dimensions: skills, responsibilities, experience, seniority, education, preferences.
+Judge fit to the concrete requirements, not keyword counts. Use this anchored 0-100 rubric:
+0 = cited facts establish a direct mismatch; 25 = limited related experience; 50 = meets
+some substantive requirements; 75 = meets most with a stated gap; 100 = directly meets all.
+Intermediate integers may reflect how much of the requirements the applicant meets.
+Do not calculate a total.
+For each assessed ability dimension cite relevant requirement_ids, current profile_fact_ids,
+exact job_source_quotes and profile_source_quotes, and explain how the applicant's experience
+relates to the job and what is missing.
+In each dimension's explanation, use one or two short sentences, at most 35 words, covering the
+relevant job requirement, the applicant's related work or qualification and the main difference
+or uncertainty behind the score. Include only the most consequential details, not a catalog of
+tools. Do not repeat the overall recommendation or details from other dimensions. The decisive
+gap may also appear in recommendation_reason when needed to explain the overall advice.
+Do not include the numeric score, source IDs or copied quotes in this prose; return citations
+in their separate fields. Keep missing_information as short, specific unanswered questions.
+Preferences compares only explicit role, task, location, employment and work-mode preferences to
+cited job facts. Skills and projects do not establish technology preferences; a skill gap cannot
+lower the preferences score. Interests never change ability scores.
+Leave unknown dimensions score=null and list missing_information.
+Use not_applicable only when cited job text explicitly waives that dimension, not when omitted.
+Requirements can support more than one dimension; categories do not restrict dimension citations.
+Quote original profile_documents, even when profile_facts summarize the same background differently.
+Missing information about the applicant cannot justify zero. Scores compare supplied background
+with job requirements, never hiring or ATS probability. Keep supported dimensions when another
+dimension is uncertain.
 
 ## Requirement matches
 - strong: the supplied background directly shows the requested experience, skill or qualification.
