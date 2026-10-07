@@ -5,7 +5,7 @@ import type { ApplicantNotice, JobPosting, RecommendationItem } from '../lib/con
 import { dateLabel, safeSourceUrl, sourceLabel } from '../lib/job-display'
 import { Icon } from './icon'
 import { JobReviewStatus } from './job-review-status'
-import { MatchScoreDetail } from './match-score'
+import { MatchRadar, MatchScoreValue } from './match-score'
 import { MatchingSourceQuotes } from './matching-source-quotes'
 import { ResultWarnings } from './results/result-warnings'
 
@@ -80,7 +80,6 @@ export function JobDetail({
       </div>
       <div className="space-y-5 p-5 text-sm leading-6 sm:space-y-6 sm:p-6">
         <JobMatch item={item} />
-        <MatchScoreDetail score={item.match_score} />
         <ResultWarnings
           notices={jobNotices}
           listingUrl={links[0]}
@@ -100,18 +99,34 @@ export function JobDetail({
 function JobMatch({ item }: { item: RecommendationItem }) {
   if (item.analysis_status === 'unavailable') return null
   const reasons = item.matching_reasons.filter((reason) => reason.level !== 'not_documented')
-  if (!reasons.length && !item.recommendation_reason) return null
+  const score = item.match_score
+  if (!reasons.length && !item.recommendation_reason && !score) return null
   return (
-    <section>
-      <h3 className="mb-2 font-semibold">Why this role</h3>
-      {item.recommendation_reason && (
-        <p className="mb-3 text-base-content/75">{item.recommendation_reason}</p>
-      )}
-      <ul className="space-y-2 text-base-content/75">
-        {reasons.map((reason) => (
-          <li key={JSON.stringify(reason)}>{reason.explanation}</li>
-        ))}
-      </ul>
+    <section className="@container">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h3 className="font-semibold">Why this role</h3>
+        {score && <MatchScoreValue score={score} prominent />}
+      </div>
+      <div
+        className={`mt-4 grid gap-5 ${score ? '@min-[34rem]:grid-cols-[minmax(0,1fr)_18rem] @min-[34rem]:items-center' : ''}`}
+      >
+        <div className="min-w-0">
+          {item.recommendation_reason && (
+            <p className="mb-3 text-base-content/75">{item.recommendation_reason}</p>
+          )}
+          <ul className="space-y-2 text-base-content/75">
+            {reasons.map((reason) => (
+              <li key={JSON.stringify(reason)}>{reason.explanation}</li>
+            ))}
+          </ul>
+          {score?.provisional && score.total !== null && (
+            <p className="mt-3 text-xs leading-5 text-base-content/60">
+              The score uses the information available.
+            </p>
+          )}
+        </div>
+        {score && <MatchRadar key={item.job.job_id} score={score} />}
+      </div>
     </section>
   )
 }

@@ -13,7 +13,11 @@ import type {
   StopSessionRequest,
   SearchOptions,
 } from '../../src/lib/contracts'
-import { createRecommendationFixture, createSessionFixture } from '../fixtures'
+import {
+  createMatchScoreFixture,
+  createRecommendationFixture,
+  createSessionFixture,
+} from '../fixtures'
 import { startSessionEvents } from './session-events-server'
 
 const eventServers: Awaited<ReturnType<typeof startSessionEvents>>[] = []
@@ -2426,6 +2430,51 @@ test('a failed resume replacement retains the original file and introduction for
     description: introduction,
     resume: { name: 'original.txt', text: 'Original resume experience' },
   })
+})
+
+test('match explanations support hover, keyboard dismissal and mobile activation', async ({
+  page,
+}) => {
+  const session = resultSession()
+  const score = createMatchScoreFixture()
+  session.recommendation!.jobs[0]!.match_score = score
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/searches/session-1')
+  await page.getByRole('button', { name: 'View job: React Engineer', exact: true }).click()
+  const details = page.getByRole('article', { name: 'Job details' })
+  const skills = details.getByRole('button', { name: 'Skills: 80/100', exact: true })
+  const tooltip = details.getByRole('tooltip').filter({ hasText: score.dimensions[0]!.explanation })
+  await skills.hover()
+  await expect(tooltip).toBeVisible()
+  await tooltip.hover()
+  await expect(tooltip).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(tooltip).toBeHidden()
+  await skills.focus()
+  await expect(tooltip).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(tooltip).toBeHidden()
+  const responsibilities = details.getByRole('button', {
+    name: 'Responsibilities: Not enough information',
+    exact: true,
+  })
+  await responsibilities.focus()
+  await expect(
+    details.getByRole('tooltip').filter({
+      hasText: score.dimensions[1]!.missing_information[0]!,
+    }),
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.setViewportSize({ width: 390, height: 900 })
+  await skills.click()
+  await expect(tooltip).toBeVisible()
+  const bounds = await tooltip.boundingBox()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390)
+  await page.keyboard.press('Escape')
+  await expect(tooltip).toBeHidden()
 })
 
 test('summary groups retain collapsed edits and require confirmation of the updated revision', async ({

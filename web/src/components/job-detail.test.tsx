@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test'
 import { createRef } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { createRecommendationFixture } from '../../tests/fixtures'
+import { createMatchScoreFixture, createRecommendationFixture } from '../../tests/fixtures'
 import type { ApplicantNotice } from '../lib/contracts'
 import { SearchFailure } from './discovery/search-status'
 import { JobDetail } from './job-detail'
@@ -46,6 +46,7 @@ test('detail retains supplied facts and quotes and excludes notices for discarde
 test('unavailable analysis retains job facts but does not display unsupported match or preparation output', () => {
   const item = createRecommendationFixture()
   item.analysis_status = 'unavailable'
+  item.match_score = createMatchScoreFixture()
   item.preparation_suggestions = ['unsupported-preparation-sentinel']
   item.matching_reasons[0]!.explanation = 'unsupported-match-sentinel'
   item.matching_reasons[1]!.explanation = 'unsupported-missing-sentinel'
@@ -64,6 +65,7 @@ test('unavailable analysis retains job facts but does not display unsupported ma
   expect(html).not.toContain('unsupported-preparation-sentinel')
   expect(html).not.toContain('unsupported-match-sentinel')
   expect(html).not.toContain('unsupported-missing-sentinel')
+  expect(html).not.toContain(item.match_score.dimensions[0]!.explanation)
 })
 
 test('workflow failure presents safe recovery instead of private error content', () => {

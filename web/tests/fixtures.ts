@@ -1,8 +1,38 @@
 import type { RecommendationItem, ScoutSession, UserProfile } from '../src/lib/contracts'
+import { dimensionLabels, type MatchScore } from '../src/lib/matching-contracts'
 import type { ProfileFormValues } from '../src/lib/profile-form'
 import { summaryFields } from '../src/lib/search-summary'
 
 // Unit-test data only. Application modules must not import this file.
+export function createMatchScoreFixture(): MatchScore {
+  return {
+    total: 80,
+    assessed_weight: 30,
+    applicable_weight: 95,
+    coverage: 32,
+    provisional: true,
+    completeness: 'partial',
+    input_fingerprint: 'input',
+    dimensions: Object.keys(dimensionLabels).map((id, index) => ({
+      id: id as keyof typeof dimensionLabels,
+      score: index === 0 ? 80 : null,
+      status: index === 0 ? 'assessed' : index === 4 ? 'not_applicable' : 'unknown',
+      weight: [30, 25, 20, 10, 5, 10][index]!,
+      explanation: index === 0 ? 'Built the requested interface' : '',
+      requirement_ids: [],
+      profile_fact_ids: [],
+      job_source_quotes:
+        index === 0 ? [{ document_id: 'jd', excerpt: 'Build interfaces', source_url: null }] : [],
+      profile_source_quotes:
+        index === 0
+          ? [{ document_id: 'resume', excerpt: 'Built a React interface', source_url: null }]
+          : [],
+      missing_information: index === 1 ? ['Daily duties not provided'] : [],
+      input_fingerprint: id,
+    })),
+  }
+}
+
 export function createProfileFixture(): ProfileFormValues {
   return {
     description: 'React development experience',

@@ -202,6 +202,8 @@ reward a short requirement list.
 In recommendation_reason, address the applicant in one or two English sentences explaining whether
 the role is worth exploring and the main missing experience, skill, qualification or unanswered
 question. Discuss a gap only when the job asks for that experience, skill or qualification.
+Base recommendation_reason on the same evidence and uncertainty as your requirement matches
+and dimension explanations.
 An unfamiliar industry or tool is not automatically a barrier. This is advice, not a hiring verdict.
 Use plain English in applicant-facing explanations. Name the relevant skill, task or qualification,
 where the applicant used it and what the job asks for. Say what is missing or needs checking.
