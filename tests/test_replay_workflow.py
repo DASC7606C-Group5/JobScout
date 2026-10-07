@@ -2,28 +2,94 @@
 
 import asyncio
 import json
+from pathlib import Path
 from threading import Event
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+from replay.app import create_replay_app
+from replay.dataset import DEFAULT_DATASET, load_dataset
+from replay.provider import ReplayProvider
 
 from jobscout.main import create_app
 from jobscout.services.llm_service import ToolTurn
-from jobscout.services.replay_service import ReplayProvider
 from tests.test_web_scaffold import settled
 
-DESCRIPTION = (
-    "Education\nBachelor Computer Science\nSkills\nPython, SQL, Excel\n"
-    "Projects\nPython SQL reporting dashboard"
-)
+DESCRIPTION = load_dataset().profile_input("data-analyst-internship")["description"]
+
+
+def test_replay_apps_use_their_own_profile_and_job_samples(tmp_path: Path) -> None:
+    original = json.loads(DEFAULT_DATASET.read_text(encoding="utf-8"))
+    alternate = json.loads(DEFAULT_DATASET.read_text(encoding="utf-8"))
+    alternate["profiles"][0]["background"]["skills"] = ["SQL"]
+    vacancy = alternate["jobs"][0]
+    vacancy["job"]["job_id"] = "alternate-job"
+    vacancy["job"]["source_url"] = "https://jobs.example.invalid/alternate-job"
+    for requirement in vacancy["requirements"]:
+        for reference in requirement["references"]:
+            reference["source_url"] = vacancy["job"]["source_url"]
+    alternate["jobs"] = [vacancy]
+    alternate_path = tmp_path / "alternate.json"
+    alternate_path.write_text(json.dumps(alternate), encoding="utf-8")
+
+    for path, dataset in ((alternate_path, alternate), (DEFAULT_DATASET, original)):
+        database_url = f"sqlite://{(tmp_path / f'{path.stem}.sqlite3').as_posix()}"
+        with TestClient(create_replay_app(dataset_path=path, database_url=database_url)) as client:
+            session_id = client.post(
+                "/api/v1/sessions",
+                json={
+                    "request_id": "dataset-create",
+                    **dataset["profiles"][0]["input"],
+                },
+            ).json()["session_id"]
+            summary = settled(client, session_id)
+            assert summary["outcome"] == "paused", summary
+            assert summary["profile"]["skills"] == dataset["profiles"][0]["background"]["skills"]
+            response = client.post(
+                f"/api/v1/sessions/{session_id}/resume",
+                json={
+                    "request_id": "dataset-confirm",
+                    "expected_revision": summary["revision"],
+                    "action": "confirm_search",
+                },
+            )
+            assert response.status_code == 202, response.json()
+            result = settled(client, session_id)
+            assert result["outcome"] == "completed", result
+            source_urls = {item["job"]["source_url"] for item in result["recommendation"]["jobs"]}
+            expected_url = dataset["jobs"][0]["job"]["source_url"]
+            assert expected_url in source_urls
+            if path == alternate_path:
+                assert source_urls == {expected_url}
+            else:
+                assert vacancy["job"]["source_url"] not in source_urls
+
+
+def test_replay_rejects_missing_or_invalid_datasets(tmp_path: Path) -> None:
+    path = tmp_path / "missing.json"
+    with pytest.raises(FileNotFoundError):
+        create_replay_app(dataset_path=path)
+    path.write_text('{"profiles": [], "jobs": [{}]}', encoding="utf-8")
+    with pytest.raises(ValidationError) as failure:
+        create_replay_app(dataset_path=path)
+    assert {tuple(error["loc"]) for error in failure.value.errors()} == {
+        ("jobs", 0, "job"),
+        ("jobs", 0, "requirements"),
+    }
+
+
+def test_replay_requires_explicit_services_in_the_application_factory() -> None:
+    with pytest.raises(ValueError, match="requires injected model and search services"):
+        create_app(mode="replay")
 
 
 @pytest.mark.parametrize("stage", ["search", "review"])
 def test_edit_interrupts_active_run_and_requires_reconfirmation(stage: str) -> None:
     class BlockingProvider(ReplayProvider):
         def __init__(self) -> None:
+            super().__init__(load_dataset())
             self.started = Event()
             self.cancelled = Event()
 
@@ -63,7 +129,7 @@ def test_edit_interrupts_active_run_and_requires_reconfirmation(stage: str) -> N
             return await super().structured(schema, messages, deadline=deadline)
 
     provider = BlockingProvider()
-    with TestClient(create_app(mode="replay", provider=provider)) as client:
+    with TestClient(create_replay_app(provider=provider)) as client:
         session_id = client.post(
             "/api/v1/sessions",
             json={
@@ -132,11 +198,13 @@ def test_edit_interrupts_active_run_and_requires_reconfirmation(stage: str) -> N
 
 
 def test_failed_profile_retry_uses_clean_checkpoint_and_retains_materials() -> None:
+    from replay.provider import ReplayProvider
+
     from jobscout.services.llm_service import ModelServiceError
-    from jobscout.services.replay_service import ReplayProvider
 
     class FailOnce(ReplayProvider):
         def __init__(self) -> None:
+            super().__init__(load_dataset())
             self.calls = 0
 
         async def structured[T: BaseModel](
@@ -184,7 +252,7 @@ def test_failed_profile_retry_uses_clean_checkpoint_and_retains_materials() -> N
 
 
 def test_dynamic_replay_choices_preserve_equivalent_location_matching() -> None:
-    with TestClient(create_app(mode="replay")) as client:
+    with TestClient(create_replay_app()) as client:
         session_id = client.post(
             "/api/v1/sessions",
             json={
@@ -228,7 +296,7 @@ def test_dynamic_replay_choices_preserve_equivalent_location_matching() -> None:
 
 
 def test_replay_confirm_search_edit_and_reconfirm() -> None:
-    with TestClient(create_app(mode="replay")) as client:
+    with TestClient(create_replay_app()) as client:
         created = client.post(
             "/api/v1/sessions",
             json={

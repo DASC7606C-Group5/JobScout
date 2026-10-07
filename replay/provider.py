@@ -1,154 +1,30 @@
-"""Explicit synthetic demo mode, never a fallback for live services."""
+"""Scripted model behavior with optional, explicitly injected replay samples."""
 
 import asyncio
 import json
 import re
-from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
-from jobscout.schemas.profile import LocationRef
-from jobscout.schemas.search import SearchRequest
-from jobscout.services.job_retrieval.models import RawJob, SearchResult, SourceOutcome
 from jobscout.services.llm_service import ToolCall, ToolTurn
-from jobscout.services.location_service import CatalogEntry, LocationCatalog
-
-DATA = Path(__file__).resolve().parents[3] / "data" / "evaluation" / "dataset.json"
-
-
-@lru_cache(maxsize=1)
-def _dataset() -> dict[str, Any]:
-    return dict(json.loads(DATA.read_text(encoding="utf-8")))
-
-
-def _profile_fixture(payload: dict[str, Any]) -> dict[str, Any]:
-    """Replay background facts for an exact sample; never parse arbitrary CVs."""
-    description = payload.get("description", "").strip()
-    resume_text = (payload.get("resume") or {}).get("text", "").strip()
-    for case in _dataset()["profiles"]:
-        sample = case["input"]
-        if (
-            sample.get("description", "").strip() == description
-            and (sample.get("resume") or {}).get("text", "").strip() == resume_text
-        ):
-            return {
-                field: case["expected_initial"][field]
-                for field in ("education", "skills", "internships", "projects", "conflicts")
-            }
-    return {}
+from jobscout.services.location_service import LocationCatalog
+from replay.dataset import ReplayDataset
+from replay.locations import replay_catalog, replay_preferences
 
 
 def _payload(messages: list[dict[str, str]]) -> dict[str, Any]:
     return dict(json.loads(messages[-1]["content"]))
 
 
-@lru_cache(maxsize=1)
-def replay_catalog() -> LocationCatalog:
-    """Offline synthetic geography for the explicitly selected replay mode."""
-    cities = [
-        ("530", "北京", "Beijing"),
-        ("538", "上海", "Shanghai"),
-        ("763", "广州", "Guangzhou"),
-        ("765", "深圳", "Shenzhen"),
-        ("653", "杭州", "Hangzhou"),
-        ("801", "成都", "Chengdu"),
-        ("736", "武汉", "Wuhan"),
-    ]
-    return LocationCatalog(
-        entries=[
-            CatalogEntry(
-                LocationRef(id="hk", name="Hong Kong", region="hk", level="country"),
-                {"Hong Kong", "hongkong", "hk", "香港"},
-                "synthetic-replay",
-            ),
-            CatalogEntry(
-                LocationRef(id="cn:489", name="Mainland China", region="cn", level="country"),
-                {"Mainland China", "China", "中国", "中國", "全国", "cn"},
-                "synthetic-replay",
-            ),
-            *(
-                CatalogEntry(
-                    LocationRef(
-                        id=f"cn:{code}",
-                        name=name,
-                        region="cn",
-                        level="city",
-                        parent_id="cn:489",
-                        ancestor_ids=["cn:489"],
-                        source_codes={"zhaopin": code},
-                    ),
-                    {name, english},
-                    "synthetic-replay",
-                )
-                for code, name, english in cities
-            ),
-        ]
-    )
-
-
-def replay_preferences(payload: dict[str, Any]) -> dict[str, Any]:
-    locations: dict[str, Any] = {
-        "included": [],
-        "excluded": [],
-        "unrestricted": bool(payload.get("location_unrestricted")),
-    }
-    employment: dict[str, Any] = {
-        "included": [],
-        "excluded": [],
-        "unrestricted": bool(payload.get("employment_type_unrestricted")),
-    }
-    unrestricted = {
-        "unrestricted",
-        "any",
-        "anywhere",
-        "any location",
-        "any employment type",
-        "no preference",
-        "不限",
-    }
-    employment_names = {
-        "全职": "full-time",
-        "实习": "internship",
-        "兼职": "part-time",
-        "合同": "contract",
-        "自由职业": "freelance",
-        "full time": "full-time",
-        "part time": "part-time",
-        "intern": "internship",
-    }
-    for raw, target in (
-        (payload.get("location"), locations),
-        (payload.get("employment_type"), employment),
-    ):
-        if not raw:
-            continue
-        if str(raw).strip().casefold() in unrestricted:
-            target["unrestricted"] = True
-            continue
-        for part in re.split(r"[,，;/]|\s+(?:or|and)\s+", str(raw)):
-            value = part.strip()
-            if not value:
-                continue
-            if target is employment:
-                canonical = employment_names.get(value.casefold(), value.casefold())
-                if canonical in {"full-time", "part-time", "internship", "contract", "freelance"}:
-                    target["included"].append(canonical)
-            else:
-                target["included"].append(value)
-    work_mode = payload.get("work_mode")
-    # Replay accepts only explicit UI enum values; live interpretation uses the model.
-    return {
-        "locations": locations,
-        "employment": employment,
-        "work_modes": [work_mode] if work_mode in {"remote", "hybrid", "onsite"} else [],
-        "work_mode_uncertain": bool(work_mode) and work_mode not in {"remote", "hybrid", "onsite"},
-    }
-
-
-class ReplayProvider:
+class SyntheticProvider:
     model = "synthetic-replay-not-a-live-model"
+
+    def profile_background(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return {}
+
+    def job_requirements(self, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return []
 
     @property
     def location_catalog(self) -> LocationCatalog:
@@ -215,7 +91,7 @@ class ReplayProvider:
         payload = _payload(messages)
         name = schema.__name__
         if name == "ProfileExtraction":
-            output: dict[str, Any] = _profile_fixture(payload)
+            output: dict[str, Any] = self.profile_background(payload)
         elif name == "PreferenceMeaning":
             output = replay_preferences(payload)
         elif payload.get("task") == "jd_analysis":
@@ -254,31 +130,7 @@ class ReplayProvider:
                     }
                 )
             for row, job in zip(output["jobs"], payload["jobs"], strict=True):
-                requirements: list[dict[str, Any]] = []
-                for sample in _dataset()["vacancies"]:
-                    if not any(
-                        document["source_url"] == sample["job"]["source_url"]
-                        for document in job["documents"]
-                    ):
-                        continue
-                    for requirement in sample["annotations"]["requirements"]:
-                        source_quotes = [
-                            {"document_id": document["document_id"], "excerpt": ref["excerpt"]}
-                            for ref in requirement["references"]
-                            for document in job["documents"]
-                            if document["source_url"] == ref["source_url"]
-                            and ref["excerpt"] in document["text"]
-                        ]
-                        if source_quotes:
-                            requirements.append(
-                                {
-                                    "requirement_id": requirement["requirement_id"],
-                                    "text": requirement["text"],
-                                    "category": "skill",
-                                    "source_quotes": source_quotes,
-                                }
-                            )
-                row["requirements"] = requirements
+                row["requirements"] = self.job_requirements(job["documents"])
         elif name == "QuestionGeneration":
             output = {"questions": []}
             for field in payload.get("required_fields", [])[:3]:
@@ -399,72 +251,46 @@ class ReplayProvider:
         return schema.model_validate(output)
 
 
-class ReplaySearchService:
-    async def search_many_async(
-        self,
-        requests: list[SearchRequest],
-        *,
-        timeout: float = 60.0,
-    ) -> SearchResult:
-        if timeout <= 0:
-            raise TimeoutError("Replay retrieval deadline exhausted")
-        dataset = _dataset()
-        result = SearchResult(
-            warnings=["Replay demo: these are sample listings, not real job postings."]
-        )
-        for index, request in enumerate(requests):
-            selected = []
-            for row in dataset["vacancies"]:
-                job = row["job"]
-                if job["target_direction"].casefold() != request.target_direction.casefold():
-                    continue
-                aliases = {"香港": "hong kong", "hongkong": "hong kong", "hk": "hong kong"}
-                requested_location = (request.location or "").strip().casefold()
-                actual_location = str(job["location"]).strip().casefold()
-                if not request.location_unrestricted and aliases.get(
-                    actual_location, actual_location
-                ) != aliases.get(requested_location, requested_location):
-                    continue
-                if (
-                    not request.employment_type_unrestricted
-                    and job.get("employment_type") != request.employment_type
-                ):
-                    continue
-                selected.append(
-                    RawJob.model_validate(
+class ReplayProvider(SyntheticProvider):
+    def __init__(self, dataset: ReplayDataset) -> None:
+        self.dataset = dataset
+
+    def profile_background(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Replay background facts for an exact sample; never parse arbitrary CVs."""
+        description = payload.get("description", "").strip()
+        resume_text = (payload.get("resume") or {}).get("text", "").strip()
+        for case in self.dataset.profiles:
+            sample = case["input"]
+            resume = sample["resume"]
+            if (
+                sample["description"].strip() == description
+                and (resume["text"].strip() if resume else "") == resume_text
+            ):
+                return dict(case["background"])
+        return {}
+
+    def job_requirements(self, documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        requirements: list[dict[str, Any]] = []
+        for sample in self.dataset.jobs:
+            if not any(
+                document["source_url"] == sample["job"]["source_url"] for document in documents
+            ):
+                continue
+            for requirement in sample["requirements"]:
+                source_quotes = [
+                    {"document_id": document["document_id"], "excerpt": ref["excerpt"]}
+                    for ref in requirement["references"]
+                    for document in documents
+                    if document["source_url"] == ref["source_url"]
+                    and ref["excerpt"] in document["text"]
+                ]
+                if source_quotes:
+                    requirements.append(
                         {
-                            "source": "synthetic-replay",
-                            "source_url": job["source_url"],
-                            "source_job_id": job["job_id"],
-                            "fetched_at": job["fetched_at"],
-                            "title": job["title"],
-                            "company": job["company"],
-                            "location": job["location"],
-                            "salary": job.get("salary"),
-                            "target_direction": request.target_direction,
-                            "description": job["description"],
-                            "posted_at": job.get("posted_at"),
-                            "expiry_at": job.get("expiry_at"),
-                            "employment_type": job.get("employment_type"),
-                            "raw_payload": {
-                                "freshness_status": job["freshness_status"],
-                                "employment_type": job.get("employment_type"),
-                                "description_is_excerpt": job.get("description_is_excerpt", False),
-                            },
+                            "requirement_id": requirement["requirement_id"],
+                            "text": requirement["text"],
+                            "category": "skill",
+                            "source_quotes": source_quotes,
                         }
                     )
-                )
-                if len(selected) == 10:
-                    break
-            result.raw_jobs.extend(selected)
-            result.outcomes.append(
-                SourceOutcome(
-                    request_index=index,
-                    target_direction=request.target_direction,
-                    source="synthetic-replay",
-                    returned_count=len(selected),
-                    candidate_count=len(selected),
-                    status="ok" if selected else "empty",
-                )
-            )
-        return result
+        return requirements

@@ -8,6 +8,8 @@ from typing import Any
 
 import pytest
 from pydantic import BaseModel
+from replay.locations import replay_catalog
+from replay.provider import SyntheticProvider
 
 from jobscout.schemas.job import JobPosting
 from jobscout.schemas.profile import UserProfile
@@ -21,7 +23,6 @@ from jobscout.services.job_retrieval.models import (
     workflow_error,
 )
 from jobscout.services.llm_service import ModelServiceError, ToolCall, ToolTurn
-from jobscout.services.replay_service import ReplayProvider, replay_catalog
 from jobscout.services.search_agent import SearchAgent
 
 
@@ -145,7 +146,7 @@ def test_requested_target_is_reached_by_relevant_vacancies(target: int) -> None:
             events.append(update)
 
         result = await run(
-            ReplayProvider(),
+            SyntheticProvider(),
             SnapshotSearch(30),
             Assessment(),
             profile(target),
@@ -169,7 +170,7 @@ def test_requested_target_is_reached_by_relevant_vacancies(target: int) -> None:
 def test_pending_verification_never_counts_toward_target() -> None:
     async def scenario() -> None:
         result = await run(
-            ReplayProvider(), SnapshotSearch(8), Assessment(pending=True), profile(5)
+            SyntheticProvider(), SnapshotSearch(8), Assessment(pending=True), profile(5)
         )
         assert result["stop_reason"] == "source_exhausted"
         assert result["recommendation"].jobs == []
@@ -179,7 +180,7 @@ def test_pending_verification_never_counts_toward_target() -> None:
     asyncio.run(scenario())
 
 
-class ScriptedProvider(ReplayProvider):
+class ScriptedProvider(SyntheticProvider):
     def __init__(
         self, scripts: list[Callable[[dict[str, Any]], tuple[str, dict[str, Any]]]]
     ) -> None:
@@ -330,7 +331,7 @@ def test_decision_context_keeps_latest_feedback_without_replaying_old_snapshots(
 def test_overlapping_interests_do_not_allocate_slots_or_change_fit_order() -> None:
     from tests.test_job_assessment_service import job
 
-    agent = SearchAgent(ReplayProvider(), SnapshotSearch(), Assessment())
+    agent = SearchAgent(SyntheticProvider(), SnapshotSearch(), Assessment())
     agent.profile, agent.target = profile(), 5
     agent.profile.target_directions = ["Frontend", "Software engineering"]
     items = [
@@ -565,7 +566,7 @@ def test_stop_finishes_active_reviews_without_searching_again() -> None:
                 event.set()
 
         result = await run(
-            ReplayProvider(), search, assessment, stop_event=event, on_progress=progress
+            SyntheticProvider(), search, assessment, stop_event=event, on_progress=progress
         )
         assert result["stop_reason"] == "user_stopped"
         assert assessment.finished
@@ -591,7 +592,7 @@ def test_stop_before_assessment_reviews_published_vacancies() -> None:
                 event.set()
 
         result = await run(
-            ReplayProvider(), search, Assessment(), stop_event=event, on_progress=progress
+            SyntheticProvider(), search, Assessment(), stop_event=event, on_progress=progress
         )
         assert result["stop_reason"] == "user_stopped"
         assert len(search.requests) == 1

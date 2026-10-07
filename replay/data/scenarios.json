@@ -1,0 +1,1832 @@
+{
+  "profiles": [
+    {
+      "input": {
+        "description": "Education\nBachelor Computer Science\nSkills\nPython, SQL, Excel\nProjects\nPython SQL reporting dashboard",
+        "resume": null,
+        "target_directions": [
+          "data analyst"
+        ],
+        "preferences": {
+          "location": "Hong Kong",
+          "location_unrestricted": false,
+          "employment_type": "internship",
+          "employment_type_unrestricted": false
+        }
+      },
+      "background": {
+        "education": [
+          "Bachelor Computer Science"
+        ],
+        "skills": [
+          "Python",
+          "SQL",
+          "Excel"
+        ],
+        "internships": [],
+        "projects": [
+          "Python SQL reporting dashboard"
+        ],
+        "conflicts": []
+      },
+      "case_id": "data-analyst-internship"
+    },
+    {
+      "input": {
+        "description": "",
+        "resume": {
+          "name": "p02-synthetic.txt",
+          "text": "Education\nBachelor Computer Science\nSkills\nPython, SQL, Docker\nProjects\nPython SQL service packaged with Docker"
+        },
+        "target_directions": [
+          "backend engineer"
+        ],
+        "preferences": {
+          "location": "Hong Kong",
+          "location_unrestricted": false,
+          "employment_type": "full-time",
+          "employment_type_unrestricted": false
+        }
+      },
+      "background": {
+        "education": [
+          "Bachelor Computer Science"
+        ],
+        "skills": [
+          "Python",
+          "SQL",
+          "Docker"
+        ],
+        "internships": [],
+        "projects": [
+          "Python SQL service packaged with Docker"
+        ],
+        "conflicts": []
+      },
+      "case_id": "profile-02"
+    },
+    {
+      "input": {
+        "description": "??\n???????\n??\nPython, SQL, Excel\n??\n?? Python SQL ? Excel ??????",
+        "resume": null,
+        "target_directions": [
+          "data analyst"
+        ],
+        "preferences": {
+          "location": "Shenzhen",
+          "location_unrestricted": false,
+          "employment_type": "internship",
+          "employment_type_unrestricted": false
+        }
+      },
+      "background": {
+        "education": [],
+        "skills": [],
+        "internships": [],
+        "projects": [
+          "???????",
+          "Python, SQL, Excel",
+          "?? Python SQL ? Excel ??????"
+        ],
+        "conflicts": []
+      },
+      "case_id": "profile-03"
+    },
+    {
+      "input": {
+        "description": "Skills\nDocker\nProjects\nDocker deployment of a student service",
+        "resume": {
+          "name": "p04-synthetic.txt",
+          "text": "Education\nBachelor Computer Science\nSkills\nPython, SQL"
+        },
+        "target_directions": [
+          "backend engineer"
+        ],
+        "preferences": {
+          "location": "Hong Kong",
+          "location_unrestricted": false,
+          "employment_type": "full-time",
+          "employment_type_unrestricted": false
+        }
+      },
+      "background": {
+        "education": [
+          "Bachelor Computer Science"
+        ],
+        "skills": [
+          "Docker",
+          "Python",
+          "SQL"
+        ],
+        "internships": [],
+        "projects": [
+          "Docker deployment of a student service"
+        ],
+        "conflicts": []
+      },
+      "case_id": "profile-04"
+    },
+    {
+      "input": {
+        "description": "Correction: I have not used Python; the old resume skill entry is incorrect.\nSkills\nSQL, Excel\nProjects\nSQL Excel sales report",
+        "resume": {
+          "name": "p05-synthetic.txt",
+          "text": "Education\nBachelor Business\nSkills\nPython"
+        },
+        "target_directions": [
+          "data analyst"
+        ],
+        "preferences": {
+          "location": "Hong Kong",
+          "location_unrestricted": false,
+          "employment_type": "internship",
+          "employment_type_unrestricted": false
+        }
+      },
+      "background": {
+        "education": [
+          "Bachelor Business"
+        ],
+        "skills": [
+          "SQL",
+          "Excel"
+        ],
+        "internships": [],
+        "projects": [
+          "SQL Excel sales report"
+        ],
+        "conflicts": [
+          "skills"
+        ]
+      },
+      "case_id": "profile-05"
+    },
+    {
+      "input": {
+        "description": "Education\nBachelor Computer Science\nSkills\nJavaScript, TypeScript, React\nProjects\nReact TypeScript student portal",
+        "resume": null,
+        "target_directions": [],
+        "preferences": {
+          "location": null,
+          "location_unrestricted": false,
+          "employment_type": null,
+          "employment_type_unrestricted": false
+        }
+      },
+      "background": {
+        "education": [
+          "Bachelor Computer Science"
+        ],
+        "skills": [
+          "JavaScript",
+          "TypeScript",
+          "React"
+        ],
+        "internships": [],
+        "projects": [
+          "React TypeScript student portal"
+        ],
+        "conflicts": []
+      },
+      "case_id": "profile-06"
+    },
+    {
+      "input": {
+        "description": "Skills\nPython, SQL\nProjects\nPython SQL ingestion pipeline",
+        "resume": null,
+        "target_directions": [
+          "data engineer"
+        ],
+        "preferences": {
+          "location": null,
+          "location_unrestricted": false,
+          "employment_type": "full-time",
+          "employment_type_unrestricted": false
+        }
+      },
+      "background": {
+        "education": [],
+        "skills": [
+          "Python",
+          "SQL"
+        ],
+        "internships": [],
+        "projects": [
+          "Python SQL ingestion pipeline"
+        ],
+        "conflicts": []
+      },
+      "case_id": "profile-07"
+    },
+    {
+      "input": {
+        "description": "Education\nBachelor Design\nSkills\nFigma, prototyping, user research\nProjects\nFigma prototyping after user research",
+        "resume": null,
+        "target_directions": [
+          "ux designer"
+        ],
+        "preferences": {
+          "location": "Hong Kong",
+          "location_unrestricted": false,
+          "employment_type": "internship",
+          "employment_type_unrestricted": false
+        }
+      },
+      "background": {
+        "education": [
+          "Bachelor Design"
+        ],
+        "skills": [
+          "Figma",
+          "prototyping",
+          "user research"
+        ],
+        "internships": [],
+        "projects": [
+          "Figma prototyping after user research"
+        ],
+        "conflicts": []
+      },
+      "case_id": "profile-08"
+    },
+    {
+      "input": {
+        "description": "Education\nMaster Computer Science\nSkills\nPython, SQL, Docker\nProjects\nPython SQL Docker ingestion project",
+        "resume": null,
+        "target_directions": [
+          "data engineer"
+        ],
+        "preferences": {
+          "location": null,
+          "location_unrestricted": true,
+          "employment_type": null,
+          "employment_type_unrestricted": true
+        }
+      },
+      "background": {
+        "education": [
+          "Master Computer Science"
+        ],
+        "skills": [
+          "Python",
+          "SQL",
+          "Docker"
+        ],
+        "internships": [],
+        "projects": [
+          "Python SQL Docker ingestion project"
+        ],
+        "conflicts": []
+      },
+      "case_id": "profile-09"
+    },
+    {
+      "input": {
+        "description": "Education\nBachelor Computer Science\nSkills\nPython, SQL, Docker, Excel\nProjects\nPython SQL Docker reporting service with Excel",
+        "resume": null,
+        "target_directions": [
+          "data analyst",
+          "backend engineer",
+          "data engineer"
+        ],
+        "preferences": {
+          "location": "Hong Kong",
+          "location_unrestricted": false,
+          "employment_type": "full-time",
+          "employment_type_unrestricted": false
+        }
+      },
+      "background": {
+        "education": [
+          "Bachelor Computer Science"
+        ],
+        "skills": [
+          "Python",
+          "SQL",
+          "Docker",
+          "Excel"
+        ],
+        "internships": [],
+        "projects": [
+          "Python SQL Docker reporting service with Excel"
+        ],
+        "conflicts": []
+      },
+      "case_id": "profile-10"
+    },
+    {
+      "input": {
+        "description": "Education\nBachelor Computer Science\nSkills\nJavaScript, TypeScript, React\nProjects\nReact TypeScript application",
+        "resume": null,
+        "target_directions": [
+          "frontend engineer"
+        ],
+        "preferences": {
+          "location": "Hong Kong",
+          "location_unrestricted": false,
+          "employment_type": "full-time",
+          "employment_type_unrestricted": false
+        }
+      },
+      "background": {
+        "education": [
+          "Bachelor Computer Science"
+        ],
+        "skills": [
+          "JavaScript",
+          "TypeScript",
+          "React"
+        ],
+        "internships": [],
+        "projects": [
+          "React TypeScript application"
+        ],
+        "conflicts": []
+      },
+      "case_id": "profile-11"
+    },
+    {
+      "input": {
+        "description": "Education\nBachelor Business\nSkills\nExcel\nInternships\nUsed Excel for weekly operations reports\nProjects\nMapped spreadsheet joins in a class data project",
+        "resume": null,
+        "target_directions": [
+          "data analyst"
+        ],
+        "preferences": {
+          "location": "Shanghai",
+          "location_unrestricted": false,
+          "employment_type": "full-time",
+          "employment_type_unrestricted": false
+        }
+      },
+      "background": {
+        "education": [
+          "Bachelor Business"
+        ],
+        "skills": [
+          "Excel"
+        ],
+        "internships": [
+          "Used Excel for weekly operations reports"
+        ],
+        "projects": [
+          "Mapped spreadsheet joins in a class data project"
+        ],
+        "conflicts": []
+      },
+      "case_id": "profile-12"
+    }
+  ],
+  "jobs": [
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j01",
+        "job_id": "j01",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Analyst internship",
+        "company": "Synthetic Organisation 1",
+        "location": "Hong Kong",
+        "target_direction": "data analyst",
+        "description": "SYNTHETIC VACANCY j01: Data Analyst internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "internship",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j01-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j01",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j01"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j01-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j01",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j01"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j01-r3",
+          "text": "Excel",
+          "references": [
+            {
+              "document_id": "jd-j01",
+              "excerpt": "Requires Excel.",
+              "source_url": "https://jobs.example.invalid/j01"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j02",
+        "job_id": "j02",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Analyst full-time",
+        "company": "Synthetic Organisation 1",
+        "location": "Hong Kong",
+        "target_direction": "data analyst",
+        "description": "SYNTHETIC VACANCY j02: Data Analyst full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "full-time",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j02-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j02",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j02"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j02-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j02",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j02"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j02-r3",
+          "text": "Excel",
+          "references": [
+            {
+              "document_id": "jd-j02",
+              "excerpt": "Requires Excel.",
+              "source_url": "https://jobs.example.invalid/j02"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j03",
+        "job_id": "j03",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Analyst internship",
+        "company": "Synthetic Organisation 1",
+        "location": "Shenzhen",
+        "target_direction": "data analyst",
+        "description": "SYNTHETIC VACANCY j03: Data Analyst internship\nLocation: Shenzhen\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "internship",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j03-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j03",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j03"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j03-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j03",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j03"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j03-r3",
+          "text": "Excel",
+          "references": [
+            {
+              "document_id": "jd-j03",
+              "excerpt": "Requires Excel.",
+              "source_url": "https://jobs.example.invalid/j03"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j04",
+        "job_id": "j04",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Analyst full-time",
+        "company": "Synthetic Organisation 1",
+        "location": "Shanghai",
+        "target_direction": "data analyst",
+        "description": "SYNTHETIC VACANCY j04: Data Analyst full-time\nLocation: Shanghai\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "full-time",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j04-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j04",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j04"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j04-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j04",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j04"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j04-r3",
+          "text": "Excel",
+          "references": [
+            {
+              "document_id": "jd-j04",
+              "excerpt": "Requires Excel.",
+              "source_url": "https://jobs.example.invalid/j04"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j05",
+        "job_id": "j05",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Analyst part-time",
+        "company": "Synthetic Organisation 1",
+        "location": "Hong Kong",
+        "target_direction": "data analyst",
+        "description": "SYNTHETIC VACANCY j05: Data Analyst part-time\nLocation: Hong Kong\nEmployment type: part-time\nRequires Python.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "part-time",
+        "freshness_status": "unknown",
+        "description_is_excerpt": true
+      },
+      "requirements": [
+        {
+          "requirement_id": "j05-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j05",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j05"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j06",
+        "job_id": "j06",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Analyst full-time",
+        "company": "Synthetic Organisation 1",
+        "location": "Hong Kong",
+        "target_direction": "data analyst",
+        "description": "SYNTHETIC VACANCY j06: Data Analyst full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Excel.\nBachelor degree required.\nBuild a data analyst student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": "2026-10-03T00:00:00+00:00",
+        "employment_type": "full-time",
+        "freshness_status": "expired",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j06-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j06",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j06"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j06-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j06",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j06"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j06-r3",
+          "text": "Excel",
+          "references": [
+            {
+              "document_id": "jd-j06",
+              "excerpt": "Requires Excel.",
+              "source_url": "https://jobs.example.invalid/j06"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j07",
+        "job_id": "j07",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Backend Engineer internship",
+        "company": "Synthetic Organisation 2",
+        "location": "Hong Kong",
+        "target_direction": "backend engineer",
+        "description": "SYNTHETIC VACANCY j07: Backend Engineer internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a backend engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "internship",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j07-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j07",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j07"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j07-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j07",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j07"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j07-r3",
+          "text": "Docker",
+          "references": [
+            {
+              "document_id": "jd-j07",
+              "excerpt": "Requires Docker.",
+              "source_url": "https://jobs.example.invalid/j07"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j08",
+        "job_id": "j08",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Backend Engineer full-time",
+        "company": "Synthetic Organisation 2",
+        "location": "Hong Kong",
+        "target_direction": "backend engineer",
+        "description": "SYNTHETIC VACANCY j08: Backend Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a backend engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "full-time",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j08-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j08",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j08"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j08-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j08",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j08"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j08-r3",
+          "text": "Docker",
+          "references": [
+            {
+              "document_id": "jd-j08",
+              "excerpt": "Requires Docker.",
+              "source_url": "https://jobs.example.invalid/j08"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j09",
+        "job_id": "j09",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Backend Engineer internship",
+        "company": "Synthetic Organisation 2",
+        "location": "Shenzhen",
+        "target_direction": "backend engineer",
+        "description": "SYNTHETIC VACANCY j09: Backend Engineer internship\nLocation: Shenzhen\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a backend engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "internship",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j09-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j09",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j09"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j09-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j09",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j09"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j09-r3",
+          "text": "Docker",
+          "references": [
+            {
+              "document_id": "jd-j09",
+              "excerpt": "Requires Docker.",
+              "source_url": "https://jobs.example.invalid/j09"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j10",
+        "job_id": "j10",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Backend Engineer full-time",
+        "company": "Synthetic Organisation 2",
+        "location": "Shanghai",
+        "target_direction": "backend engineer",
+        "description": "SYNTHETIC VACANCY j10: Backend Engineer full-time\nLocation: Shanghai\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a backend engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "full-time",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j10-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j10",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j10"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j10-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j10",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j10"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j10-r3",
+          "text": "Docker",
+          "references": [
+            {
+              "document_id": "jd-j10",
+              "excerpt": "Requires Docker.",
+              "source_url": "https://jobs.example.invalid/j10"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j11",
+        "job_id": "j11",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Backend Engineer part-time",
+        "company": "Synthetic Organisation 2",
+        "location": "Hong Kong",
+        "target_direction": "backend engineer",
+        "description": "SYNTHETIC VACANCY j11: Backend Engineer part-time\nLocation: Hong Kong\nEmployment type: part-time\nRequires Python.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "part-time",
+        "freshness_status": "unknown",
+        "description_is_excerpt": true
+      },
+      "requirements": [
+        {
+          "requirement_id": "j11-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j11",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j11"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j12",
+        "job_id": "j12",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Backend Engineer full-time",
+        "company": "Synthetic Organisation 2",
+        "location": "Hong Kong",
+        "target_direction": "backend engineer",
+        "description": "SYNTHETIC VACANCY j12: Backend Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a backend engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": "2026-10-03T00:00:00+00:00",
+        "employment_type": "full-time",
+        "freshness_status": "expired",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j12-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j12",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j12"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j12-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j12",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j12"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j12-r3",
+          "text": "Docker",
+          "references": [
+            {
+              "document_id": "jd-j12",
+              "excerpt": "Requires Docker.",
+              "source_url": "https://jobs.example.invalid/j12"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j13",
+        "job_id": "j13",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Frontend Engineer internship",
+        "company": "Synthetic Organisation 3",
+        "location": "Hong Kong",
+        "target_direction": "frontend engineer",
+        "description": "SYNTHETIC VACANCY j13: Frontend Engineer internship\nLocation: Hong Kong\nEmployment type: internship\nRequires JavaScript.\nRequires TypeScript.\nRequires React.\nBachelor degree required.\nBuild a frontend engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "internship",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j13-r1",
+          "text": "JavaScript",
+          "references": [
+            {
+              "document_id": "jd-j13",
+              "excerpt": "Requires JavaScript.",
+              "source_url": "https://jobs.example.invalid/j13"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j13-r2",
+          "text": "TypeScript",
+          "references": [
+            {
+              "document_id": "jd-j13",
+              "excerpt": "Requires TypeScript.",
+              "source_url": "https://jobs.example.invalid/j13"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j13-r3",
+          "text": "React",
+          "references": [
+            {
+              "document_id": "jd-j13",
+              "excerpt": "Requires React.",
+              "source_url": "https://jobs.example.invalid/j13"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j14",
+        "job_id": "j14",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Frontend Engineer full-time",
+        "company": "Synthetic Organisation 3",
+        "location": "Hong Kong",
+        "target_direction": "frontend engineer",
+        "description": "SYNTHETIC VACANCY j14: Frontend Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires JavaScript.\nRequires TypeScript.\nRequires React.\nBachelor degree required.\nBuild a frontend engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "full-time",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j14-r1",
+          "text": "JavaScript",
+          "references": [
+            {
+              "document_id": "jd-j14",
+              "excerpt": "Requires JavaScript.",
+              "source_url": "https://jobs.example.invalid/j14"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j14-r2",
+          "text": "TypeScript",
+          "references": [
+            {
+              "document_id": "jd-j14",
+              "excerpt": "Requires TypeScript.",
+              "source_url": "https://jobs.example.invalid/j14"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j14-r3",
+          "text": "React",
+          "references": [
+            {
+              "document_id": "jd-j14",
+              "excerpt": "Requires React.",
+              "source_url": "https://jobs.example.invalid/j14"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j15",
+        "job_id": "j15",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Frontend Engineer internship",
+        "company": "Synthetic Organisation 3",
+        "location": "Shenzhen",
+        "target_direction": "frontend engineer",
+        "description": "SYNTHETIC VACANCY j15: Frontend Engineer internship\nLocation: Shenzhen\nEmployment type: internship\nRequires JavaScript.\nRequires TypeScript.\nRequires React.\nBachelor degree required.\nBuild a frontend engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "internship",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j15-r1",
+          "text": "JavaScript",
+          "references": [
+            {
+              "document_id": "jd-j15",
+              "excerpt": "Requires JavaScript.",
+              "source_url": "https://jobs.example.invalid/j15"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j15-r2",
+          "text": "TypeScript",
+          "references": [
+            {
+              "document_id": "jd-j15",
+              "excerpt": "Requires TypeScript.",
+              "source_url": "https://jobs.example.invalid/j15"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j15-r3",
+          "text": "React",
+          "references": [
+            {
+              "document_id": "jd-j15",
+              "excerpt": "Requires React.",
+              "source_url": "https://jobs.example.invalid/j15"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j16",
+        "job_id": "j16",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Frontend Engineer full-time",
+        "company": "Synthetic Organisation 3",
+        "location": "Shanghai",
+        "target_direction": "frontend engineer",
+        "description": "SYNTHETIC VACANCY j16: Frontend Engineer full-time\nLocation: Shanghai\nEmployment type: full-time\nRequires JavaScript.\nRequires TypeScript.\nRequires React.\nBachelor degree required.\nBuild a frontend engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "full-time",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j16-r1",
+          "text": "JavaScript",
+          "references": [
+            {
+              "document_id": "jd-j16",
+              "excerpt": "Requires JavaScript.",
+              "source_url": "https://jobs.example.invalid/j16"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j16-r2",
+          "text": "TypeScript",
+          "references": [
+            {
+              "document_id": "jd-j16",
+              "excerpt": "Requires TypeScript.",
+              "source_url": "https://jobs.example.invalid/j16"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j16-r3",
+          "text": "React",
+          "references": [
+            {
+              "document_id": "jd-j16",
+              "excerpt": "Requires React.",
+              "source_url": "https://jobs.example.invalid/j16"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j17",
+        "job_id": "j17",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Frontend Engineer part-time",
+        "company": "Synthetic Organisation 3",
+        "location": "Hong Kong",
+        "target_direction": "frontend engineer",
+        "description": "SYNTHETIC VACANCY j17: Frontend Engineer part-time\nLocation: Hong Kong\nEmployment type: part-time\nRequires JavaScript.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "part-time",
+        "freshness_status": "unknown",
+        "description_is_excerpt": true
+      },
+      "requirements": [
+        {
+          "requirement_id": "j17-r1",
+          "text": "JavaScript",
+          "references": [
+            {
+              "document_id": "jd-j17",
+              "excerpt": "Requires JavaScript.",
+              "source_url": "https://jobs.example.invalid/j17"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j18",
+        "job_id": "j18",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Frontend Engineer full-time",
+        "company": "Synthetic Organisation 3",
+        "location": "Hong Kong",
+        "target_direction": "frontend engineer",
+        "description": "SYNTHETIC VACANCY j18: Frontend Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires JavaScript.\nRequires TypeScript.\nRequires React.\nBachelor degree required.\nBuild a frontend engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": "2026-10-03T00:00:00+00:00",
+        "employment_type": "full-time",
+        "freshness_status": "expired",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j18-r1",
+          "text": "JavaScript",
+          "references": [
+            {
+              "document_id": "jd-j18",
+              "excerpt": "Requires JavaScript.",
+              "source_url": "https://jobs.example.invalid/j18"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j18-r2",
+          "text": "TypeScript",
+          "references": [
+            {
+              "document_id": "jd-j18",
+              "excerpt": "Requires TypeScript.",
+              "source_url": "https://jobs.example.invalid/j18"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j18-r3",
+          "text": "React",
+          "references": [
+            {
+              "document_id": "jd-j18",
+              "excerpt": "Requires React.",
+              "source_url": "https://jobs.example.invalid/j18"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j19",
+        "job_id": "j19",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Engineer internship",
+        "company": "Synthetic Organisation 4",
+        "location": "Hong Kong",
+        "target_direction": "data engineer",
+        "description": "SYNTHETIC VACANCY j19: Data Engineer internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "internship",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j19-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j19",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j19"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j19-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j19",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j19"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j19-r3",
+          "text": "Docker",
+          "references": [
+            {
+              "document_id": "jd-j19",
+              "excerpt": "Requires Docker.",
+              "source_url": "https://jobs.example.invalid/j19"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j20",
+        "job_id": "j20",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Engineer full-time",
+        "company": "Synthetic Organisation 4",
+        "location": "Hong Kong",
+        "target_direction": "data engineer",
+        "description": "SYNTHETIC VACANCY j20: Data Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "full-time",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j20-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j20",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j20"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j20-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j20",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j20"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j20-r3",
+          "text": "Docker",
+          "references": [
+            {
+              "document_id": "jd-j20",
+              "excerpt": "Requires Docker.",
+              "source_url": "https://jobs.example.invalid/j20"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j21",
+        "job_id": "j21",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Engineer internship",
+        "company": "Synthetic Organisation 4",
+        "location": "Shenzhen",
+        "target_direction": "data engineer",
+        "description": "SYNTHETIC VACANCY j21: Data Engineer internship\nLocation: Shenzhen\nEmployment type: internship\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "internship",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j21-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j21",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j21"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j21-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j21",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j21"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j21-r3",
+          "text": "Docker",
+          "references": [
+            {
+              "document_id": "jd-j21",
+              "excerpt": "Requires Docker.",
+              "source_url": "https://jobs.example.invalid/j21"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j22",
+        "job_id": "j22",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Engineer full-time",
+        "company": "Synthetic Organisation 4",
+        "location": "Shanghai",
+        "target_direction": "data engineer",
+        "description": "SYNTHETIC VACANCY j22: Data Engineer full-time\nLocation: Shanghai\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "full-time",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j22-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j22",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j22"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j22-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j22",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j22"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j22-r3",
+          "text": "Docker",
+          "references": [
+            {
+              "document_id": "jd-j22",
+              "excerpt": "Requires Docker.",
+              "source_url": "https://jobs.example.invalid/j22"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j23",
+        "job_id": "j23",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Engineer part-time",
+        "company": "Synthetic Organisation 4",
+        "location": "Hong Kong",
+        "target_direction": "data engineer",
+        "description": "SYNTHETIC VACANCY j23: Data Engineer part-time\nLocation: Hong Kong\nEmployment type: part-time\nRequires Python.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "part-time",
+        "freshness_status": "unknown",
+        "description_is_excerpt": true
+      },
+      "requirements": [
+        {
+          "requirement_id": "j23-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j23",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j23"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j24",
+        "job_id": "j24",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Data Engineer full-time",
+        "company": "Synthetic Organisation 4",
+        "location": "Hong Kong",
+        "target_direction": "data engineer",
+        "description": "SYNTHETIC VACANCY j24: Data Engineer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Python.\nRequires SQL.\nRequires Docker.\nBachelor degree required.\nBuild a data engineer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": "2026-10-03T00:00:00+00:00",
+        "employment_type": "full-time",
+        "freshness_status": "expired",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j24-r1",
+          "text": "Python",
+          "references": [
+            {
+              "document_id": "jd-j24",
+              "excerpt": "Requires Python.",
+              "source_url": "https://jobs.example.invalid/j24"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j24-r2",
+          "text": "SQL",
+          "references": [
+            {
+              "document_id": "jd-j24",
+              "excerpt": "Requires SQL.",
+              "source_url": "https://jobs.example.invalid/j24"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j24-r3",
+          "text": "Docker",
+          "references": [
+            {
+              "document_id": "jd-j24",
+              "excerpt": "Requires Docker.",
+              "source_url": "https://jobs.example.invalid/j24"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j25",
+        "job_id": "j25",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Ux Designer internship",
+        "company": "Synthetic Organisation 5",
+        "location": "Hong Kong",
+        "target_direction": "ux designer",
+        "description": "SYNTHETIC VACANCY j25: Ux Designer internship\nLocation: Hong Kong\nEmployment type: internship\nRequires Figma.\nRequires prototyping.\nRequires user research.\nBachelor degree required.\nBuild a ux designer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "internship",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j25-r1",
+          "text": "Figma",
+          "references": [
+            {
+              "document_id": "jd-j25",
+              "excerpt": "Requires Figma.",
+              "source_url": "https://jobs.example.invalid/j25"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j25-r2",
+          "text": "prototyping",
+          "references": [
+            {
+              "document_id": "jd-j25",
+              "excerpt": "Requires prototyping.",
+              "source_url": "https://jobs.example.invalid/j25"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j25-r3",
+          "text": "user research",
+          "references": [
+            {
+              "document_id": "jd-j25",
+              "excerpt": "Requires user research.",
+              "source_url": "https://jobs.example.invalid/j25"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j26",
+        "job_id": "j26",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Ux Designer full-time",
+        "company": "Synthetic Organisation 5",
+        "location": "Hong Kong",
+        "target_direction": "ux designer",
+        "description": "SYNTHETIC VACANCY j26: Ux Designer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Figma.\nRequires prototyping.\nRequires user research.\nBachelor degree required.\nBuild a ux designer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "full-time",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j26-r1",
+          "text": "Figma",
+          "references": [
+            {
+              "document_id": "jd-j26",
+              "excerpt": "Requires Figma.",
+              "source_url": "https://jobs.example.invalid/j26"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j26-r2",
+          "text": "prototyping",
+          "references": [
+            {
+              "document_id": "jd-j26",
+              "excerpt": "Requires prototyping.",
+              "source_url": "https://jobs.example.invalid/j26"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j26-r3",
+          "text": "user research",
+          "references": [
+            {
+              "document_id": "jd-j26",
+              "excerpt": "Requires user research.",
+              "source_url": "https://jobs.example.invalid/j26"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j27",
+        "job_id": "j27",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Ux Designer internship",
+        "company": "Synthetic Organisation 5",
+        "location": "Shenzhen",
+        "target_direction": "ux designer",
+        "description": "SYNTHETIC VACANCY j27: Ux Designer internship\nLocation: Shenzhen\nEmployment type: internship\nRequires Figma.\nRequires prototyping.\nRequires user research.\nBachelor degree required.\nBuild a ux designer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "internship",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j27-r1",
+          "text": "Figma",
+          "references": [
+            {
+              "document_id": "jd-j27",
+              "excerpt": "Requires Figma.",
+              "source_url": "https://jobs.example.invalid/j27"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j27-r2",
+          "text": "prototyping",
+          "references": [
+            {
+              "document_id": "jd-j27",
+              "excerpt": "Requires prototyping.",
+              "source_url": "https://jobs.example.invalid/j27"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j27-r3",
+          "text": "user research",
+          "references": [
+            {
+              "document_id": "jd-j27",
+              "excerpt": "Requires user research.",
+              "source_url": "https://jobs.example.invalid/j27"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j28",
+        "job_id": "j28",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Ux Designer full-time",
+        "company": "Synthetic Organisation 5",
+        "location": "Shanghai",
+        "target_direction": "ux designer",
+        "description": "SYNTHETIC VACANCY j28: Ux Designer full-time\nLocation: Shanghai\nEmployment type: full-time\nRequires Figma.\nRequires prototyping.\nRequires user research.\nBachelor degree required.\nBuild a ux designer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "full-time",
+        "freshness_status": "active",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j28-r1",
+          "text": "Figma",
+          "references": [
+            {
+              "document_id": "jd-j28",
+              "excerpt": "Requires Figma.",
+              "source_url": "https://jobs.example.invalid/j28"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j28-r2",
+          "text": "prototyping",
+          "references": [
+            {
+              "document_id": "jd-j28",
+              "excerpt": "Requires prototyping.",
+              "source_url": "https://jobs.example.invalid/j28"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j28-r3",
+          "text": "user research",
+          "references": [
+            {
+              "document_id": "jd-j28",
+              "excerpt": "Requires user research.",
+              "source_url": "https://jobs.example.invalid/j28"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j29",
+        "job_id": "j29",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Ux Designer part-time",
+        "company": "Synthetic Organisation 5",
+        "location": "Hong Kong",
+        "target_direction": "ux designer",
+        "description": "SYNTHETIC VACANCY j29: Ux Designer part-time\nLocation: Hong Kong\nEmployment type: part-time\nRequires Figma.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": null,
+        "employment_type": "part-time",
+        "freshness_status": "unknown",
+        "description_is_excerpt": true
+      },
+      "requirements": [
+        {
+          "requirement_id": "j29-r1",
+          "text": "Figma",
+          "references": [
+            {
+              "document_id": "jd-j29",
+              "excerpt": "Requires Figma.",
+              "source_url": "https://jobs.example.invalid/j29"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "job": {
+        "source_url": "https://jobs.example.invalid/j30",
+        "job_id": "j30",
+        "fetched_at": "2026-10-04T00:00:00+00:00",
+        "title": "Ux Designer full-time",
+        "company": "Synthetic Organisation 5",
+        "location": "Hong Kong",
+        "target_direction": "ux designer",
+        "description": "SYNTHETIC VACANCY j30: Ux Designer full-time\nLocation: Hong Kong\nEmployment type: full-time\nRequires Figma.\nRequires prototyping.\nRequires user research.\nBachelor degree required.\nBuild a ux designer student demonstration.",
+        "posted_at": "2026-10-01T00:00:00+00:00",
+        "expiry_at": "2026-10-03T00:00:00+00:00",
+        "employment_type": "full-time",
+        "freshness_status": "expired",
+        "description_is_excerpt": false
+      },
+      "requirements": [
+        {
+          "requirement_id": "j30-r1",
+          "text": "Figma",
+          "references": [
+            {
+              "document_id": "jd-j30",
+              "excerpt": "Requires Figma.",
+              "source_url": "https://jobs.example.invalid/j30"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j30-r2",
+          "text": "prototyping",
+          "references": [
+            {
+              "document_id": "jd-j30",
+              "excerpt": "Requires prototyping.",
+              "source_url": "https://jobs.example.invalid/j30"
+            }
+          ]
+        },
+        {
+          "requirement_id": "j30-r3",
+          "text": "user research",
+          "references": [
+            {
+              "document_id": "jd-j30",
+              "excerpt": "Requires user research.",
+              "source_url": "https://jobs.example.invalid/j30"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -10,20 +10,21 @@ from urllib.parse import quote
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
+from replay.app import create_replay_app
+from replay.dataset import load_dataset
+from replay.provider import ReplayProvider
 from tortoise.backends.base.client import BaseDBAsyncClient
 
 from jobscout.main import create_app
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult
-from jobscout.services.replay_service import ReplayProvider
 from jobscout.services.session_service import _Session
 from tests.test_applicant_notices import NOW, posting
-from tests.test_replay_workflow import DESCRIPTION
 from tests.test_session_operations import ControlledGraph
 from tests.test_web_scaffold import settled
 
 CREATE: dict[str, Any] = {
     "request_id": "persistent-create",
-    "description": DESCRIPTION,
+    "description": load_dataset().profile_input("data-analyst-internship")["description"],
     "target_directions": ["Data Analyst"],
     "preferences": {"location": "Hong Kong", "employment_type": "internship"},
 }
@@ -46,6 +47,7 @@ RAW_DRAFT: dict[str, Any] = {
 
 class CountingProvider(ReplayProvider):
     def __init__(self) -> None:
+        super().__init__(load_dataset())
         self.calls = 0
 
     async def structured[T: BaseModel](
@@ -79,7 +81,7 @@ def summary_draft(profile: dict[str, Any]) -> dict[str, Any]:
 def test_restart_restores_waiting_checkpoint_and_raw_drafts_then_resumes(tmp_path: Path) -> None:
     database = tmp_path / "restart.sqlite3"
     database_url = f"sqlite://{database.as_posix()}"
-    with TestClient(create_app(mode="replay", database_url=database_url)) as client:
+    with TestClient(create_replay_app(database_url=database_url)) as client:
         draft = client.put(
             "/api/v1/workspace/draft",
             json={"request_id": "profile-draft", "expected_revision": 0, "data": RAW_DRAFT},
@@ -98,9 +100,7 @@ def test_restart_restores_waiting_checkpoint_and_raw_drafts_then_resumes(tmp_pat
         assert saved.json()["data"] == original_summary
 
     provider = CountingProvider()
-    with TestClient(
-        create_app(mode="replay", provider=provider, database_url=database_url)
-    ) as client:
+    with TestClient(create_replay_app(provider=provider, database_url=database_url)) as client:
         restored = client.get(f"/api/v1/sessions/{session_id}").json()
         assert restored == waiting
         assert provider.calls == 0
@@ -133,7 +133,7 @@ def test_restart_restores_waiting_checkpoint_and_raw_drafts_then_resumes(tmp_pat
         )
         assert client.get("/api/v1/workspace/draft").json()["data"] == RAW_DRAFT
 
-    with TestClient(create_app(mode="replay", database_url=database_url)) as client:
+    with TestClient(create_replay_app(database_url=database_url)) as client:
         assert client.get(f"/api/v1/sessions/{session_id}").json() == completed
         history = client.get("/api/v1/sessions").json()["items"]
         assert [item["session_id"] for item in history] == [session_id]
@@ -159,9 +159,7 @@ def test_interrupted_operation_waits_for_manual_retry_without_provider_calls(
 
     database_url = f"sqlite://{(tmp_path / 'interrupted.sqlite3').as_posix()}"
     blocked = BlockedProvider()
-    with TestClient(
-        create_app(mode="replay", provider=blocked, database_url=database_url)
-    ) as client:
+    with TestClient(create_replay_app(provider=blocked, database_url=database_url)) as client:
         accepted = client.post("/api/v1/sessions", json=CREATE).json()
         for _ in range(100):
             if blocked.calls:
@@ -173,9 +171,7 @@ def test_interrupted_operation_waits_for_manual_retry_without_provider_calls(
         )
 
     provider = CountingProvider()
-    with TestClient(
-        create_app(mode="replay", provider=provider, database_url=database_url)
-    ) as client:
+    with TestClient(create_replay_app(provider=provider, database_url=database_url)) as client:
         session_id = accepted["session_id"]
         interrupted = client.get(f"/api/v1/sessions/{session_id}").json()
         assert interrupted["outcome"] == "failed"
@@ -217,9 +213,7 @@ def test_interrupted_answer_preserves_accepted_input_before_checkpoint_commit(
 
     database_url = f"sqlite://{(tmp_path / 'interrupted-answer.sqlite3').as_posix()}"
     provider = BlockedInterpretation()
-    with TestClient(
-        create_app(mode="replay", provider=provider, database_url=database_url)
-    ) as client:
+    with TestClient(create_replay_app(provider=provider, database_url=database_url)) as client:
         session_id = client.post("/api/v1/sessions", json=CREATE).json()["session_id"]
         waiting = settled(client, session_id)
         accepted = client.post(
@@ -241,7 +235,7 @@ def test_interrupted_answer_preserves_accepted_input_before_checkpoint_commit(
 
     provider_after_restart = CountingProvider()
     with TestClient(
-        create_app(mode="replay", provider=provider_after_restart, database_url=database_url)
+        create_replay_app(provider=provider_after_restart, database_url=database_url)
     ) as client:
         interrupted = client.get(f"/api/v1/sessions/{session_id}").json()
         assert interrupted["outcome"] == "failed"
@@ -268,7 +262,7 @@ def test_delete_removes_all_threads_and_session_drafts_but_preserves_saved_jobs(
 ) -> None:
     database = tmp_path / "deletion.sqlite3"
     database_url = f"sqlite://{database.as_posix()}"
-    with TestClient(create_app(mode="replay", database_url=database_url)) as client:
+    with TestClient(create_replay_app(database_url=database_url)) as client:
         client.put(
             "/api/v1/workspace/draft",
             json={"request_id": "workspace", "expected_revision": 0, "data": RAW_DRAFT},
@@ -331,7 +325,7 @@ def test_delete_removes_all_threads_and_session_drafts_but_preserves_saved_jobs(
             ).fetchall()
             == []
         )
-    with TestClient(create_app(mode="replay", database_url=database_url)) as client:
+    with TestClient(create_replay_app(database_url=database_url)) as client:
         repeated = client.post("/api/v1/sessions", json=CREATE)
         assert repeated.status_code == 404
         assert repeated.json()["detail"]["code"] == "search_not_found"
@@ -342,7 +336,7 @@ def test_delete_removes_all_threads_and_session_drafts_but_preserves_saved_jobs(
 
 
 def test_draft_conflicts_idempotency_shape_validation_and_scope_isolation() -> None:
-    with TestClient(create_app(mode="replay")) as client:
+    with TestClient(create_replay_app()) as client:
         payload = {"request_id": "draft-1", "expected_revision": 0, "data": RAW_DRAFT}
         first = client.put("/api/v1/workspace/draft", json=payload)
         assert first.status_code == 200
@@ -404,7 +398,7 @@ def test_draft_conflicts_idempotency_shape_validation_and_scope_isolation() -> N
 
 
 def test_history_pagination_order_changes_only_after_accepted_user_operations() -> None:
-    with TestClient(create_app(mode="replay")) as client:
+    with TestClient(create_replay_app()) as client:
         ids = [
             client.post(
                 "/api/v1/sessions", json=CREATE | {"request_id": f"history-{index}"}
@@ -445,7 +439,7 @@ def test_history_pagination_order_changes_only_after_accepted_user_operations() 
 def test_pending_checkpoint_deletion_is_completed_on_restart(tmp_path: Path) -> None:
     database = tmp_path / "pending-delete.sqlite3"
     database_url = f"sqlite://{database.as_posix()}"
-    application = create_app(mode="replay", database_url=database_url)
+    application = create_replay_app(database_url=database_url)
     with TestClient(application, raise_server_exceptions=False) as client:
         session_id = client.post("/api/v1/sessions", json=CREATE).json()["session_id"]
         settled(client, session_id)
@@ -457,7 +451,7 @@ def test_pending_checkpoint_deletion_is_completed_on_restart(tmp_path: Path) -> 
         assert client.delete(f"/api/v1/sessions/{session_id}").status_code == 500
         assert client.get(f"/api/v1/sessions/{session_id}").status_code == 404
         assert client.get("/api/v1/sessions").json()["items"] == []
-    with TestClient(create_app(mode="replay", database_url=database_url)) as client:
+    with TestClient(create_replay_app(database_url=database_url)) as client:
         assert client.get(f"/api/v1/sessions/{session_id}").status_code == 404
         assert client.post("/api/v1/sessions", json=CREATE).status_code == 404
     with sqlite3.connect(database) as connection:
@@ -469,7 +463,7 @@ def test_pending_checkpoint_deletion_is_completed_on_restart(tmp_path: Path) -> 
 def test_failed_deletion_marker_commit_preserves_readable_state_and_can_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    application = create_app(mode="replay")
+    application = create_replay_app()
     with TestClient(application, raise_server_exceptions=False) as client:
         session_id = client.post("/api/v1/sessions", json=CREATE).json()["session_id"]
         waiting = settled(client, session_id)

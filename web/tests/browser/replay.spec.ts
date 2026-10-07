@@ -3,9 +3,10 @@ import { mkdir } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 
 import type { ScoutSession } from '../../src/lib/contracts'
+import { replayInput } from '../replay-scenarios'
 
-const description =
-  'Education\nBachelor Computer Science\nSkills\nPython, SQL, Excel\nProjects\nPython SQL reporting dashboard'
+const input = replayInput('data-analyst-internship')
+const description = input.description
 
 async function snapshot(page: Page, id: string): Promise<ScoutSession> {
   const response = await page.request.get(`/api/v1/sessions/${id}`)
@@ -16,9 +17,15 @@ async function snapshot(page: Page, id: string): Promise<ScoutSession> {
 async function createFromForm(page: Page, complete: boolean) {
   await page.goto('/new')
   await page.getByLabel('About you', { exact: true }).fill(description)
-  await page.getByLabel('Job interests', { exact: false }).fill(complete ? 'Data Analyst' : '')
-  await page.getByLabel('Work location', { exact: true }).fill(complete ? 'Hong Kong' : '')
-  await page.getByLabel('Employment type', { exact: true }).fill(complete ? 'internship' : '')
+  await page
+    .getByLabel('Job interests', { exact: false })
+    .fill(complete ? input.target_directions.join(', ') : '')
+  await page
+    .getByLabel('Work location', { exact: true })
+    .fill(complete ? (input.preferences.location ?? '') : '')
+  await page
+    .getByLabel('Employment type', { exact: true })
+    .fill(complete ? (input.preferences.employment_type ?? '') : '')
   const accepted = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' && response.url().endsWith('/api/v1/sessions'),
@@ -94,9 +101,11 @@ async function confirmAndVerifyResults(page: Page, id: string) {
   await page.getByRole('button', { name: 'View job: ' + item.job.title, exact: true }).click()
   const article = page.getByRole('article', { name: 'Job details', exact: true })
   await article.getByText('Job requirements and your background', { exact: true }).click()
-  await expect(article.getByRole('link', { name: 'Check source' }).first()).toHaveAttribute(
+  await expect(
+    article.getByRole('link', { name: 'Open job listing', exact: true }).first(),
+  ).toHaveAttribute(
     'href',
-    /^https?:\/\//,
+    item.matching_reasons.flatMap((reason) => reason.job_source_quotes)[0]!.source_url!,
   )
   const lastSupportedReason = item.matching_reasons
     .filter((reason) => reason.job_source_quotes.length || reason.profile_source_quotes.length)
@@ -148,11 +157,11 @@ for (const complete of [true, false]) {
     const id = await createFromForm(page, complete)
     try {
       if (!complete) {
-        await expect(
-          page.getByRole('heading', { name: 'Tell us a little more', exact: true }),
-        ).toBeVisible({
-          timeout: 15_000,
-        })
+        await expect(page.getByRole('checkbox', { name: 'Data Analyst', exact: true })).toBeVisible(
+          {
+            timeout: 15_000,
+          },
+        )
         await page.getByRole('checkbox', { name: 'Data Analyst', exact: true }).check()
         await page.getByRole('radio', { name: 'Hong Kong', exact: true }).check()
         await page.getByRole('radio', { name: 'Internship', exact: true }).check()

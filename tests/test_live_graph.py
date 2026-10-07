@@ -10,6 +10,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 from pydantic import BaseModel
+from replay.provider import SyntheticProvider
 
 from jobscout.graph.live import build_live_graph
 from jobscout.graph.state import AgentState
@@ -26,10 +27,9 @@ from jobscout.services.conversation_service import (
 )
 from jobscout.services.job_retrieval.models import RawJob, SearchResult, SourceOutcome
 from jobscout.services.llm_service import LLMProvider, ModelServiceError
-from jobscout.services.replay_service import ReplayProvider
 
 
-class FakeProvider(ReplayProvider):
+class FakeProvider(SyntheticProvider):
     def __init__(self, *, extraction: dict[str, Any] | None = None, optional: bool = False) -> None:
         self.extraction = extraction or {"skills": ["Python"]}
         self.optional = optional

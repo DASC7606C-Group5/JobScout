@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 
 import pytest
+from replay.provider import SyntheticProvider
 
 from jobscout.schemas.conversation import MatchingReason
 from jobscout.schemas.profile import WorkArrangement
@@ -11,7 +12,6 @@ from jobscout.services.condition_service import ConditionService
 from jobscout.services.conversation_service import ProfileChange, apply_changes, missing_fields
 from jobscout.services.job_processing_service import process_jobs
 from jobscout.services.job_retrieval.models import SearchResult, SourceOutcome, workflow_error
-from jobscout.services.replay_service import ReplayProvider
 from jobscout.services.search_agent import SearchAgent
 from tests.test_conditions_and_locations import MeaningProvider
 from tests.test_job_assessment_service import profile as assessment_profile
@@ -47,7 +47,7 @@ def test_model_work_arrangement_is_used_for_source_requests(
         assert interpreted.preferences.work_mode == text
         assert interpreted.preferences.work_arrangement.raw_text == text
         search = SnapshotSearch(5)
-        result = await run(ReplayProvider(), search, Assessment(), interpreted)
+        result = await run(SyntheticProvider(), search, Assessment(), interpreted)
         assert result["stop_reason"] == "target_reached"
         assert search.requests[0].work_mode == expected
         assert interpreted.conflicts == []
@@ -176,7 +176,7 @@ def test_global_ranking_uses_overall_fit_instead_of_requirement_support_ratios()
         matching_reasons=reasons("partial", 20),
         recommendation_fit="recommended",
     )
-    agent = SearchAgent(ReplayProvider(), SnapshotSearch(), Assessment())
+    agent = SearchAgent(SyntheticProvider(), SnapshotSearch(), Assessment())
     agent.profile, agent.target = profile(), 10
     assert [row.job.job_id for row in agent.ranked([long, short])] == ["long", "short"]
 
@@ -217,7 +217,7 @@ def test_search_continues_after_duplicates_empty_query_or_transient_failure(init
 
     async def scenario() -> None:
         search = RecoveringSearch()
-        result = await run(ReplayProvider(), search, Assessment(), profile(5))
+        result = await run(SyntheticProvider(), search, Assessment(), profile(5))
         assert result["stop_reason"] == "target_reached"
         assert {row.job.source_url for row in result["recommendation"].jobs} == {
             f"https://jobsdb.example/jobs/{index}" for index in range(5)

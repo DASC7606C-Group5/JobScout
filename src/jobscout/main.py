@@ -29,34 +29,29 @@ def create_app(
     provider: Any = None,
     search_service: Any = None,
     graph: Any = None,
-    mode: str | None = None,
+    mode: str = "live",
     database_url: str | None = None,
+    temporary_database: bool = False,
 ) -> FastAPI:
-    active_mode = mode or os.environ.get("JOBSCOUT_MODE", "live")
+    active_mode = mode
     if active_mode not in {"live", "replay"}:
-        raise ValueError("JOBSCOUT_MODE must be live or replay")
+        raise ValueError("mode must be live or replay")
+
+    if active_mode == "replay" and graph is None and (provider is None or search_service is None):
+        raise ValueError("Replay mode requires injected model and search services")
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
         active_provider = provider
         active_search = search_service
-        if active_mode == "replay" and graph is None:
-            from jobscout.services.replay_service import ReplayProvider, ReplaySearchService
-
-            active_provider = active_provider or ReplayProvider()
-            active_search = active_search or ReplaySearchService()
         active_database_url = database_url or get_settings().database_url
         async with AsyncExitStack() as stack:
-            if (
-                active_mode == "replay"
-                and database_url is None
-                and not os.environ.get("DATABASE_URL")
-            ):
-                replay_directory = stack.enter_context(
-                    TemporaryDirectory(prefix="jobscout-replay-")
+            if temporary_database and database_url is None and not os.environ.get("DATABASE_URL"):
+                workspace_directory = stack.enter_context(
+                    TemporaryDirectory(prefix="jobscout-workspace-")
                 )
                 active_database_url = (
-                    f"sqlite://{(Path(replay_directory) / 'workspace.sqlite3').as_posix()}"
+                    f"sqlite://{(Path(workspace_directory) / 'workspace.sqlite3').as_posix()}"
                 )
             await stack.enter_async_context(
                 database_lifespan(application, database_url=active_database_url)

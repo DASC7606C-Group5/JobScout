@@ -44,7 +44,7 @@ select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
 
 [tool.mypy]
 python_version = "3.14"
-files = ["src", "tests", "scripts"]
+files = ["src", "tests", "scripts", "replay"]
 strict = true
 warn_unreachable = true
 show_error_codes = true
