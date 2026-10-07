@@ -22,6 +22,7 @@ from jobscout.schemas.career import (
     TaskMetadata,
     adopt_background,
 )
+from jobscout.schemas.job import SourceDocument
 from jobscout.schemas.profile import ProfilePreferences, UserProfile
 from jobscout.schemas.recommendation import RecommendationItem
 from jobscout.services.session_service import SessionOperationError, SessionService
@@ -50,12 +51,45 @@ async def refresh_task_background(state: dict[str, Any]) -> dict[str, Any]:
         return {}
     updates: dict[str, Any] = {
         "profile_revision": current.revision,
-        "profile_documents": current.documents,
+        "profile_documents": current_profile_documents(current)
+        + [
+            SourceDocument.model_validate(document)
+            for document in state.get("profile_documents", [])
+            if ":answer:" in SourceDocument.model_validate(document).document_id
+        ],
     }
     for key in ("profile", "confirmed_profile"):
         if state.get(key) is not None:
             updates[key] = adopt_background(UserProfile.model_validate(state[key]), current)
     return updates
+
+
+def current_profile_documents(current: PersonalProfile) -> list[SourceDocument]:
+    """Keep supplied evidence and derive stable documents for current raw material."""
+    raw = [
+        SourceDocument(
+            document_id=f"profile:personal-{current.revision}:{kind}",
+            source="user",
+            source_url="",
+            text=text,
+            fetched_at=current.updated_at or datetime.now(UTC),
+        )
+        for kind, text in (
+            ("description", current.description),
+            ("resume", current.resume.text if current.resume else ""),
+        )
+        if text
+    ]
+    documents = {
+        document.document_id: document
+        for document in current.documents
+        if not (
+            document.document_id.startswith("profile:")
+            and document.document_id.endswith((":description", ":resume"))
+        )
+    }
+    documents.update({document.document_id: document for document in raw})
+    return list(documents.values())
 
 
 class CareerService:
@@ -96,6 +130,12 @@ class CareerService:
             for job in record.state.get("normalized_jobs", []):
                 if job.job_id == job_id:
                     return RecommendationItem(job=job)
+            prior = await TaskJobFeedbackRecord.get_or_none(session_id=session_id, job_id=job_id)
+            if prior:
+                return TaskJobFeedback.model_validate(prior.data).item
+            raise SessionOperationError(
+                404, "Job not found in this task.", code="saved_job_not_found"
+            )
         saved = await SavedJob.get_or_none(job_id=job_id)
         if saved:
             return RecommendationItem.model_validate(saved.item)
@@ -106,6 +146,29 @@ class CareerService:
         if feedback:
             return TaskJobFeedback.model_validate(feedback.data).item
         raise SessionOperationError(404, "Job not found.", code="saved_job_not_found")
+
+    async def import_profile(self, session_id: str, expected_revision: int) -> PersonalProfile:
+        record = self.sessions._get(session_id)
+        profile = self.sessions._response(record).profile
+        if profile is None:
+            raise SessionOperationError(422, "This task has no normalized profile yet.")
+        from jobscout.schemas.career import Background
+        from jobscout.schemas.session import ResumeInput
+
+        inputs = record.state.get("input_data", {})
+        return await self.save_profile(
+            ProfileWrite(
+                expected_revision=expected_revision,
+                description=inputs.get("description", ""),
+                resume=ResumeInput.model_validate(inputs["resume"])
+                if inputs.get("resume")
+                else None,
+                background=Background.model_validate(
+                    profile.model_dump(include={"education", "skills", "internships", "projects"})
+                ),
+                documents=record.state.get("profile_documents", []),
+            )
+        )
 
     async def feedback(self, session_id: str, job_id: str) -> TaskJobFeedback:
         self.sessions._get(session_id)

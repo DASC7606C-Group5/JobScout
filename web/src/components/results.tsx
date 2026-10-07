@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import { uniqueNotices } from '../lib/applicant-notices'
 import type { ApplicantNotice, RecommendationItem, RecommendationResult } from '../lib/contracts'
 import { generatedLabel } from '../lib/job-display'
 import type { ResultSearch } from '../lib/result-navigation'
+import { useTaskFeedback } from '../state/career-queries'
 import { useResultSelection } from '../state/use-result-selection'
 import { Icon } from './icon'
 import { JobCard } from './job-card'
@@ -30,16 +31,27 @@ export function Results({
   notices?: ApplicantNotice[]
   reviewActive?: boolean
 }) {
+  const feedback = useTaskFeedback(savedOnly ? undefined : result?.session_id)
+  const [showDismissed, setShowDismissed] = useState(false)
   const jobs = useMemo(
     () =>
       savedOnly
         ? saved
-        : [...(result?.jobs ?? []), ...(result?.pending_jobs ?? [])].sort(
-            (left, right) =>
-              Number(left.review_status !== 'reviewed') -
-              Number(right.review_status !== 'reviewed'),
-          ),
-    [result, savedOnly, saved],
+        : [...(result?.jobs ?? []), ...(result?.pending_jobs ?? [])]
+            .filter(
+              (item) =>
+                showDismissed ||
+                !feedback.data?.some(
+                  (entry) =>
+                    entry.job_id === item.job.job_id && entry.interest === 'not_interested',
+                ),
+            )
+            .sort(
+              (left, right) =>
+                Number(left.review_status !== 'reviewed') -
+                Number(right.review_status !== 'reviewed'),
+            ),
+    [result, savedOnly, saved, feedback.data, showDismissed],
   )
   const selection = useResultSelection(jobs, savedOnly, onToggle)
   const jobNotices = uniqueNotices(
@@ -47,6 +59,17 @@ export function Results({
   )
   return (
     <section aria-label={savedOnly ? 'Saved jobs' : 'Recommended jobs'}>
+      {!savedOnly && (
+        <label className="label mb-4">
+          <input
+            className="checkbox"
+            type="checkbox"
+            checked={showDismissed}
+            onChange={(event) => setShowDismissed(event.target.checked)}
+          />
+          Show dismissed jobs
+        </label>
+      )}
       <FilterControls jobs={jobs} selection={selection} />
       <ResultItems
         hasJobs={jobs.length > 0}
@@ -56,6 +79,7 @@ export function Results({
         onEdit={onEdit}
         notices={jobNotices}
         reviewActive={reviewActive}
+        sessionId={savedOnly ? undefined : result?.session_id}
       />
       {!savedOnly && result && (
         <p className="mt-6 flex items-center gap-1.5 text-xs text-base-content/45">
@@ -106,6 +130,7 @@ function ResultItems({
   onEdit,
   notices,
   reviewActive,
+  sessionId,
 }: {
   hasJobs: boolean
   savedOnly: boolean
@@ -114,6 +139,7 @@ function ResultItems({
   onEdit: () => void
   notices: ApplicantNotice[]
   reviewActive: boolean
+  sessionId?: string | undefined
 }) {
   const {
     selected,
@@ -165,6 +191,8 @@ function ResultItems({
         <JobDetail
           key={selected.job.job_id}
           item={selected}
+          tracking
+          sessionId={sessionId}
           reviewActive={reviewActive}
           notices={notices}
           headingRef={detailHeading}

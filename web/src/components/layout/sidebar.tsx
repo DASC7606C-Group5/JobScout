@@ -261,6 +261,20 @@ function SidebarNavigation({
           </Link>
         </li>
       </ul>
+      <ul className="menu w-full">
+        <li>
+          <Link to="/profile" onClick={beforeNavigate}>
+            <Icon name="file" size={20} />
+            <span className="is-drawer-close:hidden">Personal profile</span>
+          </Link>
+        </li>
+        <li>
+          <Link to="/tracked" onClick={beforeNavigate}>
+            <Icon name="bookmark" size={20} />
+            <span className="is-drawer-close:hidden">Tracked jobs</span>
+          </Link>
+        </li>
+      </ul>
     </nav>
   )
 }

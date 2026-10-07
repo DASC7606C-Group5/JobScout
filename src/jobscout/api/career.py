@@ -29,6 +29,19 @@ class TaskTitleWrite(BaseModel):
     title: str = Field(min_length=1, max_length=200)
 
 
+class ProfileImportWrite(BaseModel):
+    session_id: str
+    expected_revision: int = Field(ge=0)
+
+
+@router.put("/profile/from-session")
+async def import_profile(request: Request, payload: ProfileImportWrite) -> PersonalProfile:
+    try:
+        return await service(request).import_profile(payload.session_id, payload.expected_revision)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
+
+
 @router.get("/profile")
 async def profile() -> PersonalProfile:
     return await load_current_profile()

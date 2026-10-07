@@ -3,6 +3,7 @@ import type { RefObject } from 'react'
 import { uniqueNotices } from '../lib/applicant-notices'
 import type { ApplicantNotice, JobPosting, RecommendationItem } from '../lib/contracts'
 import { dateLabel, safeSourceUrl, sourceLabel } from '../lib/job-display'
+import { JobTracking } from './career/job-tracking'
 import { Icon } from './icon'
 import { JobReviewStatus } from './job-review-status'
 import { MatchingSourceQuotes } from './matching-source-quotes'
@@ -16,6 +17,8 @@ export function JobDetail({
   notices,
   headingRef,
   reviewActive = false,
+  sessionId,
+  tracking = false,
 }: {
   item: RecommendationItem
   saved: boolean
@@ -24,6 +27,8 @@ export function JobDetail({
   notices: ApplicantNotice[]
   headingRef: RefObject<HTMLHeadingElement | null>
   reviewActive?: boolean
+  sessionId?: string | undefined
+  tracking?: boolean
 }) {
   const { job } = item
   const links = [...new Set([job.source_url, ...job.source_links])].flatMap((value) => {
@@ -78,6 +83,7 @@ export function JobDetail({
         </button>
       </div>
       <div className="space-y-6 p-5 text-sm leading-6 sm:p-6">
+        {tracking && <JobTracking jobId={job.job_id} sessionId={sessionId} />}
         <JobMatch item={item} />
         <Responsibilities job={job} />
         <Preparation item={item} />

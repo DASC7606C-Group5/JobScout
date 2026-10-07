@@ -16,7 +16,7 @@ from tortoise.backends.base.client import BaseDBAsyncClient
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
-from jobscout.models import AcceptedRequest, SearchSession, WorkspaceDraft
+from jobscout.models import AcceptedRequest, SearchSession, TaskJobFeedbackRecord, WorkspaceDraft
 from jobscout.schemas.conversation import ConversationMessage, SearchSummary
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.execution import SearchProgress
@@ -265,9 +265,11 @@ class SessionService:
                     )
                 record = self._get(session_id)
                 return self._response(record)
-            if not payload.description.strip() and not (
-                payload.resume and payload.resume.text.strip()
-            ) and not payload.use_current_profile:
+            if (
+                not payload.description.strip()
+                and not (payload.resume and payload.resume.text.strip())
+                and not payload.use_current_profile
+            ):
                 raise SessionOperationError(422, "Provide a resume or personal introduction.")
             session_id = str(uuid4())
             state: dict[str, Any] = {
@@ -277,7 +279,10 @@ class SessionService:
                 "current_stage": "ingest",
             }
             if payload.use_current_profile:
-                from jobscout.services.career_service import load_current_profile
+                from jobscout.services.career_service import (
+                    current_profile_documents,
+                    load_current_profile,
+                )
 
                 current = await load_current_profile()
                 if not current.revision:
@@ -291,7 +296,7 @@ class SessionService:
                     preferences=ProfilePreferences.model_validate(payload.preferences.model_dump()),
                     search_options=payload.search_options,
                 )
-                state["profile_documents"] = current.documents
+                state["profile_documents"] = current_profile_documents(current)
                 state["profile_revision"] = current.revision
             now = datetime.now(UTC)
             record = _Session(
@@ -656,7 +661,7 @@ class SessionService:
             items.append(
                 SessionHistoryItem(
                     session_id=stored.session_id,
-                    title=", ".join(directions) or "Job search",
+                    title=state.get("task_title") or ", ".join(directions) or "Job search",
                     location="Any location"
                     if preferences.get("location_unrestricted")
                     else preferences.get("location") or "Location undecided",
@@ -712,6 +717,7 @@ class SessionService:
         for thread_id in record.thread_ids:
             await self.checkpointer.adelete_thread(thread_id)
         await self._cleanup_session(record.session_id)
+        await TaskJobFeedbackRecord.filter(session_id=record.session_id).delete()
         await SearchSession.filter(session_id=record.session_id).delete()
         self.sessions.pop(record.session_id, None)
 

@@ -1,6 +1,7 @@
 import type { ScoutSession } from '../../lib/contracts'
 import { searchPhase } from '../../lib/search-phase'
 import { useScoutSession } from '../../state/session-context'
+import { TaskProfileControls } from '../career/task-profile-controls'
 import { JourneyAside } from '../journey-aside'
 import { PageHeading } from '../layout/page-heading'
 import { StepTransition } from '../layout/step-transition'
@@ -76,6 +77,7 @@ export function DiscoveryPage() {
     <div className="[--job-detail-top:6rem]">
       <DiscoveryHeading />
       <WorkflowSteps step={workflowStep(session)} />
+      {session?.profile && <TaskProfileControls sessionId={session.session_id} />}
       <StepTransition step={transitionStep(session)}>
         {session?.profile && session.current_stage !== 'confirm' && (
           <SearchCriteria

@@ -205,6 +205,7 @@ export interface ApplicantError {
 
 // Mirrors src/jobscout/schemas/session.py.
 export interface ScoutInput {
+  use_current_profile?: boolean
   description: string
   resume: { name: string; text: string } | null
   target_directions: string[]

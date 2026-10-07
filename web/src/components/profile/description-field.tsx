@@ -1,12 +1,13 @@
 import { useController } from 'react-hook-form'
 
 import type { ProfileFormValues } from '../../lib/profile-form'
-export function DescriptionField() {
+export function DescriptionField({ reuseCurrent = false }: { reuseCurrent?: boolean }) {
   const { field, fieldState } = useController<ProfileFormValues, 'description'>({
     name: 'description',
     rules: {
       validate: (value, values) =>
-        Boolean(value.trim() || values.resume) || 'Add an introduction or upload a resume.',
+        Boolean(value.trim() || values.resume || reuseCurrent) ||
+        'Add an introduction or upload a resume.',
     },
   })
   return (

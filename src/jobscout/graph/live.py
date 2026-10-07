@@ -314,6 +314,8 @@ def build_live_graph(
             profile = state.get("profile")
             if profile is None:
                 profile = await conversation.extract(inputs, state["session_id"])
+            elif inputs.get("use_current_profile"):
+                profile = await conversation.resolve_preferences(profile)
             history = list(state.get("conversation", []))
             if not history:
                 history.append(

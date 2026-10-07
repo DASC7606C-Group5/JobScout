@@ -59,7 +59,7 @@ class SavedJob(Model):
 class PersonalProfileRecord(Model):
     key = fields.CharField(max_length=16, primary_key=True)
     revision = fields.IntField(default=0)
-    data = fields.JSONField()
+    data: fields.JSONField[dict[str, Any]] = fields.JSONField()
     updated_at = fields.DatetimeField()
 
     class Meta:
@@ -70,7 +70,7 @@ class TaskJobFeedbackRecord(Model):
     id = fields.IntField(primary_key=True)
     session_id = fields.CharField(max_length=36)
     job_id = fields.CharField(max_length=512)
-    data = fields.JSONField()
+    data: fields.JSONField[dict[str, Any]] = fields.JSONField()
 
     class Meta:
         table = "career_feedback"
@@ -79,7 +79,7 @@ class TaskJobFeedbackRecord(Model):
 
 class JobApplicationRecord(Model):
     job_id = fields.CharField(max_length=512, primary_key=True)
-    data = fields.JSONField()
+    data: fields.JSONField[dict[str, Any]] = fields.JSONField()
 
     class Meta:
         table = "career_applications"

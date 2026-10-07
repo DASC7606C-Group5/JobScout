@@ -3,6 +3,7 @@ import { FormProvider, useForm } from 'react-hook-form'
 
 import { createProfileDraft, toScoutInput, type ProfileFormValues } from '../lib/profile-form'
 import { workspaceDraftPath } from '../lib/workspace-client'
+import { useCurrentProfile } from '../state/career-queries'
 import { useScoutSession } from '../state/session-context'
 import { usePersistedDraft } from '../state/use-persisted-draft'
 import { DraftStatus } from './draft-status'
@@ -13,6 +14,7 @@ import { PreferenceFields } from './profile/preference-fields'
 import { ResumeField } from './profile/resume-field'
 
 export function ProfileForm() {
+  const currentProfile = useCurrentProfile()
   const draft = usePersistedDraft(workspaceDraftPath, createProfileDraft())
   const { setValue: saveDraft } = draft
   const { start, busy } = useScoutSession()
@@ -23,6 +25,7 @@ export function ProfileForm() {
     formState: { errors },
   } = form
   const [reading, setReading] = useState(false)
+  const [reuseCurrent, setReuseCurrent] = useState(false)
   useEffect(
     () =>
       subscribe({
@@ -46,7 +49,10 @@ export function ProfileForm() {
             return
           }
           void handleSubmit((values) => {
-            void start(toScoutInput(values))
+            void start({
+              ...toScoutInput(values),
+              ...(reuseCurrent ? { use_current_profile: true } : {}),
+            })
           })(event)
         }}
       >
@@ -69,7 +75,18 @@ export function ProfileForm() {
           disabled={reading || busy || draft.status === 'loading'}
           className="min-w-0 space-y-6 p-5 sm:p-7"
         >
-          <DescriptionField />
+          <DescriptionField reuseCurrent={reuseCurrent} />
+          {Boolean(currentProfile.data?.revision) && (
+            <label className="label">
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={reuseCurrent}
+                onChange={(event) => setReuseCurrent(event.target.checked)}
+              />
+              Reuse saved current profile (revision {currentProfile.data?.revision})
+            </label>
+          )}
           <ResumeField reading={reading} onReadingChange={setReading} />
           <DirectionField />
           <PreferenceFields />
