@@ -1,10 +1,12 @@
 import type { RecommendationItem, SearchActivity } from './contracts'
+import { hasFullDescription } from './job-display'
 
 export const jobStatuses = [
   'found',
   'queued',
   'reviewing',
   'reviewed',
+  'summary_reviewed',
   'not_reviewed',
   'partial',
   'timeout',
@@ -48,6 +50,7 @@ export const statusLabels: Record<JobStatus, string> = {
   queued: 'Waiting',
   reviewing: 'Reviewing',
   reviewed: 'Reviewed',
+  summary_reviewed: 'Summary reviewed',
   not_reviewed: 'Not reviewed',
   partial: 'Incomplete',
   timeout: 'Timed out',
@@ -113,7 +116,8 @@ export function recommendationStatus(item: RecommendationItem, active: boolean):
       : 'not_reviewed'
   }
   if (item.analysis_status === 'unavailable') return issueStatus(item.review_issue)
-  if (item.analysis_status === 'partial') return 'partial'
+  if (item.analysis_status === 'partial')
+    return !hasFullDescription(item.job) && !item.review_issue ? 'summary_reviewed' : 'partial'
   if (item.verification_status !== 'confirmed') return 'unverified'
   return 'reviewed'
 }
@@ -125,6 +129,8 @@ export function statusTooltip(
 ): string {
   if (['found', 'queued', 'reviewing', 'reviewed', 'expired', 'duplicate'].includes(status))
     return ''
+  if (status === 'summary_reviewed')
+    return 'This advice is based on the listing summary. The full job description was unavailable.'
   if (status === 'not_shortlisted')
     return 'This job ranked outside the requested number of results.'
   if (status === 'excluded')

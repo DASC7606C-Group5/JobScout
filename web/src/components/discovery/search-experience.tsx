@@ -201,8 +201,8 @@ function SearchProgressActions({
         {showResults
           ? 'Back to search'
           : session.outcome !== 'running'
-            ? 'View matches'
-            : 'View matches so far'}
+            ? 'View jobs'
+            : 'View jobs so far'}
         {!showResults && <Icon name="arrow" size={16} />}
       </button>
       {(presentation.canFinish || presentation.finishing) && (
@@ -260,7 +260,7 @@ function SearchPhaseIndicator({
           />
         </span>
       )}
-      <span>{completed ? 'How your matches were selected' : presentation.activity}</span>
+      <span>{completed ? 'How these jobs were reviewed' : presentation.activity}</span>
     </output>
   )
 }

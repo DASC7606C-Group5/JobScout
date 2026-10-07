@@ -12,14 +12,15 @@ const profileStages: Record<string, string> = {
 
 export function searchPresentation(session: ScoutSession) {
   const limit = session.profile?.search_options.result_count ?? 10
-  const confirmed = Math.min(
-    session.recommendation?.jobs.length ?? session.progress.matched_count,
-    limit,
-  )
+  const promising = (session.recommendation?.jobs ?? []).filter(
+    (item) =>
+      item.analysis_status !== 'unavailable' &&
+      (item.recommendation_fit === 'recommended' || item.recommendation_fit === 'possible'),
+  ).length
   const completed = session.outcome === 'completed'
   const interrupted = session.outcome === 'failed'
   const phase = completed ? 'complete' : searchPhase(session)
-  const comparing = confirmed >= limit
+  const comparing = promising >= limit
   const finishing = session.progress.retrieval_stopped && session.outcome === 'running'
   const activity = interrupted
     ? 'Search interrupted'
@@ -42,12 +43,12 @@ export function searchPresentation(session: ScoutSession) {
         : phase === 'preparing'
           ? 'Preparing your search'
           : completed
-            ? 'Your matches'
+            ? 'Search results'
             : finishing
               ? 'Finishing your search'
               : comparing
-                ? 'Comparing your matches'
-                : 'Finding your matches',
+                ? 'Comparing opportunities'
+                : 'Finding jobs',
     activity,
   }
 }

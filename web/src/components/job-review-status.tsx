@@ -11,7 +11,7 @@ const fitColors: Record<RecommendationItem['recommendation_fit'], string> = {
 
 export function JobReviewStatus({ item, active }: { item: RecommendationItem; active: boolean }) {
   const status = recommendationStatus(item, active)
-  const assessed = ['reviewed', 'partial', 'unverified'].includes(status)
+  const assessed = ['reviewed', 'summary_reviewed', 'partial', 'unverified'].includes(status)
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       <StatusBadge

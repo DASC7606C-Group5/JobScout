@@ -32,6 +32,27 @@ test('partial results survive diagnostics and uncertain conditions', () => {
   expect(recommendationStatus(item, false)).toBe('reviewed')
 })
 
+test('a reviewed summary stays distinct from a full review even with source metadata', () => {
+  const item = createRecommendationFixture()
+  item.analysis_status = 'partial'
+  item.review_issue = null
+  item.job.description_is_excerpt = true
+  item.job.source_documents = [
+    {
+      document_id: `job:${item.job.job_id}:metadata`,
+      source: item.job.source,
+      source_url: item.job.source_url,
+      text: item.job.title,
+      fetched_at: item.job.fetched_at,
+      is_excerpt: false,
+    },
+  ]
+  expect(recommendationStatus(item, false)).toBe('summary_reviewed')
+  expect(isRecommendationItem(item)).toBe(true)
+  item.job.description_is_excerpt = false
+  expect(recommendationStatus(item, false)).toBe('partial')
+})
+
 test('retry progress supersedes an old failure and stopped work stays unreviewed', () => {
   const item = createRecommendationFixture()
   item.analysis_status = 'unavailable'

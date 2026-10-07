@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test'
 
-import { createSessionFixture } from '../../tests/fixtures'
+import { createRecommendationFixture, createSessionFixture } from '../../tests/fixtures'
 import { searchPresentation } from './search-presentation'
 
-test('a full confirmed list enters comparison while further candidates are reviewed', () => {
+test('a full list of promising reviewed jobs enters comparison while more candidates are reviewed', () => {
   const session = createSessionFixture({
     outcome: 'running',
     run_id: 'run-1',
@@ -12,6 +12,20 @@ test('a full confirmed list enters comparison while further candidates are revie
   session.progress.matched_count = 10
   session.progress.discovered_count = 30
   session.progress.analyzed_count = 23
+  session.recommendation = {
+    session_id: session.session_id,
+    generated_at: '2026-10-08T00:00:00Z',
+    jobs: Array.from({ length: 10 }, (_, index) => {
+      const item = createRecommendationFixture()
+      item.job.job_id = `job-${index}`
+      item.analysis_status = index === 0 ? 'partial' : 'complete'
+      item.recommendation_fit = index === 0 ? 'possible' : 'recommended'
+      return item
+    }),
+    pending_jobs: [],
+    notices: [],
+    introduction: '',
+  }
   expect(searchPresentation(session)).toMatchObject({
     comparing: true,
     canFinish: true,
@@ -21,6 +35,15 @@ test('a full confirmed list enters comparison while further candidates are revie
   expect(searchPresentation(session)).toMatchObject({
     comparing: true,
   })
+  session.recommendation.jobs[0]!.analysis_status = 'unavailable'
+  expect(searchPresentation(session).comparing).toBe(false)
+  session.recommendation.jobs[0]!.analysis_status = 'complete'
+  session.recommendation.jobs[0]!.recommendation_fit = 'unlikely'
+  expect(searchPresentation(session).comparing).toBe(false)
+  session.recommendation.jobs[0]!.recommendation_fit = 'unknown'
+  expect(searchPresentation(session).comparing).toBe(false)
+  session.recommendation = null
+  expect(searchPresentation(session).comparing).toBe(false)
 })
 
 test('pending jobs do not trigger comparison and stopping drains reviews before completion', () => {

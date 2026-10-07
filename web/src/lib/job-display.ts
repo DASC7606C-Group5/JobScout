@@ -1,3 +1,15 @@
+import type { JobPosting } from './contracts'
+
+export function hasFullDescription(job: JobPosting): boolean {
+  return (
+    Boolean(job.description.trim() && !job.description_is_excerpt) ||
+    job.source_documents.some(
+      (document) =>
+        document.text.trim() && !document.is_excerpt && !document.document_id.endsWith(':metadata'),
+    )
+  )
+}
+
 const dateFormatter = new Intl.DateTimeFormat('en-HK', {
   year: 'numeric',
   month: '2-digit',

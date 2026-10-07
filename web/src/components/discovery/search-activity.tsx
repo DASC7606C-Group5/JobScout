@@ -8,7 +8,7 @@ import { StatusBadge } from '../status-badge'
 function activityIcon(job: Activity) {
   if (job.status === 'found') return 'search'
   if (job.status === 'reviewing') return 'sparkles'
-  if (job.status === 'reviewed') return 'check'
+  if (job.status === 'reviewed' || job.status === 'summary_reviewed') return 'check'
   if (job.status === 'excluded') return 'close'
   if (job.status === 'not_shortlisted') return 'arrow'
   return 'info'
@@ -31,10 +31,10 @@ function activityTone(job: Activity) {
     ['partial', 'timeout', 'unavailable', 'invalid', 'insufficient', 'failed'].includes(
       job.status,
     ) ||
-    (job.status === 'reviewed' && job.recommendation_fit === 'unlikely')
+    (['reviewed', 'summary_reviewed'].includes(job.status) && job.recommendation_fit === 'unlikely')
   )
     return activityTones.amber
-  if (job.status === 'found' || job.status === 'reviewed') return activityTones.mint
+  if (['found', 'reviewed', 'summary_reviewed'].includes(job.status)) return activityTones.mint
   return activityTones.muted
 }
 
@@ -47,7 +47,9 @@ function ActivityStatus({ job }: { job: Activity }) {
         tooltip={statusTooltip(job.status, job)}
         appearance="text"
       />
-      {['reviewed', 'partial', 'unverified', 'not_shortlisted'].includes(job.status) && (
+      {['reviewed', 'summary_reviewed', 'partial', 'unverified', 'not_shortlisted'].includes(
+        job.status,
+      ) && (
         <span className="text-xs" aria-label={`Match: ${fitLabels[job.recommendation_fit]}`}>
           <span aria-hidden="true">· </span>
           {fitLabels[job.recommendation_fit]}
@@ -168,7 +170,7 @@ export function SearchActivity({ jobs, completed }: { jobs: Activity[]; complete
           {completed
             ? 'No further screening activity.'
             : history.length
-              ? 'Looking for more matches…'
+              ? 'Looking for more jobs…'
               : 'Searching for jobs that match your criteria…'}
         </p>
       )}

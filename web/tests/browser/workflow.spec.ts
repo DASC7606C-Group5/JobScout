@@ -161,7 +161,7 @@ test('interrupted searches retain their activity view and published results', as
   await expect(page.locator('#main-content').getByRole('alert')).toHaveCount(0)
   await expect(page.locator('body')).not.toContainText('private-interruption-diagnostic')
   await page.getByRole('button', { name: 'Dismiss notification', exact: true }).click()
-  await page.getByRole('button', { name: 'View matches', exact: true }).click()
+  await page.getByRole('button', { name: 'View jobs', exact: true }).click()
   for (const item of failed.recommendation!.jobs)
     await expect(
       page.getByRole('button', { name: `View job: ${item.job.title}`, exact: true }),
@@ -765,7 +765,7 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
   const stop = page.getByRole('button', { name: 'Finish search', exact: true })
   await expect(stop).toBeEnabled()
   await expect(page.getByRole('region', { name: 'Job screening activity' })).toBeVisible()
-  await page.getByRole('button', { name: 'View matches so far', exact: true }).click()
+  await page.getByRole('button', { name: 'View jobs so far', exact: true }).click()
   await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toBeVisible()
   await page.getByRole('button', { name: 'View job: Pending Engineer' }).click()
@@ -883,7 +883,7 @@ test('final results preserve an open job and saved selection from an early previ
     animations: 'disabled',
   })
   await page.setViewportSize({ width: 1440, height: 1000 })
-  await page.getByRole('button', { name: 'View matches so far', exact: true }).click()
+  await page.getByRole('button', { name: 'View jobs so far', exact: true }).click()
   await page.getByRole('button', { name: 'View job: Engineer 0', exact: true }).click()
   await page.getByRole('button', { name: 'Save job: Engineer 0', exact: true }).click()
   await expect(
@@ -1028,7 +1028,7 @@ test('screening activity archives rejected jobs and automatically reveals comple
   await expect(page.getByRole('region', { name: 'Job screening activity' })).toHaveCount(0)
   await page.getByRole('button', { name: 'View search activity', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Job screening activity' })).toBeVisible()
-  await page.getByRole('button', { name: 'View matches', exact: true }).click()
+  await page.getByRole('button', { name: 'View jobs', exact: true }).click()
   await expect(
     page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
   ).toBeVisible()
@@ -1042,6 +1042,48 @@ test('screening activity archives rejected jobs and automatically reveals comple
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.screenshot({
     path: '.tools/browser/search-flow-final-desktop.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
+})
+
+test('summary-only advice remains readable without a numeric assessment on desktop and mobile', async ({
+  page,
+}) => {
+  const item = createRecommendationFixture()
+  item.analysis_status = 'partial'
+  item.job.description_is_excerpt = true
+  item.match_score = null
+  item.matching_reasons = []
+  item.preparation_suggestions = []
+  item.recommendation_reason =
+    'Your React project makes this role worth exploring. Confirm the daily duties and seniority before deciding to apply.'
+  const session = resultSession()
+  session.recommendation!.jobs = [item]
+  session.recommendation!.pending_jobs = []
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/searches/session-1')
+  await page.getByRole('button', { name: 'View job: React Engineer' }).click()
+  const detail = page.getByRole('article', { name: 'Job details' })
+  await expect(detail).toContainText(item.recommendation_reason)
+  await expect(detail.getByRole('figure')).toHaveCount(0)
+  await expect(detail.getByText('Summary reviewed', { exact: true })).toBeVisible()
+  await mkdir('.tools/browser', { recursive: true })
+  await page.screenshot({
+    path: '.tools/browser/summary-advice-desktop.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(detail).toContainText(item.recommendation_reason)
+  await expect(detail).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await page.screenshot({
+    path: '.tools/browser/summary-advice-mobile.png',
     fullPage: true,
     animations: 'disabled',
   })
