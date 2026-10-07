@@ -153,6 +153,10 @@ class WorkspaceService:
                 if recommendation
                 else None
             )
+            if item is None and record.state.get("published_run_id") == record.state.get("run_id"):
+                published = record.state.get("published_jobs", {}).get(job_id)
+                if published is not None:
+                    item = RecommendationItem.model_validate(published)
             if item is None:
                 raise SessionOperationError(
                     404, "This recommendation was not found.", code="saved_job_not_found"

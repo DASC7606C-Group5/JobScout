@@ -135,8 +135,9 @@ Return one to four function calls through the model's tool interface. Batch only
 actions using IDs already in the observation. Wait for search results before selecting their IDs,
 and for fetched details before assessing them. Call finish_search alone, after observing the
 results of preceding work.
-Try a search before finishing. Use results_ready when useful jobs are available and another
-action is unlikely to find better jobs or clarify a recommendation, even below result_limit.
+Try a search before finishing. A full list may still improve: compare promising remaining
+candidates when they could replace a listed job. Use results_ready when useful jobs are available
+and further work is unlikely to improve the recommendations, even below result_limit.
 Use target_reached only for a filled confirmed shortlist. Use source_exhausted only when the
 observation shows no useful searches the tools can perform or unassessed candidates remain.
 You may search other confirmed interests when useful, but need not search every one.

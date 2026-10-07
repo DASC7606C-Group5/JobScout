@@ -14,7 +14,7 @@ export const summaryFields = [
   ['preferences.salary_range', 'Expected salary', 'text'],
   ['preferences.work_mode', 'Work arrangement', 'text'],
   ['preferences.industry', 'Industry', 'text'],
-  ['search_options.result_count', 'Matching jobs to find', 'number'],
+  ['search_options.result_count', 'Jobs to show', 'number'],
 ] as const
 export type SummaryKey = (typeof summaryFields)[number][0]
 export type SummaryDraft = Record<SummaryKey, string | boolean | number>

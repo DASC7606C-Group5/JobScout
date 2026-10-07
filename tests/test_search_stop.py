@@ -1,4 +1,4 @@
-"""Stopping freezes published vacancies and rejects stale execution callbacks."""
+"""Ending retrieval preserves published vacancies and rejects stale execution callbacks."""
 
 import asyncio
 from datetime import UTC, datetime
@@ -11,7 +11,9 @@ from jobscout.schemas.job import JobPosting
 from jobscout.schemas.profile import SearchOptions, UserProfile
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult
 from jobscout.schemas.session import SessionResumeRequest, SessionStopRequest
+from jobscout.schemas.workspace import SaveJobRequest
 from jobscout.services.session_service import SessionOperationError
+from jobscout.services.workspace_service import WorkspaceService
 from tests.test_session_operations import (
     ControlledGraph,
     Memory,
@@ -93,8 +95,52 @@ class ProgressGraph(ControlledGraph):
         return {"recommendation": result, "run_id": self.run_id, "current_stage": "completed"}
 
 
+def test_jobs_from_an_earlier_shortlist_remain_saveable_with_server_supplied_data() -> None:
+    async def scenario() -> None:
+        graph = ProgressGraph()
+        manager = await manager_for(graph, Memory())
+        try:
+            session = await manager.create(create_payload("shortlist"))
+            await graph.started.wait()
+            original = (await manager.get(session.session_id)).recommendation
+            assert original is not None
+            replacement = original.model_copy(update={"jobs": [item("better")], "pending_jobs": []})
+            await graph.callback(
+                {
+                    "run_id": graph.run_id,
+                    "progress_seq": 2,
+                    "progress": {"sequence": 2, "matched_count": 1},
+                    "recommendation": replacement,
+                }
+            )
+            workspace = WorkspaceService(manager)
+            payload = SaveJobRequest(session_id=session.session_id, expected_revision=1)
+            saved = await workspace.save_job("complete", payload)
+            assert saved == original.jobs[0]
+            current = (await manager.get(session.session_id)).recommendation
+            assert current is not None
+            assert [row.job.job_id for row in current.jobs] == ["better"]
+            assert [row.job.job_id for row in (await workspace.saved_jobs()).items] == ["complete"]
+            with pytest.raises(SessionOperationError) as unknown:
+                await workspace.save_job("never-published", payload)
+            assert unknown.value.code == "saved_job_not_found"
+            with pytest.raises(SessionOperationError) as stale:
+                await workspace.save_job(
+                    "complete", payload.model_copy(update={"expected_revision": 0})
+                )
+            assert stale.value.code == "search_changed"
+            manager._get(session.session_id).state["run_id"] = "new-run"
+            with pytest.raises(SessionOperationError) as prior_run:
+                await workspace.save_job("unfinished", payload)
+            assert prior_run.value.code == "saved_job_not_found"
+        finally:
+            await close_manager(manager)
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("publish_results", [True, False])
-def test_stop_preserves_published_vacancies_and_freezes_late_work(publish_results: bool) -> None:
+def test_stop_preserves_published_vacancies_while_reviews_finish(publish_results: bool) -> None:
     async def check() -> None:
         graph = ProgressGraph(publish_results=publish_results)
         manager = await manager_for(graph, Memory())
@@ -105,9 +151,10 @@ def test_stop_preserves_published_vacancies_and_freezes_late_work(publish_result
                 request_id="stop", expected_revision=1, run_id=graph.run_id
             )
             response = await manager.stop(session.session_id, payload)
-            assert response.outcome == "completed"
+            assert response.outcome == "running"
             assert response.stop_reason == "user_stopped"
-            assert graph.cancelled.is_set()
+            assert response.progress.retrieval_stopped
+            assert not graph.cancelled.is_set()
             assert response.recommendation is not None
             expected = ["complete", "unfinished"] if publish_results else []
             assert [entry.job.job_id for entry in response.recommendation.jobs] == expected
@@ -128,6 +175,25 @@ def test_stop_preserves_published_vacancies_and_freezes_late_work(publish_result
                     session.session_id, payload.model_copy(update={"expected_revision": 2})
                 )
             assert conflict.value.code == "request_conflict"
+            graph.release.set()
+            task = manager.sessions[session.session_id].task
+            assert task is not None
+            await task
+            completed = await manager.get(session.session_id)
+            assert completed.outcome == "completed"
+            assert completed.stop_reason == "user_stopped"
+            assert completed.recommendation is not None
+            await graph.callback(
+                {
+                    "run_id": graph.run_id,
+                    "progress_seq": 100,
+                    "progress": {"sequence": 100, "matched_count": 1},
+                    "recommendation": completed.recommendation.model_copy(
+                        update={"jobs": [item("late")]}
+                    ),
+                }
+            )
+            assert (await manager.get(session.session_id)) == completed
         finally:
             await close_manager(manager)
 

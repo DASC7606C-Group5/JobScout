@@ -59,6 +59,126 @@
   animation: status-enter 140ms ease-out;
 }
 
+@keyframes search-activity-enter {
+  from {
+    opacity: 0;
+    transform: translate(18px, -8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+}
+
+@keyframes search-activity-retire {
+  to {
+    grid-template-rows: 0fr;
+    opacity: 0;
+    margin-bottom: -0.75rem;
+  }
+}
+
+.search-activity-enter {
+  animation: search-activity-enter 650ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.search-activity-row {
+  display: grid;
+  grid-template-rows: 1fr;
+}
+.search-activity-row > div {
+  min-height: 0;
+  overflow: hidden;
+}
+.search-activity-retire {
+  animation: search-activity-retire 400ms ease-in 2800ms forwards;
+}
+.search-activity-strike {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.search-results-enter {
+  animation: page-enter 350ms ease-out;
+}
+
+@keyframes search-beacon {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.16;
+  }
+  75%,
+  100% {
+    transform: scale(1.38);
+    opacity: 0;
+  }
+}
+@keyframes search-sparkle {
+  0%,
+  100% {
+    transform: scale(0.9) rotate(-8deg);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scale(1.08) rotate(6deg);
+    opacity: 1;
+  }
+}
+@keyframes search-discover {
+  0%,
+  100% {
+    transform: translate(-1px, 1px);
+  }
+  50% {
+    transform: translate(2px, -2px);
+  }
+}
+@keyframes search-status-enter {
+  from {
+    opacity: 0.35;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes search-node-reveal {
+  from {
+    transform: scale(0.65);
+    opacity: 0.25;
+  }
+  65% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .search-status-enter {
+    animation: search-status-enter 420ms ease-out;
+  }
+  .search-node-reveal {
+    animation: search-node-reveal 480ms ease-out;
+  }
+  .search-beacon::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    opacity: 0;
+    animation: search-beacon 2600ms ease-out infinite;
+    pointer-events: none;
+  }
+  .search-review-icon {
+    animation: search-sparkle 2200ms ease-in-out infinite;
+  }
+  .search-discover-icon {
+    animation: search-discover 2600ms ease-in-out infinite;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
   ::view-transition-old(*),

@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from jobscout.schemas.recommendation import RecommendationFit
+
 StopReason = Literal[
     "results_ready",
     "target_reached",
@@ -23,13 +25,39 @@ class SearchEvent(BaseModel):
     source: str | None = None
 
 
+SearchActivityStatus = Literal[
+    "found",
+    "reviewing",
+    "reviewed",
+    "excluded",
+    "not_shortlisted",
+    "unverified",
+    "unavailable",
+    "not_reviewed",
+]
+
+
+class SearchActivity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sequence: int = Field(ge=1)
+    job_id: str
+    title: str
+    company: str
+    location: str
+    status: SearchActivityStatus
+    recommendation_fit: RecommendationFit = "unknown"
+
+
 class SearchProgress(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     sequence: int = Field(default=0, ge=0)
+    discovered_count: int = Field(default=0, ge=0)
     analyzed_count: int = Field(default=0, ge=0)
     matched_count: int = Field(default=0, ge=0)
     pending_count: int = Field(default=0, ge=0)
     elapsed_seconds: float = Field(default=0, ge=0)
     retrieval_stopped: bool = False
     events: list[SearchEvent] = Field(default_factory=list)
+    activity: list[SearchActivity] = Field(default_factory=list, max_length=250)

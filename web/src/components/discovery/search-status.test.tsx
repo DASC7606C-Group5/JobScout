@@ -3,9 +3,10 @@ import { expect, test } from 'bun:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { createSessionFixture } from '../../../tests/fixtures'
+import { SearchActivity } from './search-activity'
 import { SearchLoading } from './search-status'
 
-test('search activity preserves public counts and hides internal events', () => {
+test('search activity preserves public job data and hides internal events', () => {
   const session = createSessionFixture({
     outcome: 'running',
     current_stage: 'search',
@@ -23,10 +24,28 @@ test('search activity preserves public counts and hides internal events', () => 
     },
   ]
   const loading = renderToStaticMarkup(
-    <SearchLoading session={session} onStop={() => {}} stopping={false} />,
+    <>
+      <SearchLoading session={session} />
+      <SearchActivity
+        jobs={[
+          {
+            job_id: 'public-job',
+            sequence: 1,
+            title: 'Public title <safe>',
+            company: 'Company & Co',
+            location: 'Hong Kong',
+            status: 'reviewing',
+            recommendation_fit: 'unknown',
+          },
+        ]}
+        completed={false}
+      />
+    </>,
   )
   expect(loading).not.toContain('private-agent-path')
   expect(loading).not.toContain('unknown_private_tool')
   expect(loading).not.toContain('internal-source-code')
-  expect(session.progress.matched_count).toBe(12)
+  expect(loading).toContain('public-job')
+  expect(loading).toContain('Public title &lt;safe&gt;')
+  expect(loading).toContain('Company &amp; Co')
 })

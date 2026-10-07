@@ -154,6 +154,7 @@ def test_requested_target_is_reached_by_relevant_vacancies(target: int) -> None:
         assert result["stop_reason"] == "target_reached"
         assert len(result["recommendation"].jobs) == target
         assert len({item.job.job_id for item in result["recommendation"].jobs}) == target
+        assert result["progress"]["discovered_count"] == 30
         assert len(result["analyzed_job_ids"]) <= 3 * target
         assert [event["progress_seq"] for event in events] == list(range(1, len(events) + 1))
         assert all(
@@ -210,6 +211,55 @@ def query(**changes: Any) -> tuple[str, dict[str, Any]]:
         "keywords": ["Data Analyst"],
         **changes,
     }
+
+
+@pytest.mark.parametrize("improves", [False, True])
+def test_full_shortlist_compares_later_candidates_and_finishes_after_a_plateau(
+    improves: bool,
+) -> None:
+    class FitAssessment(Assessment):
+        better_id: str | None = None
+
+        async def assess(self, *args: Any, **kwargs: Any) -> RecommendationResult:
+            result = await super().assess(*args, **kwargs)
+            better = improves and len(self.feedback) == 3
+            for row in result.jobs:
+                row.recommendation_fit = "recommended" if better else "possible"
+                if better:
+                    self.better_id = row.job.job_id
+            return result
+
+    def assess_next(observation: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        candidates = [
+            row["job_id"] for row in observation["candidates"] if not row["analysis_attempts"]
+        ]
+        return "assess_candidates", {
+            "job_ids": candidates[:5] if not observation["matched_count"] else candidates[:1]
+        }
+
+    async def scenario() -> None:
+        search, assessment = SnapshotSearch(15), FitAssessment()
+        provider = ScriptedProvider(
+            [lambda _: query(), *[assess_next for _ in range(8)], lambda _: query(page=2)]
+        )
+        result = await run(provider, search, assessment, profile(5))
+        assert result["stop_reason"] == "results_ready"
+        assert result["agent_error_code"] is None
+        assert len(assessment.feedback) == (5 if improves else 3)
+        assert provider.decisions == len(assessment.feedback) + 1
+        assert len(search.requests) == 1
+        assert len(result["recommendation"].jobs) == 5
+        assert result["progress"]["discovered_count"] == 15
+        assert result["progress"]["analyzed_count"] == (9 if improves else 7)
+        assert all(row.review_status == "reviewed" for row in result["recommendation"].jobs)
+        if improves:
+            assert result["recommendation"].jobs[0].job.job_id == assessment.better_id
+        else:
+            assert all(
+                row.recommendation_fit == "possible" for row in result["recommendation"].jobs
+            )
+
+    asyncio.run(scenario())
 
 
 def test_useful_results_can_finish_below_display_limit_without_exhausting_sources() -> None:
@@ -445,6 +495,7 @@ def test_cross_source_duplicates_preserve_all_source_evidence() -> None:
             "https://second.example/jobs/1",
         }
         assert {document.source for document in job.source_documents} == {"first", "second"}
+        assert result["progress"]["discovered_count"] == 1
         assert result["progress"]["matched_count"] == 1
 
     asyncio.run(scenario())
@@ -586,6 +637,120 @@ def test_subsequent_search_does_not_restore_a_confirmed_condition_mismatch() -> 
         assert provider.observations[3]["candidates"][0]["analysis_diagnostic"]["code"] == (
             "condition_mismatch"
         )
+
+    asyncio.run(scenario())
+
+
+def test_screening_activity_tracks_all_candidates_without_exposing_diagnostics() -> None:
+    class MixedAssessment:
+        diagnostics: dict[str, AssessmentDiagnostic]
+
+        async def assess(
+            self,
+            applicant: UserProfile,
+            jobs: list[JobPosting],
+            documents: dict[str, str],
+            session_id: str,
+            on_batch: Callable[[RecommendationResult], Awaitable[None]] | None = None,
+            **kwargs: Any,
+        ) -> RecommendationResult:
+            rows = {int(job.title.rsplit(" ", 1)[1]): job for job in jobs}
+            self.diagnostics = {
+                rows[7].job_id: AssessmentDiagnostic(
+                    code="model_failure",
+                    stage="private-stage",
+                    detail="private-model-diagnostic",
+                    retryable=True,
+                ),
+                rows[8].job_id: AssessmentDiagnostic(
+                    code="condition_mismatch",
+                    stage="private-stage",
+                    detail="private-model-diagnostic",
+                    retryable=False,
+                ),
+            }
+            result = RecommendationResult(
+                session_id=session_id,
+                generated_at=datetime.now(UTC),
+                jobs=[
+                    RecommendationItem(
+                        job=rows[index],
+                        recommendation_fit="recommended",
+                        verification_status="confirmed",
+                    )
+                    for index in range(6)
+                ],
+                pending_jobs=[
+                    RecommendationItem(
+                        job=rows[6], verification_status="pending", unknown_conditions=["location"]
+                    )
+                ],
+            )
+            assert on_batch is not None
+            await on_batch(result.model_copy(update={"jobs": result.jobs[:1], "pending_jobs": []}))
+            return result
+
+    async def scenario() -> None:
+        updates: list[dict[str, Any]] = []
+
+        async def progress(update: dict[str, Any]) -> None:
+            updates.append(update["progress"])
+
+        search = SnapshotSearch(11)
+        search.rows[9] = search.rows[9].model_copy(update={"employment_type": "full-time"})
+        provider = ScriptedProvider(
+            [
+                lambda _: query(),
+                lambda o: (
+                    "assess_candidates",
+                    {
+                        "job_ids": [
+                            job["job_id"]
+                            for job in o["candidates"]
+                            if int(job["title"].rsplit(" ", 1)[1]) < 9
+                        ]
+                    },
+                ),
+                lambda _: ("finish_search", {"reason": "results_ready"}),
+            ]
+        )
+        result = await run(provider, search, MixedAssessment(), profile(5), on_progress=progress)
+        latest = {row["title"]: row for row in result["progress"]["activity"]}
+        assert set(latest) == {f"Data Analyst {index}" for index in range(11)}
+        assert latest["Data Analyst 6"]["status"] == "unverified"
+        assert latest["Data Analyst 7"]["status"] == "unavailable"
+        assert latest["Data Analyst 8"]["status"] == "excluded"
+        assert latest["Data Analyst 9"]["status"] == "excluded"
+        assert latest["Data Analyst 10"]["status"] == "not_reviewed"
+        final_ids = {item.job.job_id for item in result["recommendation"].jobs}
+        assert {
+            row["job_id"] for row in latest.values() if row["status"] == "reviewed"
+        } == final_ids
+        assert {row["job_id"] for row in latest.values() if row["status"] == "not_shortlisted"} == {
+            latest[f"Data Analyst {index}"]["job_id"] for index in range(6)
+        } - final_ids
+        assert any(
+            {row["status"] for row in update["activity"]} >= {"reviewing", "reviewed"}
+            for update in updates
+        )
+        assert any(
+            {row["title"] for row in update["activity"] if row["status"] == "found"}
+            >= {"Data Analyst 0", "Data Analyst 10"}
+            for update in updates
+        )
+        assert "private-model-diagnostic" not in json.dumps(updates)
+        assert "private-stage" not in json.dumps(updates)
+        candidate_states = [
+            row
+            for update in updates
+            for row in update["activity"]
+            if row["title"] == "Data Analyst 0"
+        ]
+        found = next(row for row in candidate_states if row["status"] == "found")
+        reviewing = next(row for row in candidate_states if row["status"] == "reviewing")
+        reviewed = next(row for row in candidate_states if row["status"] == "reviewed")
+        assert found["sequence"] < reviewing["sequence"] < reviewed["sequence"]
+        assert len({row["sequence"] for row in candidate_states if row["status"] == "found"}) == 1
 
     asyncio.run(scenario())
 

@@ -250,14 +250,34 @@ export interface SearchEvent {
   source: string | null
 }
 
+export interface SearchActivity {
+  sequence: number
+  job_id: string
+  title: string
+  company: string
+  location: string
+  status:
+    | 'found'
+    | 'reviewing'
+    | 'reviewed'
+    | 'excluded'
+    | 'not_shortlisted'
+    | 'unverified'
+    | 'unavailable'
+    | 'not_reviewed'
+  recommendation_fit: RecommendationItem['recommendation_fit']
+}
+
 export interface SearchProgress {
   sequence: number
+  discovered_count: number
   analyzed_count: number
   matched_count: number
   pending_count: number
   elapsed_seconds: number
   retrieval_stopped: boolean
   events: SearchEvent[]
+  activity: SearchActivity[]
 }
 
 export interface ScoutSession {

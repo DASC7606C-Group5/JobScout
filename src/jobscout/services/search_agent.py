@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import uuid4
 
+from jobscout.schemas.execution import SearchActivity, SearchActivityStatus
 from jobscout.schemas.job import JobPosting
 from jobscout.schemas.model import ModelUsage
 from jobscout.schemas.profile import LocationRef, UserProfile
@@ -34,6 +35,7 @@ from jobscout.services.tool_registry import (
 
 MAX_DECISIONS = 12
 MAX_SEARCH_SECONDS = 300.0
+MAX_UNIMPROVED_REVIEWS = 2
 _LOGGER = logging.getLogger(__name__)
 _RETRYABLE_SEARCH_ERRORS = {
     "SEARCH_TIMEOUT",
@@ -85,6 +87,10 @@ class SearchAgent:
         self.source_errors: list[Any] = []
         self.notices: list[Any] = []
         self.warnings: list[str] = []
+        self.shortlist_quality: tuple[tuple[int, bool, int], ...] | None = None
+        self.unimproved_reviews = 0
+        self.finished = False
+        self.activity_entries: dict[str, SearchActivity] = {}
 
     async def run(
         self,
@@ -277,6 +283,7 @@ class SearchAgent:
         ):
             reason = "error"
             error_code = "model_output"
+        self.finished = True
         await self.publish("search_finished", self.finish_message(reason), stop_reason=reason)
         return {
             "run_id": self.run_id,
@@ -695,6 +702,13 @@ class SearchAgent:
                     destination[job.job_id] = destination[job.job_id].model_copy(
                         update={"review_status": "not_reviewed"}
                     )
+        await self.publish("assessment_updated", "Updated the job screening results.")
+        if processed or any(
+            issue.code == "condition_mismatch"
+            for job in selected
+            if (issue := self.analysis_diagnostics.get(job.job_id)) is not None
+        ):
+            self.check_shortlist_improvement()
         return {
             "analysis_diagnostics": {
                 job.job_id: self.analysis_diagnostics[job.job_id].model_dump()
@@ -703,6 +717,31 @@ class SearchAgent:
             },
             "observation": self.observation(),
         }
+
+    def check_shortlist_improvement(self) -> None:
+        """Allow later candidates to improve a full list, then stop at a plateau."""
+        if len(self.matched) < self.target:
+            self.shortlist_quality = None
+            self.unimproved_reviews = 0
+            return
+        completeness = {"complete": 0, "partial": 1, "unavailable": 2}
+        quality = tuple(
+            sorted(
+                (
+                    recommendation_key(item)[0],
+                    recommendation_key(item)[1],
+                    completeness[item.analysis_status],
+                )
+                for item in self.ranked(list(self.matched.values()))
+            )
+        )
+        if self.shortlist_quality is None or quality < self.shortlist_quality:
+            self.unimproved_reviews = 0
+            self.shortlist_quality = quality
+        else:
+            self.unimproved_reviews += 1
+        if self.unimproved_reviews >= MAX_UNIMPROVED_REVIEWS and not self.stop_event.is_set():
+            raise SearchEnded("results_ready")
 
     def observation(self) -> dict[str, Any]:
         candidates = sorted(
@@ -721,6 +760,7 @@ class SearchAgent:
             "matched_count": len(self.matched),
             "pending_count": len(self.pending),
             "analyzed_count": len(self.assessed_ids),
+            "unimproved_reviews": self.unimproved_reviews,
             "remaining_candidates": max(0, self.candidate_limit - len(self.attempts)),
             "duplicate_count": self.duplicate_count,
             "shortlist": [
@@ -873,13 +913,58 @@ class SearchAgent:
     def progress(self) -> dict[str, Any]:
         return {
             "sequence": self.progress_seq,
+            "discovered_count": len(self.jobs),
             "analyzed_count": len(self.assessed_ids),
             "matched_count": min(len(self.matched), self.target),
             "pending_count": min(len(self.pending), max(0, self.target - len(self.matched))),
             "elapsed_seconds": round(max(0, asyncio.get_running_loop().time() - self.started), 3),
             "retrieval_stopped": self.stop_event.is_set(),
             "events": self.events[-80:],
+            "activity": [item.model_dump(mode="json") for item in self.activity()],
         }
+
+    def activity(self) -> list[SearchActivity]:
+        """Expose screening facts without private model diagnostics or the result cap."""
+        eligible = {job.job_id for job in eligible_jobs(self.profile, list(self.jobs.values()))}
+        shortlisted = {item.job.job_id for item in self.ranked(list(self.matched.values()))}
+        activity: list[SearchActivity] = []
+        for job in self.jobs.values():
+            item = self.matched.get(job.job_id) or self.pending.get(job.job_id)
+            issue = self.analysis_diagnostics.get(job.job_id)
+            status: SearchActivityStatus
+            if job.job_id not in eligible or (issue and issue.code == "condition_mismatch"):
+                status = "excluded"
+            elif item and item.review_status == "reviewing" and not self.finished:
+                status = "reviewing"
+            elif issue or (
+                item and item.review_status == "not_reviewed" and job.job_id in self.attempts
+            ):
+                status = "unavailable"
+            elif item and item.review_status == "reviewed":
+                if job.job_id in self.pending:
+                    status = "unverified"
+                else:
+                    status = "reviewed" if job.job_id in shortlisted else "not_shortlisted"
+            else:
+                status = "not_reviewed" if self.finished else "found"
+            entry = SearchActivity(
+                sequence=self.progress_seq,
+                job_id=job.job_id,
+                title=job.title,
+                company=job.company,
+                location=job.location,
+                status=status,
+                recommendation_fit=item.recommendation_fit if item else "unknown",
+            )
+            previous = self.activity_entries.get(job.job_id)
+            if (
+                previous is not None
+                and previous.model_copy(update={"sequence": self.progress_seq}) == entry
+            ):
+                entry = previous
+            self.activity_entries[job.job_id] = entry
+            activity.append(entry)
+        return activity
 
     async def publish(
         self,

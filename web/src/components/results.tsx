@@ -1,3 +1,5 @@
+import { useMemo } from 'react'
+
 import { uniqueNotices } from '../lib/applicant-notices'
 import type { ApplicantNotice, RecommendationItem, RecommendationResult } from '../lib/contracts'
 import { generatedLabel } from '../lib/job-display'
@@ -28,14 +30,17 @@ export function Results({
   notices?: ApplicantNotice[]
   reviewActive?: boolean
 }) {
-  const matched = result?.jobs ?? []
-  const pending = savedOnly ? [] : (result?.pending_jobs ?? [])
-  const jobs = savedOnly
-    ? saved
-    : [...matched, ...pending].sort(
-        (left, right) =>
-          Number(left.review_status !== 'reviewed') - Number(right.review_status !== 'reviewed'),
-      )
+  const jobs = useMemo(
+    () =>
+      savedOnly
+        ? saved
+        : [...(result?.jobs ?? []), ...(result?.pending_jobs ?? [])].sort(
+            (left, right) =>
+              Number(left.review_status !== 'reviewed') -
+              Number(right.review_status !== 'reviewed'),
+          ),
+    [result, savedOnly, saved],
+  )
   const selection = useResultSelection(jobs, savedOnly, onToggle)
   const jobNotices = uniqueNotices(
     [...(result ? result.notices : []), ...notices].filter((notice) => notice.scope === 'job'),
@@ -121,7 +126,7 @@ function ResultItems({
     back,
     toggle,
   } = selection
-  if (!hasJobs) return <ResultEmpty savedOnly={savedOnly} onEdit={onEdit} />
+  if (!hasJobs && !detailOpen) return <ResultEmpty savedOnly={savedOnly} onEdit={onEdit} />
   if (!selected)
     return (
       <div className="rounded-box border border-dashed border-base-300 py-12 text-center">
@@ -152,6 +157,11 @@ function ResultItems({
       <div
         className={`min-w-0 min-[1100px]:sticky min-[1100px]:top-[var(--job-detail-top,1.5rem)] ${detailOpen ? '' : 'hidden min-[1100px]:block'}`}
       >
+        {selection.outsideList && (
+          <output className="mb-3 block text-sm text-base-content/65">
+            You are viewing a job from an earlier version of your list.
+          </output>
+        )}
         <JobDetail
           key={selected.job.job_id}
           item={selected}

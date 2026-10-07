@@ -15,7 +15,7 @@ function list(value: unknown, valid: (item: unknown) => boolean) {
 function member(value: unknown, choices: string[]) {
   return string(value) && choices.includes(value)
 }
-function nonnegativeInteger(value: unknown) {
+function nonnegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
 function locationRef(value: unknown) {
@@ -65,6 +65,7 @@ function progress(value: unknown) {
   return (
     record(value) &&
     nonnegativeInteger(value.sequence) &&
+    nonnegativeInteger(value.discovered_count) &&
     nonnegativeInteger(value.analyzed_count) &&
     nonnegativeInteger(value.matched_count) &&
     nonnegativeInteger(value.pending_count) &&
@@ -72,6 +73,28 @@ function progress(value: unknown) {
     Number.isFinite(value.elapsed_seconds) &&
     value.elapsed_seconds >= 0 &&
     typeof value.retrieval_stopped === 'boolean' &&
+    list(
+      value.activity,
+      (item) =>
+        record(item) &&
+        nonnegativeInteger(item.sequence) &&
+        item.sequence > 0 &&
+        string(item.job_id) &&
+        string(item.title) &&
+        string(item.company) &&
+        string(item.location) &&
+        member(item.status, [
+          'found',
+          'reviewing',
+          'reviewed',
+          'excluded',
+          'not_shortlisted',
+          'unverified',
+          'unavailable',
+          'not_reviewed',
+        ]) &&
+        member(item.recommendation_fit, ['recommended', 'possible', 'unlikely', 'unknown']),
+    ) &&
     list(
       value.events,
       (event) =>

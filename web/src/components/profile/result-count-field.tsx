@@ -19,7 +19,7 @@ export function ResultCountField({
   return (
     <div>
       <label htmlFor={id} className="mb-2 block text-sm">
-        Matching jobs to find
+        Jobs to show
       </label>
       <div className="flex items-center gap-4">
         <input
@@ -29,8 +29,8 @@ export function ResultCountField({
           max={20}
           step={1}
           className="range min-w-0 flex-1 range-sm"
-          aria-label="Matching jobs to find slider"
-          aria-describedby={error ? `${id}-hint` : undefined}
+          aria-label="Jobs to show slider"
+          aria-describedby={`${id}-hint`}
           value={Math.min(20, Math.max(5, value))}
           disabled={disabled}
           onChange={(event) => onChange(event.target.valueAsNumber)}
@@ -46,15 +46,16 @@ export function ResultCountField({
           className="input w-24 border border-base-300 bg-base-200/25 text-sm"
           disabled={disabled}
           aria-invalid={Boolean(error)}
-          aria-describedby={error ? `${id}-hint` : undefined}
+          aria-describedby={`${id}-hint`}
           onChange={(event) => onChange(event.target.value === '' ? 0 : event.target.valueAsNumber)}
         />
       </div>
-      {error && (
-        <p id={`${id}-hint`} className="mt-2 text-xs text-error">
-          {error}
-        </p>
-      )}
+      <p
+        id={`${id}-hint`}
+        className={`mt-2 text-xs ${error ? 'text-error' : 'text-base-content/65'}`}
+      >
+        {error || 'Show up to this many jobs. We may review more jobs to choose the best matches.'}
+      </p>
     </div>
   )
 }

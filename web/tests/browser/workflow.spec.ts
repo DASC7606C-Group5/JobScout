@@ -374,10 +374,7 @@ async function deleteSearch(page: Page, id = 'session-1') {
     .locator('..')
     .getByRole('button', { name: /^Delete search:/ })
     .click()
-  await page
-    .getByRole('dialog', { name: 'Delete search?', exact: true })
-    .getByRole('button', { name: 'Delete search', exact: true })
-    .click()
+  await page.locator('dialog').getByRole('button', { name: 'Delete search', exact: true }).click()
 }
 
 async function introduce(page: Page) {
@@ -445,8 +442,8 @@ test('count keyboard controls preserve the chosen target through drafts, creatio
   const state = await mockSessions(page)
   await page.goto('/new')
   await page.getByLabel('About you', { exact: true }).fill('Synthetic React developer')
-  const slider = page.getByRole('slider', { name: 'Matching jobs to find slider' })
-  const number = page.getByRole('spinbutton', { name: 'Matching jobs to find', exact: true })
+  const slider = page.getByRole('slider', { name: 'Jobs to show slider' })
+  const number = page.getByRole('spinbutton', { name: 'Jobs to show', exact: true })
   await slider.focus()
   await page.keyboard.press('Home')
   await expect(number).toHaveValue('5')
@@ -554,11 +551,32 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
     revision: 4,
     progress: {
       sequence: 3,
+      discovered_count: 3,
       analyzed_count: 2,
       matched_count: 1,
       pending_count: 1,
       elapsed_seconds: 28,
       retrieval_stopped: false,
+      activity: [
+        {
+          job_id: matched.job.job_id,
+          sequence: 3,
+          title: matched.job.title,
+          company: matched.job.company,
+          location: matched.job.location,
+          status: 'reviewed',
+          recommendation_fit: matched.recommendation_fit,
+        },
+        {
+          job_id: pending.job.job_id,
+          sequence: 2,
+          title: pending.job.title,
+          company: pending.job.company,
+          location: pending.job.location,
+          status: 'found',
+          recommendation_fit: 'unknown',
+        },
+      ],
       events: [
         {
           sequence: 3,
@@ -580,9 +598,10 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
   const state = await mockSessions(page, running)
   state.seedSession(running)
   await page.goto('/searches/session-1')
-  const stop = page.getByRole('button', { name: 'End Search' })
+  const stop = page.getByRole('button', { name: 'Finish search', exact: true })
   await expect(stop).toBeEnabled()
-  await expect(page.getByRole('list', { name: 'Job search steps' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Job screening activity' })).toBeVisible()
+  await page.getByRole('button', { name: 'View matches so far', exact: true }).click()
   await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toBeVisible()
   await page.getByRole('button', { name: 'View job: Pending Engineer' }).click()
@@ -601,8 +620,8 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
   expect(state.stopRequests).toHaveLength(1)
   expect(state.stopRequests[0]).toMatchObject({ expected_revision: 4, run_id: 'active-run' })
   expect(state.stopRequests[0]?.request_id).toBeTruthy()
-  await expect(stop).toHaveCount(0)
-  const polls = state.getCount()
+  await expect(page.getByRole('button', { name: 'Finishing…', exact: true })).toBeDisabled()
+  const reads = state.getCount()
   const finished = structuredClone(running)
   finished.outcome = 'completed'
   finished.current_stage = 'completed'
@@ -613,7 +632,7 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
   await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toContainText(
     'Reviewed',
   )
-  expect(state.getCount()).toBeGreaterThan(polls)
+  expect(state.getCount()).toBeGreaterThan(reads)
   await page.getByRole('button', { name: 'View job: Pending Engineer' }).click()
   await expect(page).toHaveURL(/job=pending-job/)
   await expect(page.getByRole('heading', { name: 'Pending Engineer', exact: true })).toBeVisible()
@@ -632,6 +651,217 @@ test('ending retrieval preserves results and continues reviewing jobs on a narro
   await page.setViewportSize({ width: 1440, height: 900 })
   await expect(page.getByRole('button', { name: 'View job: Pending Engineer' })).toBeVisible()
   await page.screenshot({ path: '.tools/browser/agent-pending-saved-desktop.png', fullPage: true })
+})
+
+test('final results preserve an open job and saved selection from an early preview', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  const jobs = Array.from({ length: 5 }, (_, index) => {
+    const row = createRecommendationFixture()
+    row.job = { ...row.job, job_id: `shortlist-${index}`, title: `Engineer ${index}` }
+    return row
+  })
+  const running = createSessionFixture({
+    outcome: 'running',
+    current_stage: 'search',
+    run_id: 'shortlist-run',
+    revision: 4,
+    recommendation: {
+      session_id: 'session-1',
+      generated_at: '2026-10-06T00:00:00Z',
+      jobs,
+      pending_jobs: [],
+      introduction: '',
+      notices: [],
+    },
+  })
+  running.profile!.search_options.result_count = 5
+  running.progress = {
+    ...running.progress,
+    discovered_count: 30,
+    matched_count: 5,
+    analyzed_count: 23,
+    activity: jobs.map((item) => ({
+      sequence: 1,
+      job_id: item.job.job_id,
+      title: item.job.title,
+      company: item.job.company,
+      location: item.job.location,
+      status: 'reviewed',
+      recommendation_fit: item.recommendation_fit,
+    })),
+  }
+  const state = await mockSessions(page, running)
+  state.seedSession(running)
+  await page.goto('/searches/session-1')
+  await expect(page.getByRole('region', { name: 'Job screening activity' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Recommended jobs' })).toHaveCount(0)
+  await mkdir('.tools/browser', { recursive: true })
+  await page.screenshot({
+    path: '.tools/browser/shortlist-icon-summary-desktop.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.setViewportSize({ width: 390, height: 844 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await page.screenshot({
+    path: '.tools/browser/shortlist-icon-summary-mobile.png',
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.getByRole('button', { name: 'View matches so far', exact: true }).click()
+  await page.getByRole('button', { name: 'View job: Engineer 0', exact: true }).click()
+  await page.getByRole('button', { name: 'Save job: Engineer 0', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: 'Remove saved job: Engineer 0', exact: true }),
+  ).toBeVisible()
+  const improved = structuredClone(running)
+  const better = createRecommendationFixture()
+  better.job = { ...better.job, job_id: 'better-engineer', title: 'Better Engineer' }
+  improved.recommendation!.jobs = [better, ...improved.recommendation!.jobs.slice(1)]
+  improved.progress.analyzed_count = 26
+  state.runFor(1, improved)
+  await expect(
+    page.getByRole('button', { name: 'View job: Better Engineer', exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: 'View job: Engineer 0', exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Engineer 0', exact: true, level: 2 }),
+  ).toBeVisible()
+  const finished = structuredClone(improved)
+  finished.outcome = 'completed'
+  finished.current_stage = 'completed'
+  finished.stop_reason = 'results_ready'
+  state.runFor(1, finished)
+  await expect(
+    page.getByRole('button', { name: 'View job: Better Engineer', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'View job: Engineer 0', exact: true })).toHaveCount(
+    0,
+  )
+  await expect(
+    page.getByRole('heading', { name: 'Engineer 0', exact: true, level: 2 }),
+  ).toBeVisible()
+  await expect(page).toHaveURL(/job=shortlist-0/)
+  await expect(
+    page.getByRole('button', { name: 'Remove saved job: Engineer 0', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Finish search', exact: true })).toHaveCount(0)
+  await mkdir('.tools/browser', { recursive: true })
+  await page.screenshot({
+    path: '.tools/browser/shortlist-results-first-desktop.png',
+    fullPage: true,
+  })
+})
+
+test('screening activity archives rejected jobs and automatically reveals completed matches', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const item = createRecommendationFixture()
+  const running = createSessionFixture({
+    outcome: 'running',
+    current_stage: 'search',
+    run_id: 'flow-run',
+    recommendation: resultSession().recommendation,
+  })
+  running.progress.activity = [
+    {
+      job_id: item.job.job_id,
+      title: item.job.title,
+      company: item.job.company,
+      location: item.job.location,
+      status: 'reviewing',
+      sequence: 1,
+      recommendation_fit: 'unknown',
+    },
+    {
+      job_id: 'excluded-role',
+      sequence: 1,
+      title: 'Another role',
+      company: 'Example employer',
+      location: 'Hong Kong',
+      status: 'found',
+      recommendation_fit: 'unknown',
+    },
+  ]
+  running.progress.activity.splice(
+    1,
+    0,
+    ...Array.from({ length: 5 }, (_, index) => ({
+      job_id: `waiting-${index}`,
+      sequence: 1,
+      title: `Queued role ${index}`,
+      company: 'Example employer',
+      location: 'Hong Kong',
+      status: 'found' as const,
+      recommendation_fit: 'unknown' as const,
+    })),
+  )
+  const state = await mockSessions(page, running)
+  state.seedSession(running)
+  await page.goto('/searches/session-1')
+  const recent = page.getByRole('list', { name: 'Recent jobs', exact: true })
+  await expect(recent.locator('[data-job-id="excluded-role"]')).toHaveAttribute(
+    'data-status',
+    'found',
+  )
+  await expect(recent.locator(`[data-job-id="${item.job.job_id}"]`)).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Recommended jobs', exact: true })).toHaveCount(0)
+  const reviewed = structuredClone(running)
+  reviewed.progress.sequence = 2
+  reviewed.progress.activity[0]!.status = 'reviewed'
+  reviewed.progress.activity[0]!.sequence = 2
+  reviewed.progress.activity[0]!.recommendation_fit = 'recommended'
+  reviewed.progress.activity[6]!.status = 'excluded'
+  reviewed.progress.activity[6]!.sequence = 2
+  state.runFor(1, reviewed)
+  await expect(recent.locator('[data-job-id="excluded-role"]')).toHaveAttribute(
+    'data-status',
+    'excluded',
+  )
+  await expect(recent.locator(`[data-job-id="${item.job.job_id}"]`)).toHaveAttribute(
+    'data-status',
+    'reviewed',
+  )
+  await mkdir('.tools/browser', { recursive: true })
+  await page.screenshot({ path: '.tools/browser/search-flow-mobile.png', fullPage: true })
+  await expect(recent.locator('[data-job-id="excluded-role"]')).toHaveCount(0)
+  await page.locator('summary').filter({ hasText: 'Earlier activity' }).click()
+  await expect(
+    page
+      .getByRole('list', { name: 'Earlier jobs', exact: true })
+      .locator('[data-job-id="excluded-role"]'),
+  ).toHaveAttribute('data-status', 'excluded')
+  const completed = structuredClone(reviewed)
+  completed.outcome = 'completed'
+  completed.current_stage = 'completed'
+  state.runFor(1, completed)
+  await expect(
+    page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Job screening activity' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'View search activity', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Job screening activity' })).toBeVisible()
+  await page.getByRole('button', { name: 'View matches', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
+  ).toBeVisible()
+  await page.reload()
+  await expect(
+    page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
+  ).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.screenshot({ path: '.tools/browser/search-flow-final-desktop.png', fullPage: true })
 })
 
 test('partially analyzed jobs stay useful without inventing an unknown search condition', async ({
@@ -1569,7 +1799,7 @@ test('deletion requires confirmation and a failed deletion preserves the search,
   await openHistory(page)
   const trigger = page.getByRole('button', { name: /^Delete search:/ }).first()
   await trigger.click()
-  const dialog = page.getByRole('dialog', { name: 'Delete search?', exact: true })
+  const dialog = page.locator('dialog')
   await dialog.getByRole('button', { name: 'Keep search', exact: true }).click()
   await expect(trigger).toBeFocused()
   expect(deletions).toEqual([])

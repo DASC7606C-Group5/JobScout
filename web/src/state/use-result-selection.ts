@@ -1,5 +1,5 @@
 import { useNavigate, useRouter, useSearch } from '@tanstack/react-router'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { RecommendationItem } from '../lib/contracts'
 import {
@@ -18,16 +18,18 @@ export function useResultSelection(
   const router = useRouter()
   const search = useSearch({ strict: false })
   const filtered = visibleJobs(jobs, search)
-  const selected = filtered.find(({ job }) => job.job_id === search.job) ?? filtered[0]
+  const current = filtered.find(({ job }) => job.job_id === search.job)
+  const [opened, setOpened] = useState<RecommendationItem | null>(null)
+  if (current && current !== opened) setOpened(current)
+  const retained = !savedOnly && search.job && opened?.job.job_id === search.job ? opened : null
+  const selected = current ?? retained ?? filtered[0]
   const detailOpen = Boolean(search.job && selected?.job.job_id === search.job)
   const buttons = useRef(new Map<string, HTMLButtonElement>())
   const detailHeading = useRef<HTMLHeadingElement>(null)
   const previousJob = useRef<string | undefined>(undefined)
   const listScroll = useRef(0)
   const openedFromList = useRef(false)
-  const invalidSelection = Boolean(
-    search.job && !filtered.some(({ job }) => job.job_id === search.job),
-  )
+  const invalidSelection = Boolean(search.job && !current && !retained)
 
   function changeSearch(next: ResultSearch, replace = true) {
     void navigate({ to: '.', search: next, replace, resetScroll: false })
@@ -87,6 +89,7 @@ export function useResultSelection(
     search,
     filtered,
     selected,
+    outsideList: Boolean(retained && !current),
     detailOpen,
     buttons,
     detailHeading,

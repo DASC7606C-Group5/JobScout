@@ -9,6 +9,7 @@ import { ProfileForm } from '../profile-form'
 import { Results } from '../results'
 import { SourceOutcomes } from '../results/source-outcomes'
 import { SearchSummary } from '../search-summary'
+import { SearchExperience } from './search-experience'
 import { SearchFailure, SearchLoading } from './search-status'
 
 export function DiscoveryContent() {
@@ -58,7 +59,7 @@ function SessionContent() {
   )
   const results = (
     <Results
-      key={session.session_id}
+      key={`${session.session_id}:${session.run_id ?? 'profile'}`}
       result={session.recommendation}
       notices={session.notices}
       saved={saved}
@@ -67,14 +68,20 @@ function SessionContent() {
       reviewActive={session.outcome === 'running' && Boolean(session.run_id)}
     />
   )
+  const searchExperience = (
+    <SearchExperience
+      key={`${session.session_id}:${session.run_id ?? 'profile'}`}
+      session={session}
+      onStop={stop}
+      stopping={stopping}
+      saved={saved}
+      onToggle={toggleSaved}
+      onEdit={edit}
+    />
+  )
   switch (session.outcome) {
     case 'running':
-      return (
-        <>
-          <SearchLoading session={session} onStop={stop} stopping={stopping} />
-          {hasResults && results}
-        </>
-      )
+      return <>{session.run_id ? searchExperience : <SearchLoading session={session} />}</>
     case 'paused':
       return (
         <>
@@ -122,7 +129,7 @@ function SessionContent() {
     case 'completed':
       return (
         <>
-          {results}
+          {searchExperience}
           <div className="mt-6 space-y-5">
             <SourceOutcomes outcomes={session.source_outcomes} />
             <ConversationHistory session={session} collapsed />

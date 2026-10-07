@@ -184,12 +184,32 @@ describe('Session HTTP API', () => {
     const message = current.conversation[0]!
     const reason = item.matching_reasons[0]!
     const quote = reason.job_source_quotes[0]!
+    const activity = {
+      sequence: 1,
+      job_id: item.job.job_id,
+      title: item.job.title,
+      company: item.job.company,
+      location: item.job.location,
+      status: 'reviewing',
+      recommendation_fit: 'unknown',
+    }
     const invalidReplies = [
       { ...current, notices: undefined },
       { ...current, conversation: [{ ...message, responses: undefined }] },
       { ...current, recommendation: { ...recommendation, notices: undefined } },
       { ...current, recommendation: { ...recommendation, pending_jobs: undefined } },
       { ...current, progress: { ...current.progress, matched_count: -1 } },
+      ...[
+        undefined,
+        [{ ...activity, status: 'invented' }],
+        [{ ...activity, sequence: 0 }],
+        [{ ...activity, job_id: 42 }],
+        [{ ...activity, recommendation_fit: 'excellent' }],
+      ].map((activity) => ({ ...current, progress: { ...current.progress, activity } })),
+      ...[undefined, -1, 1.5].map((discovered_count) => ({
+        ...current,
+        progress: { ...current.progress, discovered_count },
+      })),
       { ...current, stop_reason: 'unknown_stop_reason' },
       { ...current, run_id: 42 },
       { ...current, profile: { ...current.profile, search_options: { result_count: 21 } } },
@@ -247,6 +267,10 @@ describe('Session HTTP API', () => {
         responses: [{ label: 'Supplied label', value: ['Original value'], status: 'answered' }],
       },
     ]
+    current.progress = {
+      ...current.progress,
+      activity: [{ ...activity, status: 'reviewing', recommendation_fit: 'unknown' }],
+    }
     const client = createSessionClient(
       '/api/v1',
       createTransport(() => Response.json(current)),

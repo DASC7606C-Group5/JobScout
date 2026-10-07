@@ -549,6 +549,19 @@ class SessionService:
                 record.state["recommendation"] = RecommendationResult.model_validate(
                     update["recommendation"]
                 ).model_copy(deep=True)
+                recommendation = finalize_recommendation(record.state["recommendation"])
+                published = (
+                    dict(record.state.get("published_jobs", {}))
+                    if record.state.get("published_run_id") == run_id
+                    else {}
+                )
+                published.update(
+                    {
+                        item.job.job_id: item.model_dump(mode="json")
+                        for item in [*recommendation.jobs, *recommendation.pending_jobs]
+                    }
+                )
+                record.state.update(published_jobs=published, published_run_id=run_id)
             if "source_outcomes" in update:
                 record.state["source_outcomes"] = [
                     SourceOutcome.model_validate(value).model_copy(deep=True)
