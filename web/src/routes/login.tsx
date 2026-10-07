@@ -56,65 +56,67 @@ function LoginPage() {
           </span>
         </Link>
         <h1 className="sr-only">{registering ? 'Register' : 'Sign in'}</h1>
-        <div className="card border border-base-300 bg-base-100">
-          <form onSubmit={(event) => void submit(event)} className="card-body gap-5 p-5 sm:p-6">
-            <fieldset disabled={isSubmitting} className="fieldset min-w-0 gap-4 p-0 text-sm">
-              <legend className="sr-only">Account details</legend>
-              <label className="flex flex-col gap-2">
-                Username
-                <input
-                  className="input w-full"
-                  autoComplete="username"
-                  minLength={3}
-                  maxLength={32}
-                  pattern="[a-zA-Z0-9_.-]+"
-                  required
-                  {...register('username')}
-                />
-              </label>
-              <label className="flex flex-col gap-2">
-                Password
-                <input
-                  className="input w-full"
-                  type="password"
-                  autoComplete={registering ? 'new-password' : 'current-password'}
-                  minLength={12}
-                  maxLength={128}
-                  aria-describedby={registering ? 'password-help' : undefined}
-                  required
-                  {...register('password')}
-                />
-                {registering && (
-                  <span id="password-help" className="text-xs text-base-content/70">
-                    Use 12–128 characters.
-                  </span>
-                )}
-              </label>
-            </fieldset>
-            {error && (
-              <div role="alert" className="alert alert-soft alert-error">
-                {error}
-              </div>
-            )}
-            <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}
-            </button>
-            <div className="border-t border-base-300 pt-4 text-center">
-              <button
-                className="btn h-auto min-h-8 max-w-full btn-ghost px-2 py-1.5 font-normal whitespace-normal btn-sm"
-                type="button"
-                disabled={isSubmitting}
-                onClick={() => {
-                  setRegistering(!registering)
-                  setError('')
-                  reset()
-                }}
-              >
-                {registering ? 'Already have an account? Sign in' : 'New here? Create an account'}
+        <form onSubmit={(event) => void submit(event)} className="space-y-5 sm:space-y-6">
+          <div className="card border border-base-300 bg-base-100">
+            <div className="card-body gap-5 p-5 sm:gap-6 sm:p-6">
+              <fieldset disabled={isSubmitting} className="fieldset min-w-0 gap-4 p-0 text-sm">
+                <legend className="sr-only">Account details</legend>
+                <label className="flex flex-col gap-2">
+                  Username
+                  <input
+                    className="input w-full"
+                    autoComplete="username"
+                    minLength={3}
+                    maxLength={32}
+                    pattern="[a-zA-Z0-9_.-]+"
+                    required
+                    {...register('username')}
+                  />
+                </label>
+                <label className="flex flex-col gap-2">
+                  Password
+                  <input
+                    className="input w-full"
+                    type="password"
+                    autoComplete={registering ? 'new-password' : 'current-password'}
+                    minLength={12}
+                    maxLength={128}
+                    aria-describedby={registering ? 'password-help' : undefined}
+                    required
+                    {...register('password')}
+                  />
+                  {registering && (
+                    <span id="password-help" className="text-xs text-base-content/70">
+                      Use 12–128 characters.
+                    </span>
+                  )}
+                </label>
+              </fieldset>
+              {error && (
+                <div role="alert" className="alert alert-soft alert-error">
+                  {error}
+                </div>
+              )}
+              <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}
               </button>
             </div>
-          </form>
-        </div>
+          </div>
+          <div className="text-center">
+            <button
+              className="btn h-auto min-h-8 max-w-full btn-ghost px-2 font-normal whitespace-normal btn-sm"
+              type="button"
+              disabled={isSubmitting}
+              onClick={() => {
+                setRegistering(!registering)
+                setError('')
+                reset()
+              }}
+            >
+              {registering ? 'Already have an account? Sign in' : 'New here? Create an account'}
+            </button>
+          </div>
+        </form>
         <div className="mt-5 text-center">
           <a
             href={GITHUB_URL}

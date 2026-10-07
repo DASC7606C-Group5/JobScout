@@ -157,9 +157,12 @@ function ModelForm({ role, info, settings }: ModelFormProps) {
       onSubmit={(event) => void save(event)}
       className="card border border-base-300 bg-base-100"
     >
-      <div className="card-body gap-5 p-5 sm:p-6">
-        <fieldset disabled={isSubmitting || testing} className="fieldset min-w-0 gap-5 p-0 text-sm">
-          <legend className="fieldset-legend w-full justify-start gap-2 pt-0 pb-5 text-base whitespace-normal">
+      <div className="card-body gap-5 p-5 sm:gap-6 sm:p-6">
+        <fieldset
+          disabled={isSubmitting || testing}
+          className="fieldset min-w-0 gap-5 p-0 text-sm sm:gap-6"
+        >
+          <legend className="fieldset-legend w-full justify-start gap-2 pt-0 pb-5 text-base whitespace-normal sm:pb-6">
             <Icon
               name={role === 'semantic' ? 'file' : 'compass'}
               className="shrink-0 text-base-content/70"
@@ -224,7 +227,12 @@ function ModelForm({ role, info, settings }: ModelFormProps) {
               )}
             </>
           )}
-          <div className="flex flex-wrap items-center gap-3 border-t border-base-300 pt-5">
+          {error && (
+            <div role="alert" className="alert alert-soft alert-error">
+              {error}
+            </div>
+          )}
+          <div className="-mx-5 flex flex-wrap items-center gap-3 border-t border-base-300 px-5 pt-5 sm:-mx-6 sm:px-6 sm:pt-6">
             <button className="btn btn-sm" type="submit">
               {isSubmitting ? 'Saving…' : 'Save configuration'}
             </button>
@@ -237,11 +245,6 @@ function ModelForm({ role, info, settings }: ModelFormProps) {
             )}
           </div>
         </fieldset>
-        {error && (
-          <div role="alert" className="alert alert-soft alert-error">
-            {error}
-          </div>
-        )}
       </div>
     </form>
   )
@@ -272,9 +275,9 @@ function PasswordForm() {
       onSubmit={(event) => void submit(event)}
       className="card border border-base-300 bg-base-100"
     >
-      <div className="card-body gap-5 p-5 sm:p-6">
-        <fieldset className="fieldset min-w-0 gap-5 p-0 text-sm" disabled={isSubmitting}>
-          <legend className="fieldset-legend pt-0 pb-5 text-base">Change password</legend>
+      <div className="card-body gap-5 p-5 sm:gap-6 sm:p-6">
+        <fieldset className="fieldset min-w-0 gap-5 p-0 text-sm sm:gap-6" disabled={isSubmitting}>
+          <legend className="fieldset-legend pt-0 pb-5 text-base sm:pb-6">Change password</legend>
           <div className="grid gap-5 sm:grid-cols-2">
             <label className="flex flex-col gap-2">
               Current password
@@ -304,17 +307,17 @@ function PasswordForm() {
           <p className="text-xs text-base-content/70">
             Changing your password signs out all devices.
           </p>
-          <div className="border-t border-base-300 pt-5">
+          {error && (
+            <div role="alert" className="alert alert-soft alert-error">
+              {error}
+            </div>
+          )}
+          <div className="-mx-5 border-t border-base-300 px-5 pt-5 sm:-mx-6 sm:px-6 sm:pt-6">
             <button className="btn btn-sm" type="submit">
               {isSubmitting ? 'Changing…' : 'Change password'}
             </button>
           </div>
         </fieldset>
-        {error && (
-          <div role="alert" className="alert alert-soft alert-error">
-            {error}
-          </div>
-        )}
       </div>
     </form>
   )
@@ -363,7 +366,7 @@ function SettingsPage() {
           aria-labelledby="usage-heading"
           className="card mb-8 border border-base-300 bg-base-100"
         >
-          <div className="card-body gap-5 p-5 sm:p-6">
+          <div className="card-body gap-5 p-5 sm:gap-6 sm:p-6">
             <h2 id="usage-heading" className="card-title text-base">
               Daily server allowance
             </h2>
@@ -381,7 +384,7 @@ function SettingsPage() {
                   </span>
                 </dd>
               </div>
-              <div className="min-w-0 space-y-2 border-t border-base-300 pt-5 sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5">
+              <div className="-mx-5 min-w-0 space-y-2 border-t border-base-300 px-5 pt-5 sm:mx-0 sm:border-t-0 sm:border-l sm:px-0 sm:pt-0 sm:pl-5">
                 <dt className="flex items-center gap-2 text-sm text-base-content/70">
                   <Icon name="server" size={18} className="shrink-0" />
                   Site remaining operations
@@ -391,7 +394,7 @@ function SettingsPage() {
                 </dd>
               </div>
             </dl>
-            <div className="border-t border-base-300 pt-5 text-xs text-base-content/70">
+            <div className="-mx-5 border-t border-base-300 px-5 pt-5 text-xs text-base-content/70 sm:-mx-6 sm:px-6 sm:pt-6">
               <p className="flex items-center gap-2">
                 <Icon name="clock" size={16} className="shrink-0" />
                 Resets at midnight in Hong Kong

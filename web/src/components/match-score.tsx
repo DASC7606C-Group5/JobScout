@@ -32,7 +32,7 @@ export function MatchScoreValue({
 export function MatchScoreSummary({ score }: { score: MatchScore | null }) {
   if (!score) return null
   return (
-    <span className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-base-300/65 pt-3">
+    <span className="-mx-4 mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-base-300/65 px-4 pt-4">
       <MatchScoreValue score={score} />
       {score.provisional && score.total !== null && (
         <span className="text-xs text-base-content/65">Limited information</span>
