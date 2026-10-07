@@ -48,7 +48,7 @@ export function TaskProfileControls({ sessionId }: { sessionId: string }) {
           required
           onChange={(event) => setTitle(event.target.value)}
         />
-        <button className="btn btn-sm" disabled={rename.isPending}>
+        <button type="submit" className="btn btn-sm" disabled={rename.isPending}>
           Save title
         </button>
         {rename.isError && <p role="alert">Title could not be saved.</p>}

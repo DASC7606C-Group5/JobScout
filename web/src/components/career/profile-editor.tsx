@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Controller, useForm } from 'react-hook-form'
 
 import type { Background, PersonalProfile } from '../../lib/career-contracts'
 import { useCurrentProfile, useSaveProfile } from '../../state/career-queries'
@@ -11,23 +11,33 @@ export function PersonalProfileEditor() {
 }
 
 function ProfileEditor({ current }: { current: PersonalProfile }) {
-  const [description, setDescription] = useState(current.description)
-  const [resumeName, setResumeName] = useState(current.resume?.name ?? '')
-  const [resumeText, setResumeText] = useState(current.resume?.text ?? '')
-  const [background, setBackground] = useState(current.background)
+  const form = useForm<{
+    description: string
+    resumeName: string
+    resumeText: string
+    background: Background
+  }>({
+    defaultValues: {
+      description: current.description,
+      resumeName: current.resume?.name ?? '',
+      resumeText: current.resume?.text ?? '',
+      background: current.background,
+    },
+  })
   const save = useSaveProfile()
   return (
     <form
       className="max-w-3xl"
       onSubmit={(event) => {
-        event.preventDefault()
-        save.mutate({
-          expected_revision: current.revision,
-          description,
-          resume: resumeText ? { name: resumeName || 'Resume', text: resumeText } : null,
-          background,
-          documents: current.documents,
-        })
+        void form.handleSubmit(({ description, resumeName, resumeText, background }) => {
+          save.mutate({
+            expected_revision: current.revision,
+            description,
+            resume: resumeText ? { name: resumeName || 'Resume', text: resumeText } : null,
+            background,
+            documents: current.documents,
+          })
+        })(event)
       }}
     >
       <fieldset className="fieldset" disabled={save.isPending}>
@@ -44,8 +54,7 @@ function ProfileEditor({ current }: { current: PersonalProfile }) {
         <textarea
           id="personal-description"
           className="textarea w-full"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
+          {...form.register('description')}
         />
         <label className="label" htmlFor="personal-resume-name">
           Resume name
@@ -54,8 +63,7 @@ function ProfileEditor({ current }: { current: PersonalProfile }) {
           id="personal-resume-name"
           className="textarea w-full"
           rows={1}
-          value={resumeName}
-          onChange={(event) => setResumeName(event.target.value)}
+          {...form.register('resumeName')}
         />
         <label className="label" htmlFor="personal-resume">
           Original resume text
@@ -63,19 +71,24 @@ function ProfileEditor({ current }: { current: PersonalProfile }) {
         <textarea
           id="personal-resume"
           className="textarea w-full"
-          value={resumeText}
-          onChange={(event) => setResumeText(event.target.value)}
+          {...form.register('resumeText')}
         />
         {(['education', 'skills', 'internships', 'projects'] as (keyof Background)[]).map(
           (field) => (
             <label key={field} className="space-y-2">
               <span className="label capitalize">{field} · one entry per line</span>
-              <textarea
-                className="textarea w-full"
-                value={background[field].join('\n')}
-                onChange={(event) =>
-                  setBackground({ ...background, [field]: event.target.value.split('\n') })
-                }
+              <Controller
+                control={form.control}
+                name={`background.${field}`}
+                render={({ field: control }) => (
+                  <textarea
+                    className="textarea w-full"
+                    value={control.value.join('\n')}
+                    onBlur={control.onBlur}
+                    ref={control.ref}
+                    onChange={(event) => control.onChange(event.target.value.split('\n'))}
+                  />
+                )}
               />
             </label>
           ),

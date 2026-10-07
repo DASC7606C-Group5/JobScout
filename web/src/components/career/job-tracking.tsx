@@ -76,6 +76,7 @@ function InterestEditor({
         </label>
         <select
           id={id + '-job-interest'}
+          aria-label="Interest"
           className="select w-full"
           value={value.interest}
           onChange={(event) =>
@@ -91,6 +92,7 @@ function InterestEditor({
         </label>
         <textarea
           id={id + '-interest-reason'}
+          aria-label="Reason"
           className="textarea w-full"
           value={value.reason}
           onChange={(event) => setValue({ ...value, reason: event.target.value })}
@@ -100,6 +102,7 @@ function InterestEditor({
         </label>
         <select
           id={id + '-interest-scope'}
+          aria-label="Apply reason to"
           className="select w-full"
           value={value.scope}
           onChange={(event) =>
@@ -158,6 +161,7 @@ function ApplicationEditor({
         </label>
         <select
           id={id + '-application-stage'}
+          aria-label="Application stage"
           className="select w-full"
           value={stage}
           onChange={(event) => setStage(event.target.value as ApplicationStage)}
@@ -172,6 +176,7 @@ function ApplicationEditor({
         </label>
         <textarea
           id={id + '-application-note'}
+          aria-label="Application note"
           className="textarea w-full"
           value={note}
           onChange={(event) => setNote(event.target.value)}
@@ -180,8 +185,8 @@ function ApplicationEditor({
           Save progress
         </button>
         {save.isError && <p role="alert">Progress could not be saved.</p>}
-        {current?.history.map((entry, index) => (
-          <p key={`${entry.changed_at}-${index}`}>
+        {current?.history.map((entry) => (
+          <p key={`${entry.changed_at}-${entry.stage}-${entry.note}`}>
             {entry.stage.replaceAll('_', ' ')} · {new Date(entry.changed_at).toLocaleString()}{' '}
             {entry.note}
           </p>

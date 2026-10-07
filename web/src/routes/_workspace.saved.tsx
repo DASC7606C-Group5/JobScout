@@ -49,7 +49,7 @@ function SavedPage() {
       <PageHeading
         eyebrow="SAVED JOBS"
         title={`${saved.length} ${saved.length === 1 ? 'job' : 'jobs'} saved`}
-        description="Review and compare your saved jobs."
+        description="Saved assessments reflect the background and task preferences when each job was saved."
       />
       {query.isError && (
         <div className="mb-5 alert alert-warning" role="alert">
