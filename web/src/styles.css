@@ -59,29 +59,14 @@
 
   .workspace-page:has(.results-workspace) .search-criteria {
     flex-shrink: 0;
-    min-height: 3.75rem;
-    z-index: 20;
   }
 
-  /* The criteria overlay must leave the results unobstructed as soon as it closes. */
-  .workspace-page:has(.results-workspace) .search-criteria details {
-    position: absolute;
-    inset: 0 0 auto;
-    max-height: 65dvh;
+  .workspace-page:has(.results-workspace):has(.search-criteria details[open]) {
     overflow-y: auto;
-    overscroll-behavior-y: contain;
-    transition: none;
   }
 
-  .workspace-page:has(.results-workspace) .search-criteria details::details-content {
-    transition: none;
-  }
-
-  .workspace-page:has(.results-workspace) .search-criteria details[open] {
-    border: 1px solid var(--color-base-300);
-    border-radius: var(--radius-box);
-    background: color-mix(in srgb, var(--color-primary) 10%, var(--color-base-100));
-    box-shadow: 0 8px 24px color-mix(in oklch, var(--color-base-content) 12%, transparent);
+  .workspace-page:has(.search-criteria details[open]) .results-layout:has(.results-workspace) {
+    min-height: 20rem;
   }
 }
 

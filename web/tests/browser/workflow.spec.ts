@@ -1632,58 +1632,43 @@ test('result panes scroll independently and restore reading positions by job ide
   await lastResponsibility.scrollIntoViewIfNeeded()
   await expect(lastResponsibility).toBeInViewport()
   await expect(listing).toBeInViewport()
-  const analysisHeight = await analysis.evaluate((element) => element.clientHeight)
-  await page.getByRole('region', { name: 'Search criteria' }).locator('summary').click()
-  expect(await analysis.evaluate((element) => element.clientHeight)).toBe(analysisHeight)
-  expect(
-    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
-  ).toBe(true)
 })
 
-test('closing search criteria immediately hides its content and keeps results stationary', async ({
+test('search criteria expands in the page and leaves results reachable on short screens', async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1440, height: 900 })
-  await page.emulateMedia({ reducedMotion: 'no-preference' })
   await mockSessions(page, resultSession())
   await introduce(page)
   const criteria = page.getByRole('region', { name: 'Search criteria', exact: true })
-  await criteria.locator('summary').click()
-  await criteria.evaluate(async (element) => {
-    await Promise.all(
-      element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+  const results = page.getByRole('region', { name: 'Recommended jobs', exact: true })
+  for (const height of [900, 500]) {
+    await page.setViewportSize({ width: 1440, height })
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    const closedHeight = await criteria.evaluate(
+      (element) => element.getBoundingClientRect().height,
     )
-  })
-  await expect(criteria.locator('.collapse-content')).toBeVisible()
-  const samples = await criteria.evaluate(async (element) => {
-    const results = document.querySelector<HTMLElement>('[aria-label="Recommended jobs"]')!
-    const summary = element.querySelector('summary')!
-    const content = element.querySelector<HTMLElement>('.collapse-content')!
-    const positions = [results.getBoundingClientRect().top]
-    const contentVisible: boolean[] = []
-    function record() {
-      positions.push(results.getBoundingClientRect().top)
-      contentVisible.push(content.checkVisibility())
-    }
-    summary.click()
-    record()
-    const started = performance.now()
-    await new Promise<void>((resolve) => {
-      function sample(now: number) {
-        record()
-        if (now - started >= 350) resolve()
-        else requestAnimationFrame(sample)
-      }
-      requestAnimationFrame(sample)
+    await criteria.locator('summary').click()
+    await criteria.evaluate(async (element) => {
+      await Promise.all(
+        element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+      )
     })
-    return { positions, contentVisible }
-  })
-  expect(Math.max(...samples.positions) - Math.min(...samples.positions)).toBeLessThanOrEqual(1)
-  expect(samples.contentVisible.every((visible) => !visible)).toBe(true)
-  await expect(criteria.locator('details')).not.toHaveAttribute('open')
-  await expect(
-    page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
-  ).toBeInViewport()
+    const expanded = await criteria.boundingBox()
+    const resultsBounds = await results.boundingBox()
+    expect(expanded!.height).toBeGreaterThan(closedHeight)
+    expect(resultsBounds!.y).toBeGreaterThanOrEqual(expanded!.y + expanded!.height)
+    const listing = page.getByRole('link', { name: 'View job listing', exact: true })
+    await listing.scrollIntoViewIfNeeded()
+    await expect(listing).toBeInViewport()
+    await criteria.locator('summary').click()
+    await expect(criteria.locator('details')).not.toHaveAttribute('open')
+    await expect
+      .poll(() => criteria.evaluate((element) => element.getBoundingClientRect().height))
+      .toBe(closedHeight)
+    await expect(
+      page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
+    ).toBeInViewport()
+  }
 })
 
 test('search failure preserves published job identities until editing the criteria', async ({
