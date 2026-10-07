@@ -13,7 +13,6 @@ from jobscout.services.identity import current_user_id
 @pytest.fixture(autouse=True)
 def isolated_workspace_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None]:
     monkeypatch.setenv("DATABASE_URL", f"sqlite://{(tmp_path / 'workspace.sqlite3').as_posix()}")
-    monkeypatch.setenv("REGISTRATION_CODE", "synthetic-class-code")
     monkeypatch.setenv("CREDENTIALS_KEY", Fernet.generate_key().decode())
     monkeypatch.setenv("PRODUCTION", "false")
     monkeypatch.setenv("COOKIE_SECURE", "false")

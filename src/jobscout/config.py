@@ -9,7 +9,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     production: bool = False
     public_origin: str = "http://localhost:3000"
-    registration_code: SecretStr = SecretStr("")
     credentials_key: SecretStr = SecretStr("")
     cookie_secure: bool = False
     frontend_directory: str = "web/dist"
@@ -52,12 +51,9 @@ class Settings(BaseSettings):
         if self.production and (
             origin.scheme != "https"
             or not self.cookie_secure
-            or len(self.registration_code.get_secret_value()) < 16
             or not self.credentials_key.get_secret_value()
         ):
-            raise ValueError(
-                "Production requires HTTPS, secure cookies, a registration code and CREDENTIALS_KEY."
-            )
+            raise ValueError("Production requires HTTPS, secure cookies and CREDENTIALS_KEY.")
         if self.credentials_key.get_secret_value():
             Fernet(self.credentials_key.get_secret_value().encode())
         return self

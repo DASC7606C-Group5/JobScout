@@ -1,6 +1,5 @@
-"""Class-code registration and username/password authentication."""
+"""Username/password registration and authentication."""
 
-import secrets
 from uuid import uuid4
 
 from fastapi import APIRouter, Request, Response
@@ -22,10 +21,6 @@ class Credentials(BaseModel):
     @classmethod
     def normalize_username(cls, value: str) -> str:
         return value.lower()
-
-
-class Registration(Credentials):
-    registration_code: str = Field(min_length=1, max_length=256, repr=False)
 
 
 class PasswordChange(BaseModel):
@@ -58,19 +53,12 @@ async def login_response(auth: AuthService, response: Response, user: User) -> d
 
 
 @router.post("/register", status_code=201)
-async def register(
-    request: Request, response: Response, payload: Registration
-) -> dict[str, object]:
+async def register(request: Request, response: Response, payload: Credentials) -> dict[str, object]:
     auth = service(request)
     ip = request.client.host if request.client else "unknown"
     limits = [(f"register:{ip}", 60)]
     auth.check_rate(limits)
     auth.failed(limits)
-    expected = auth.settings.registration_code.get_secret_value()
-    if not expected or not secrets.compare_digest(
-        payload.registration_code.encode(), expected.encode()
-    ):
-        raise auth_error(403, "invalid_registration_code")
     hashed = await auth.hash_password(payload.password)
     try:
         user = await User.create(

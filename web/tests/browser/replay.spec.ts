@@ -14,7 +14,6 @@ test.beforeEach(async ({ page, baseURL }) => {
     data: {
       username: `replay-${Date.now()}`,
       password: 'synthetic-browser-password',
-      registration_code: 'synthetic-class-code',
     },
   })
   expect(response.status()).toBe(201)

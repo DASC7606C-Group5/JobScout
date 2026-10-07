@@ -16,7 +16,7 @@ class AuthenticatedClient(TestClient):
         credentials = {"username": "workflow", "password": "synthetic-password-123"}
         result = self.post(
             "/api/v1/auth/register",
-            json={**credentials, "registration_code": "synthetic-class-code"},
+            json=credentials,
         )
         if result.status_code == 409:
             result = self.post("/api/v1/auth/login", json=credentials)

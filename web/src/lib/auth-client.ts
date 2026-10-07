@@ -96,7 +96,6 @@ export class AccountRequestError extends Error {
 export function accountErrorMessage(code: string): string {
   const messages: Record<string, string> = {
     invalid_credentials: 'Username or password is incorrect.',
-    invalid_registration_code: 'The class registration code is incorrect.',
     username_unavailable: 'That username is already taken.',
     invalid_input: 'Check the fields and try again.',
     auth_rate_limited: 'Too many attempts. Try again in 15 minutes.',

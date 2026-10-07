@@ -35,7 +35,6 @@ def register(client: TestClient, username: str = "student") -> dict[str, Any]:
         json={
             "username": username,
             "password": "synthetic-password-123",
-            "registration_code": "synthetic-class-code",
         },
     )
     assert result.status_code == 201, result.text
@@ -91,20 +90,10 @@ def test_registration_hashes_password_and_normalizes_username(tmp_path: Path) ->
             json={
                 "username": "student",
                 "password": "synthetic-password-123",
-                "registration_code": "synthetic-class-code",
             },
         )
         assert response.status_code == 409
         assert response.json()["detail"]["code"] == "username_unavailable"
-        wrong = client.post(
-            "/api/v1/auth/register",
-            json={
-                "username": "other",
-                "password": "synthetic-password-123",
-                "registration_code": "incorrect",
-            },
-        )
-        assert wrong.status_code == 403
     with sqlite3.connect(database) as connection:
         hashed = connection.execute('SELECT password_hash FROM "user"').fetchone()[0]
         assert hashed.startswith("$argon2id$v=19$m=65536,t=3,p=1$")
@@ -410,7 +399,6 @@ def test_production_requires_secrets_and_backup_preserves_rows(tmp_path: Path) -
             {
                 "production": True,
                 "credentials_key": "",
-                "registration_code": "",
                 "cookie_secure": False,
                 "llm_semantic_api_key": "synthetic-startup-secret",
             }

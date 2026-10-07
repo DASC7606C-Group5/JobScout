@@ -3,20 +3,11 @@
 import argparse
 import sqlite3
 from pathlib import Path
-from typing import cast
 
 from cryptography.fernet import Fernet
-from xkcdpass import xkcd_password as xp  # type: ignore[import-untyped]
 
 from jobscout.config import get_settings
 from jobscout.database import sqlite_path
-
-
-def generate_registration_code() -> str:
-    words = xp.generate_wordlist(
-        wordfile="eff-short", min_length=2, max_length=5, valid_chars="[a-z]"
-    )
-    return cast(str, xp.generate_xkcdpassword(words, numwords=6, delimiter="-"))
 
 
 def backup_database(source: Path, destination: Path) -> None:
@@ -35,7 +26,6 @@ def main() -> None:
     backup.add_argument("destination", type=Path)
     arguments = parser.parse_args()
     if arguments.command == "generate-secrets":
-        print("REGISTRATION_CODE=" + generate_registration_code())
         print("CREDENTIALS_KEY=" + Fernet.generate_key().decode())
     else:
         backup_database(Path(sqlite_path(get_settings().database_url)), arguments.destination)

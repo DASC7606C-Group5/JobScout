@@ -11,7 +11,6 @@ export const Route = createFileRoute('/login')({ component: LoginPage })
 interface LoginFields {
   username: string
   password: string
-  registration_code: string
 }
 
 function LoginPage() {
@@ -33,7 +32,6 @@ function LoginPage() {
         {
           username: values.username,
           password: values.password,
-          ...(registering ? { registration_code: values.registration_code } : {}),
         },
       )
       reset()
@@ -92,19 +90,6 @@ function LoginPage() {
                   </span>
                 )}
               </label>
-              {registering && (
-                <label className="flex flex-col gap-2">
-                  Class registration code
-                  <input
-                    className="input w-full"
-                    type="password"
-                    autoComplete="off"
-                    maxLength={256}
-                    required
-                    {...register('registration_code')}
-                  />
-                </label>
-              )}
             </fieldset>
             {error && (
               <div role="alert" className="alert alert-soft alert-error">

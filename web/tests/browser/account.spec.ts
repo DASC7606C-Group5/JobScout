@@ -9,7 +9,6 @@ test('registration, independent model settings and sign-out protect the workspac
   const username = `student-${Date.now()}`
   await page.getByLabel('Username', { exact: true }).fill(username)
   await page.getByLabel(/^Password/).fill('browser-password-123')
-  await page.getByLabel('Class registration code').fill('synthetic-class-code')
   await page.getByRole('button', { name: 'Create account', exact: true }).click()
   await expect(page).toHaveURL(/\/new$/)
   await page.getByRole('link', { name: 'Settings', exact: true }).click()
