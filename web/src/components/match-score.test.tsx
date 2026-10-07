@@ -41,6 +41,15 @@ test('all unknown has no invented total or radar data points', () => {
   expect(renderToStaticMarkup(<MatchScoreSummary score={null} />)).toBe('')
 })
 
+test('dimension explanations stand alone while missing facts explain dimensions without one', () => {
+  const score = createMatchScoreFixture()
+  score.dimensions[0]!.missing_information = ['Additional detail about the interface']
+  const html = renderToStaticMarkup(<MatchRadar score={score} />)
+  expect(html).toContain(score.dimensions[0]!.explanation)
+  expect(html).not.toContain(score.dimensions[0]!.missing_information[0]!)
+  expect(html).toContain(score.dimensions[1]!.missing_information[0]!)
+})
+
 test('an assessed zero stays numeric and only six assessed axes form a complete shape', () => {
   const score = createMatchScoreFixture()
   score.dimensions = score.dimensions.map((dimension, index) => ({

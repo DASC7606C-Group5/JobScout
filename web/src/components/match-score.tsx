@@ -76,7 +76,7 @@ function DimensionLabel({
 }) {
   const tooltipId = useId()
   const explanation = dimension.explanation.trim()
-  const missing = dimension.missing_information.filter((text) => !explanation.includes(text))
+  const missing = explanation ? [] : dimension.missing_information
   return (
     <div
       className={`tooltip absolute ${labelPositions[dimension.id]} ${open ? 'z-20 tooltip-open' : '[&::after]:hidden [&>.tooltip-content]:invisible [&>.tooltip-content]:opacity-0'}`}
@@ -134,11 +134,7 @@ export function MatchRadar({ score }: { score: MatchScore }) {
     document.addEventListener('keydown', dismiss, true)
     return () => document.removeEventListener('keydown', dismiss, true)
   }, [activeDimension])
-  const assessed = score.dimensions.filter((dimension) => dimension.status === 'assessed')
-  const applicable = score.dimensions.filter((dimension) => dimension.status !== 'not_applicable')
-  const hasUnknown = score.dimensions.some((dimension) => dimension.status === 'unknown')
-  const hasNotApplicable = applicable.length < score.dimensions.length
-  const completeShape = assessed.length === score.dimensions.length
+  const completeShape = score.dimensions.every((dimension) => dimension.status === 'assessed')
   const points = score.dimensions.map((dimension, index) =>
     dimension.status === 'assessed' && dimension.score !== null
       ? coordinate(index, dimension.score)
@@ -251,19 +247,6 @@ export function MatchRadar({ score }: { score: MatchScore }) {
           />
         ))}
       </div>
-      <figcaption className="mt-2 space-y-1 text-center text-xs leading-5 text-base-content/65">
-        <p>
-          {assessed.length} of {applicable.length} {hasNotApplicable ? 'applicable ' : ''}areas
-          assessed · Scores out of 100
-        </p>
-        {(hasUnknown || hasNotApplicable) && (
-          <p>
-            {[hasUnknown && '— More information needed', hasNotApplicable && 'N/A Not applicable']
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
-        )}
-      </figcaption>
     </figure>
   )
 }

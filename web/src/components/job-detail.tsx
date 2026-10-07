@@ -98,9 +98,8 @@ export function JobDetail({
 
 function JobMatch({ item }: { item: RecommendationItem }) {
   if (item.analysis_status === 'unavailable') return null
-  const reasons = item.matching_reasons.filter((reason) => reason.level !== 'not_documented')
   const score = item.match_score
-  if (!reasons.length && !item.recommendation_reason && !score) return null
+  if (!item.recommendation_reason && !score) return null
   return (
     <section className="@container">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
@@ -112,13 +111,8 @@ function JobMatch({ item }: { item: RecommendationItem }) {
       >
         <div className="min-w-0">
           {item.recommendation_reason && (
-            <p className="mb-3 text-base-content/75">{item.recommendation_reason}</p>
+            <p className="text-base-content/75">{item.recommendation_reason}</p>
           )}
-          <ul className="space-y-2 text-base-content/75">
-            {reasons.map((reason) => (
-              <li key={JSON.stringify(reason)}>{reason.explanation}</li>
-            ))}
-          </ul>
           {score?.provisional && score.total !== null && (
             <p className="mt-3 text-xs leading-5 text-base-content/60">
               The score uses the information available.

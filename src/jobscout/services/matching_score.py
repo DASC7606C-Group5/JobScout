@@ -1,4 +1,4 @@
-"""Validate dimension evidence independently and aggregate fixed weights."""
+"""Validate each dimension's source quotes and facts, then aggregate fixed weights."""
 
 import hashlib
 import json
@@ -130,6 +130,7 @@ def build_match_score(
         }
         inputs = {
             "rubric": "six-dimension-v1",
+            "explanation_version": 2,
             "dimension": identity,
             "requirements": [r.model_dump(mode="json") for r in requirements],
             "job_documents": job_documents,
