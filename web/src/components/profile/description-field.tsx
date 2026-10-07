@@ -19,21 +19,22 @@ export function DescriptionField() {
       <textarea
         {...field}
         id="description"
-        className="textarea field-sizing-content max-h-96 min-h-36 w-full resize-none border border-base-300 bg-base-200/25 p-4 text-sm leading-7"
+        className="textarea field-sizing-content max-h-96 min-h-28 w-full resize-none border border-base-300 bg-base-200/25 text-sm leading-6"
         placeholder="Tell us about your education, skills, projects or internships, and what you’re looking for in your next role…"
         maxLength={10000}
-        aria-describedby="description-hint profile-error"
+        aria-describedby="description-hint description-error"
         aria-invalid={fieldState.invalid}
       />
-      <div
-        id="description-hint"
-        className="mt-2 flex justify-between gap-3 text-xs text-base-content/55"
-      >
-        <span>It doesn’t have to be perfect. You can add more later.</span>
+      <div id="description-hint" className="mt-2 text-right text-xs text-base-content/55">
         <span className="shrink-0 tabular-nums">
           {field.value.length.toLocaleString()} / 10,000
         </span>
       </div>
+      {fieldState.error && (
+        <p id="description-error" role="alert" className="mt-2 text-sm text-error">
+          {fieldState.error.message}
+        </p>
+      )}
     </div>
   )
 }

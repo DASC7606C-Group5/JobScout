@@ -163,7 +163,7 @@ export function WorkspaceLayout() {
         <main
           id="main-content"
           tabIndex={-1}
-          className="workspace-page mx-auto max-w-7xl px-5 pt-20 pb-10 sm:px-8 lg:pt-10 xl:px-12"
+          className="workspace-page px-4 pt-16 pb-8 sm:px-5 lg:px-6 lg:pt-6"
         >
           {saveError && (
             <div className="mb-5 alert alert-error sm:alert-horizontal" role="alert">

@@ -5,8 +5,8 @@ function reviewLabel(item: RecommendationItem, active: boolean) {
   if (active && item.review_status === 'reviewing') return 'Reviewing'
   if (active && item.review_status === 'queued') return 'Queued'
   if (item.review_status !== 'reviewed') return 'Unreviewed'
-  if (item.analysis_status === 'unavailable') return 'Unavailable'
-  if (item.analysis_status === 'partial') return 'Partial'
+  if (item.analysis_status === 'unavailable') return 'Assessment unavailable'
+  if (item.analysis_status === 'partial') return 'Partially reviewed'
   return 'Reviewed'
 }
 

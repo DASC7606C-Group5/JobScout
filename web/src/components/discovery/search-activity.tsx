@@ -142,9 +142,11 @@ export function SearchActivity({ jobs, completed }: { jobs: Activity[]; complete
   const history = newest.filter((job) => !visibleIds.has(job.job_id))
   return (
     <section aria-label="Job screening activity">
-      <div className="mb-3 flex items-center justify-between gap-3 pl-9.5 text-xs text-base-content/65 sm:pl-12">
-        <span>{completed ? 'Screening activity' : 'Latest activity'}</span>
-      </div>
+      {recent.length > 0 && (
+        <div className="mb-3 flex items-center justify-between gap-3 pl-9.5 text-xs text-base-content/65 sm:pl-12">
+          <span>{completed ? 'Screening activity' : 'Latest activity'}</span>
+        </div>
+      )}
       {recent.length ? (
         <ol
           className="space-y-3"
@@ -174,12 +176,17 @@ export function SearchActivity({ jobs, completed }: { jobs: Activity[]; complete
       )}
       {history.length > 0 && (
         <details
-          className="collapse-arrow collapse mt-4 border border-base-300 bg-base-100"
+          className="group collapse mt-4 border border-base-300 bg-base-100"
           open={historyOpen}
           onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
         >
-          <summary className="collapse-title min-h-11 py-3 text-xs text-base-content/65">
-            Earlier activity ({history.length})
+          <summary className="collapse-title flex min-h-11 items-center justify-between gap-3 px-4 py-3 text-xs text-base-content/65">
+            <span>Earlier activity ({history.length})</span>
+            <Icon
+              name="chevron"
+              size={15}
+              className="shrink-0 transition-transform group-open:rotate-90"
+            />
           </summary>
           <div className="collapse-content">
             <ul className="space-y-4" aria-label="Earlier jobs">

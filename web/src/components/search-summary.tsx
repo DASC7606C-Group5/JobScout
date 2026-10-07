@@ -11,13 +11,37 @@ import {
 import { useScoutSession } from '../state/session-context'
 import { useSessionDraft } from '../state/use-session-draft'
 import { DraftStatus } from './draft-status'
-import { InterpretedConditions } from './profile/interpreted-conditions'
+import { SummaryValues } from './profile/profile-summary'
 import { ResultCountField } from './profile/result-count-field'
+import { SummaryGroup } from './profile/summary-group'
 
 const workModeOptions = [
   ['onsite', 'On-site'],
   ['hybrid', 'Hybrid'],
   ['remote', 'Remote'],
+] as const
+
+const groups = [
+  {
+    title: 'Search conditions',
+    keys: [
+      'target_directions',
+      'preferences.location',
+      'preferences.location_unrestricted',
+      'preferences.employment_type',
+      'preferences.employment_type_unrestricted',
+    ],
+  },
+  { title: 'Experience', keys: ['education', 'skills', 'internships', 'projects'] },
+  {
+    title: 'Other preferences',
+    keys: [
+      'preferences.salary_range',
+      'preferences.work_mode',
+      'preferences.industry',
+      'search_options.result_count',
+    ],
+  },
 ] as const
 
 function SummaryFields({
@@ -36,6 +60,16 @@ function SummaryFields({
       {fields.map(([key, label, kind]) => {
         const editable = editableFields.has(key)
         const id = `summary-${key}`
+        if (kind === 'number')
+          return (
+            <ResultCountField
+              key={key}
+              id="summary-result-count"
+              value={Number(draft[key])}
+              onChange={(value) => onChange(key, value)}
+              disabled={!editable}
+            />
+          )
         const unrestrictedKey =
           key === 'preferences.location'
             ? 'preferences.location_unrestricted'
@@ -58,9 +92,6 @@ function SummaryFields({
                 value={value}
                 readOnly={!editable}
                 maxLength={10000}
-                aria-describedby={
-                  key === 'target_directions' ? 'summary-directions-hint' : undefined
-                }
                 onChange={(event) => onChange(key, event.target.value)}
               />
             ) : options ? (
@@ -136,7 +167,7 @@ export function SearchSummary({ summary }: { summary: Summary }) {
   return (
     <form
       noValidate
-      className="card border border-base-300 bg-base-100 p-5 sm:p-7"
+      className="card border border-base-300 bg-base-100 p-5 sm:p-6"
       onCompositionStart={persisted.onCompositionStart}
       onCompositionEnd={persisted.onCompositionEnd}
       onSubmit={(event) => {
@@ -150,49 +181,21 @@ export function SearchSummary({ summary }: { summary: Summary }) {
           })
       }}
     >
-      <h2 className="text-lg font-semibold">Review your profile and search criteria</h2>
-      <p className="mt-3 text-sm leading-6 text-base-content/65">{summary.coverage_notice}</p>
+      {summary.coverage_notice && (
+        <p className="mb-4 text-sm leading-6 text-base-content/65">{summary.coverage_notice}</p>
+      )}
       <fieldset
         disabled={busy || persisted.status === 'loading'}
-        className="mt-6 min-w-0 space-y-6"
+        className="min-w-0 space-y-5 sm:space-y-6"
       >
-        <fieldset className="fieldset min-w-0 p-0">
-          <legend className="fieldset-legend pb-3 text-sm">Your experience</legend>
-          <SummaryFields
-            fields={summaryFields
-              .filter(([, , kind]) => kind === 'array')
-              .filter(([key]) => key !== 'target_directions')}
-            draft={draft}
-            editableFields={editableFields}
-            onChange={onChange}
-          />
-        </fieldset>
-        <ResultCountField
-          id="summary-result-count"
-          value={count}
-          onChange={(value) => onChange('search_options.result_count', value)}
-          disabled={!editableFields.has('search_options.result_count')}
+        <SummarySections
+          summary={summary}
+          draft={draft}
+          original={original}
+          editableFields={editableFields}
+          invalid={invalid}
+          onChange={onChange}
         />
-        <fieldset className="fieldset min-w-0 border-t border-base-300 p-0 pt-3">
-          <legend className="fieldset-legend pb-3 text-sm">Search criteria</legend>
-          <SummaryFields
-            fields={summaryFields.filter(
-              ([key, , kind]) =>
-                kind !== 'boolean' &&
-                (key === 'target_directions' || key.startsWith('preferences.')),
-            )}
-            draft={draft}
-            editableFields={editableFields}
-            onChange={onChange}
-          />
-        </fieldset>
-        {!changed && <InterpretedConditions preferences={summary.profile.preferences} />}
-        {summary.missing_fields.length > 0 && (
-          <output className="block rounded-box bg-accent/25 p-3 text-sm">
-            Still to confirm:
-            {summary.missing_fields.map(profileFieldLabel).join(', ')}
-          </output>
-        )}
         <div>
           <label htmlFor="summary-message" className="mb-2 block text-sm">
             Add or correct search criteria
@@ -205,22 +208,25 @@ export function SearchSummary({ summary }: { summary: Summary }) {
             maxLength={10000}
           />
         </div>
-        <div className="flex flex-wrap gap-3 border-t border-base-300 pt-5">
-          <button type="submit" disabled={!canSave} className="btn">
-            Save changes
-          </button>
-          <button
-            type="button"
-            disabled={!canConfirm}
-            className="btn btn-primary"
-            onClick={() => {
-              void answer({ action: 'confirm_search' })
-            }}
-          >
-            Confirm and search
-          </button>
+        <div className="-mx-5 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 px-5 pt-5 sm:-mx-6 sm:px-6 sm:pt-6">
+          <DraftStatus {...persisted} />
+          {changed ? (
+            <button type="submit" disabled={!canSave} className="btn btn-primary">
+              Update criteria
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={!canConfirm}
+              className="btn btn-primary"
+              onClick={() => {
+                void answer({ action: 'confirm_search' })
+              }}
+            >
+              Confirm and search
+            </button>
+          )}
         </div>
-        <DraftStatus {...persisted} />
         {!current && (
           <div className="text-xs text-base-content/65">
             <p>Your search has changed. Reload it before confirming these criteria.</p>
@@ -231,11 +237,77 @@ export function SearchSummary({ summary }: { summary: Summary }) {
         )}
         {changed && (
           <p className="text-xs text-base-content/65">
-            You have unsaved changes. Save them and review the updated summary before confirming
-            your search.
+            Update your criteria and review the updated summary before confirming your search.
           </p>
         )}
       </fieldset>
     </form>
+  )
+}
+
+function SummarySections({
+  summary,
+  draft,
+  original,
+  editableFields,
+  invalid,
+  onChange,
+}: {
+  summary: Summary
+  draft: SummaryDraft
+  original: SummaryDraft
+  editableFields: Set<string>
+  invalid: boolean
+  onChange: (key: SummaryKey, value: string | boolean | number) => void
+}) {
+  const missing = [
+    ...new Set([...summary.missing_fields, ...summary.profile.missing_required_fields]),
+  ]
+  const unresolved = summary.profile.preferences.locations.included.filter(
+    (place) => place.resolution !== 'resolved',
+  )
+  return (
+    <>
+      {(missing.length > 0 || summary.profile.conflicts.length > 0 || unresolved.length > 0) && (
+        <output className="block rounded-box bg-accent/20 p-3 text-sm">
+          {missing.length > 0 && (
+            <p>Still to confirm: {missing.map(profileFieldLabel).join(', ')}</p>
+          )}
+          {summary.profile.conflicts.map((conflict) => (
+            <p key={conflict}>{conflict}</p>
+          ))}
+          {unresolved.length > 0 && (
+            <p>Clarify location: {unresolved.map((place) => place.name).join(', ')}</p>
+          )}
+        </output>
+      )}
+      {groups.map((group) => {
+        const keys = new Set<string>(group.keys)
+        const fields = summaryFields.filter(([key]) => keys.has(key))
+        const dirty = fields.some(([key]) => draft[key] !== original[key])
+        const attention =
+          missing.some((key) => keys.has(key)) ||
+          (group.title === 'Search conditions' &&
+            (unresolved.length > 0 || summary.profile.conflicts.length > 0)) ||
+          (group.title === 'Other preferences' && invalid)
+        return (
+          <SummaryGroup
+            key={group.title}
+            title={group.title}
+            changed={dirty}
+            needsAttention={attention}
+            editable={fields.some(([key]) => editableFields.has(key))}
+            summary={<SummaryValues fields={fields} draft={draft} profile={summary.profile} />}
+          >
+            <SummaryFields
+              fields={fields.filter(([, , kind]) => kind !== 'boolean')}
+              draft={draft}
+              editableFields={editableFields}
+              onChange={onChange}
+            />
+          </SummaryGroup>
+        )
+      })}
+    </>
   )
 }

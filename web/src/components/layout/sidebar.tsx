@@ -469,9 +469,9 @@ function HistoryRow({
         aria-current={sessionId === search.session_id ? 'page' : undefined}
         className="block min-w-0 rounded-box px-3.5 py-3 outline-offset-[-2px] active:bg-base-200/40"
       >
-        <span className="block text-[13px] leading-5 font-medium break-words">{search.title}</span>
+        <span className="block text-sm leading-5 font-medium wrap-anywhere">{search.title}</span>
         {search.location && (
-          <span className="mt-0.5 block text-[11px] leading-4 break-words text-base-content/60">
+          <span className="mt-0.5 block text-xs leading-4 wrap-anywhere text-base-content/65">
             {search.location}
           </span>
         )}

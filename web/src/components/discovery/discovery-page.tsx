@@ -1,5 +1,6 @@
 import type { ScoutSession } from '../../lib/contracts'
 import { searchPhase } from '../../lib/search-phase'
+import { searchPresentation } from '../../lib/search-presentation'
 import { useScoutSession } from '../../state/session-context'
 import { JourneyAside } from '../journey-aside'
 import { PageHeading } from '../layout/page-heading'
@@ -9,7 +10,7 @@ import { SearchCriteria } from './search-criteria'
 import { WorkflowSteps } from './workflow-steps'
 
 const headings = {
-  initial: 'Finding the right opportunity starts with getting to know you.',
+  initial: 'Tell us about yourself',
   paused: 'Tell us a little more.',
   running: 'Finding your next role.',
   failed: 'Let’s get your search back on track.',
@@ -38,32 +39,25 @@ function transitionStep(session: ScoutSession | null) {
 function discoveryTitle(session: ScoutSession | null) {
   if (!session) return headings.initial
   if (session.outcome === 'completed') {
-    const count = session.recommendation?.jobs.length ?? 0
-    return count > 0
-      ? `${count} ${count === 1 ? 'match' : 'matches'} to explore`
-      : 'Your search results'
+    const count =
+      (session.recommendation?.jobs.length ?? 0) +
+      (session.recommendation?.pending_jobs.length ?? 0)
+    return `${count} ${count === 1 ? 'job' : 'jobs'}`
   }
-  if (session.outcome === 'running' && searchPhase(session) === 'profile')
-    return 'Reviewing your profile.'
+  if (session.outcome === 'running') return searchPresentation(session).heading
   if (session.outcome === 'paused' && session.current_stage === 'confirm')
-    return 'Confirm your search criteria.'
+    return 'Review your profile and search criteria'
   return headings[session.outcome]
 }
 
 function DiscoveryHeading() {
   const { session } = useScoutSession()
-  const stage = session?.outcome ?? 'initial'
-  const completed = stage === 'completed'
   return (
-    <PageHeading
-      eyebrow={completed ? 'YOUR OPPORTUNITIES' : 'YOUR NEXT CHAPTER'}
-      title={discoveryTitle(session)}
-      description={
-        stage === 'initial'
-          ? 'Tell us about your experience and goals to find a role that fits you better.'
-          : ''
-      }
-    />
+    <PageHeading title={discoveryTitle(session)}>
+      {session?.mode === 'replay' && (
+        <span className="badge badge-ghost badge-sm">Replay demo</span>
+      )}
+    </PageHeading>
   )
 }
 
@@ -71,13 +65,14 @@ export function DiscoveryPage() {
   const { session, busy, canEdit, edit } = useScoutSession()
   const stage = session?.outcome ?? 'initial'
   const completed = stage === 'completed'
-  const focused = completed || stage === 'running' || Boolean(session?.run_id)
+  const step = workflowStep(session)
+  const focused = completed || step === 2
   return (
-    <div className="[--job-detail-top:6rem]">
+    <div className="[--job-detail-top:1.5rem]">
       <DiscoveryHeading />
-      <WorkflowSteps step={workflowStep(session)} />
+      {!focused && <WorkflowSteps step={step} />}
       <StepTransition step={transitionStep(session)}>
-        {session?.profile && session.current_stage !== 'confirm' && (
+        {focused && session?.profile && (
           <SearchCriteria
             key={session.session_id}
             profile={session.profile}

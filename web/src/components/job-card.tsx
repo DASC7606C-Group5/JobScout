@@ -24,7 +24,7 @@ export function JobCard({
       : null
   return (
     <article
-      className={`card border ${selected ? 'border-secondary-content/35 bg-secondary/25' : 'border-secondary-content/15 bg-secondary/12'}`}
+      className={`card border ${selected ? 'border-secondary-content/35 bg-secondary/20' : 'border-base-300 bg-base-100'}`}
     >
       <button
         ref={buttonRef}
@@ -32,14 +32,14 @@ export function JobCard({
         aria-label={`View job: ${job.title}`}
         aria-pressed={selected}
         onClick={onSelect}
-        className="w-full rounded-box p-5 text-left transition-colors hover:bg-secondary/10 sm:p-6"
+        className="w-full rounded-box p-4 text-left transition-colors hover:bg-secondary/10"
       >
-        <span className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <span className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-base-content/75">{job.company}</span>
           <JobReviewStatus item={item} active={reviewActive} />
         </span>
-        <h3 className="mt-1 text-lg font-semibold tracking-tight break-words">{job.title}</h3>
-        <span className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/65">
+        <h3 className="text-base font-semibold tracking-tight wrap-anywhere">{job.title}</h3>
+        <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-base-content/65">
           <span>{job.location}</span>
           {job.employment_type && <span>{job.employment_type}</span>}
           {job.freshness_status === 'expired' && <span>Expired</span>}
@@ -47,22 +47,17 @@ export function JobCard({
             <span>Details to check</span>
           )}
         </span>
-        <span className="mt-4 block text-sm font-semibold">
+        <span className="mt-2 block text-sm font-semibold">
           {job.salary || 'Salary not provided'}
         </span>
         {reason && (
-          <span className="mt-3 block text-sm leading-6 text-base-content/70">{reason}</span>
+          <span className="mt-2 line-clamp-2 text-sm leading-6 text-base-content/70">{reason}</span>
         )}
-        <span className="mt-4 flex items-center justify-between gap-3 text-xs">
-          <span className="inline-flex items-center gap-1.5">
-            View details <Icon name="arrow" size={14} />
+        {saved && (
+          <span className="mt-2 inline-flex items-center gap-1.5 text-xs text-base-content/60">
+            <Icon name="bookmark" size={14} /> Saved
           </span>
-          {saved && (
-            <span className="inline-flex items-center gap-1.5 text-base-content/60">
-              <Icon name="bookmark" size={14} /> Saved
-            </span>
-          )}
-        </span>
+        )}
       </button>
     </article>
   )

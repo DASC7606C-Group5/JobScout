@@ -18,44 +18,37 @@ export function ResultCountField({
   const error = resultCountError(value)
   return (
     <div>
-      <label htmlFor={id} className="mb-2 block text-sm">
-        Jobs to show
-      </label>
-      <div className="flex items-center gap-4">
+      <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+        <label htmlFor={id}>Jobs to show</label>
+        <output htmlFor={id} className="font-medium tabular-nums">
+          {value}
+        </output>
+      </div>
+      <div>
         <input
-          id={`${id}-range`}
+          id={id}
+          ref={inputRef}
           type="range"
           min={5}
           max={20}
           step={1}
-          className="range min-w-0 flex-1 range-sm"
-          aria-label="Jobs to show slider"
-          aria-describedby={`${id}-hint`}
-          value={Math.min(20, Math.max(5, value))}
-          disabled={disabled}
-          onChange={(event) => onChange(event.target.valueAsNumber)}
-        />
-        <input
-          id={id}
-          ref={inputRef}
-          type="number"
-          min={5}
-          max={20}
-          step={1}
-          value={value || ''}
-          className="input w-24 border border-base-300 bg-base-200/25 text-sm"
+          value={value}
+          className="range w-full range-primary range-sm"
           disabled={disabled}
           aria-invalid={Boolean(error)}
-          aria-describedby={`${id}-hint`}
-          onChange={(event) => onChange(event.target.value === '' ? 0 : event.target.valueAsNumber)}
+          aria-describedby={error ? `${id}-hint` : undefined}
+          onChange={(event) => onChange(event.target.valueAsNumber)}
         />
+        <div className="mt-1 flex justify-between text-xs text-base-content/55" aria-hidden="true">
+          <span>5</span>
+          <span>20</span>
+        </div>
       </div>
-      <p
-        id={`${id}-hint`}
-        className={`mt-2 text-xs ${error ? 'text-error' : 'text-base-content/65'}`}
-      >
-        {error || 'Show up to this many jobs. We may review more jobs to choose the best matches.'}
-      </p>
+      {error && (
+        <p id={`${id}-hint`} className="mt-2 text-xs text-error">
+          {error}
+        </p>
+      )}
     </div>
   )
 }
