@@ -48,7 +48,7 @@ export function ResumeField({
               disabled={reading}
               onClick={() => fileRef.current?.click()}
             >
-              Replace resume
+              Replace
             </button>
             <button
               type="button"

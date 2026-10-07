@@ -2408,7 +2408,7 @@ test('a failed resume replacement retains the original file and introduction for
     page.getByRole('button', { name: 'Remove resume: original.txt', exact: true }),
   ).toBeVisible()
   const chooserPromise = page.waitForEvent('filechooser')
-  await page.getByRole('button', { name: 'Replace resume', exact: true }).click()
+  await page.getByRole('button', { name: 'Replace', exact: true }).click()
   const chooser = await chooserPromise
   await chooser.setFiles({
     name: 'replacement.pdf',
