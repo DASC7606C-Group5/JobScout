@@ -237,3 +237,67 @@ def test_score_survives_durable_workflow_serializer() -> None:
     serializer = checkpoint_serializer()
     restored = serializer.loads_typed(serializer.dumps_typed({"recommendation": result}))
     assert restored["recommendation"].jobs[0].match_score == score
+
+
+def test_holistic_dimensions_accept_normalized_facts_and_cross_category_requirements() -> None:
+    applicant = profile()
+    applicant.skills = ["Python", "SQL"]
+    applicant.projects = ["Sales dashboard using Python and PostgreSQL"]
+    listing = "Use Python and SQL. Present weekly dashboards. Full-time experience is not required."
+    raw_resume = (
+        "Skills: Python and SQL. Completed a project presenting a weekly reporting dashboard."
+    )
+    analysis = JobAnalysis(
+        job_id="j",
+        requirements=[
+            Requirement(
+                requirement_id="tools",
+                text="Use Python and SQL",
+                category="skill",
+                source_quotes=[SourceQuote(document_id="jd", excerpt="Use Python and SQL")],
+            ),
+            Requirement(
+                requirement_id="duties",
+                text="Present weekly dashboards",
+                category="responsibility",
+                source_quotes=[SourceQuote(document_id="jd", excerpt="Present weekly dashboards")],
+            ),
+            Requirement(
+                requirement_id="experience",
+                text="Full-time experience is not required",
+                category="experience",
+                source_quotes=[
+                    SourceQuote(document_id="jd", excerpt="Full-time experience is not required")
+                ],
+            ),
+        ],
+    )
+    skill = judgment("skills", "tools", "skills:0", "Python and SQL")
+    skill.job_source_quotes[0].excerpt = "Use Python and SQL"
+    skill.profile_fact_ids = ["skills:0", "skills:1"]
+    duties = judgment(
+        "responsibilities", "duties", "projects:0", "presenting a weekly reporting dashboard"
+    )
+    duties.job_source_quotes[0].excerpt = "Present weekly dashboards"
+    waived = DimensionAssessment.model_validate(
+        {
+            "id": "seniority",
+            "status": "not_applicable",
+            "explanation": "Full-time work is waived",
+            "requirement_ids": ["experience"],
+            "job_source_quotes": [
+                {"document_id": "jd", "excerpt": "Full-time experience is not required"}
+            ],
+        }
+    )
+    score = build_match_score(
+        [skill, duties, waived], analysis, applicant, {"jd": listing}, {"resume": raw_resume}
+    )
+    assert score.dimensions[0].score == 80
+    assert score.dimensions[1].score == 80
+    assert score.dimensions[3].status == "not_applicable"
+    assert score.applicable_weight == 90 and score.coverage == 61
+    assert (
+        score.dimensions[1].profile_source_quotes[0].excerpt
+        == "presenting a weekly reporting dashboard"
+    )

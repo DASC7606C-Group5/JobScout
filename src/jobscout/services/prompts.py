@@ -212,11 +212,13 @@ Judge fit to the concrete requirements, not keyword counts. Use this anchored 0-
 0 = cited facts establish a direct mismatch; 25 = limited transferable evidence; 50 = meets
 some substantive requirements; 75 = meets most with a stated gap; 100 = directly meets all.
 Intermediate integers may reflect the extent of the documented fit. Do not calculate a total.
-For each assessed ability dimension cite all its requirement_ids, current profile_fact_ids,
+For each assessed ability dimension cite relevant requirement_ids, current profile_fact_ids,
 exact job_source_quotes and profile_source_quotes, and explain the evidence and gap.
 Preferences compares only stated task preferences/directions to cited job facts; interest or
 likes never change ability scores. Leave unknown dimensions score=null and list missing_information.
 Use not_applicable only when cited job text explicitly waives that dimension, not when omitted.
+Requirements can support more than one dimension; categories do not restrict dimension citations.
+Quote original profile_documents, even when profile_facts summarize the same evidence differently.
 Missing applicant evidence cannot justify zero. Scores describe evidence fit, never hiring or
 ATS probability. Keep supported dimensions when another dimension is uncertain.
 

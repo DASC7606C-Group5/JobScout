@@ -70,6 +70,7 @@ def build_match_score(
     for identity, weight in DIMENSION_WEIGHTS.items():
         requirements = [r for r in analysis.requirements if r.category == categories[identity]]
         expected = {r.requirement_id for r in requirements}
+        known_requirements = {r.requirement_id for r in analysis.requirements}
         rows = [row for row in judgments if row.id == identity]
         row = rows[0] if len(rows) == 1 else DimensionAssessment(id=identity)
         valid_job = [
@@ -86,20 +87,12 @@ def build_match_score(
             len(valid_job) == len(row.job_source_quotes)
             and len(valid_profile) == len(row.profile_source_quotes)
             and all(key in facts for key in row.profile_fact_ids)
-            and set(row.requirement_ids).issubset(expected)
+            and set(row.requirement_ids).issubset(known_requirements)
         )
         if row.status == "assessed":
             valid &= bool(valid_job) and bool(row.explanation.strip())
             if identity != "preferences":
                 valid &= bool(valid_profile) and bool(row.profile_fact_ids)
-                valid &= all(
-                    any(
-                        q.excerpt.casefold() in facts.get(key, "").casefold()
-                        for key in row.profile_fact_ids
-                    )
-                    for q in valid_profile
-                )
-                valid &= bool(expected) and set(row.requirement_ids) == expected
                 if identity == "education":
                     valid &= all(key.startswith("education:") for key in row.profile_fact_ids)
             else:
@@ -126,8 +119,10 @@ def build_match_score(
             for field in (
                 ("education",)
                 if identity == "education"
+                else ("education", "internships", "projects")
+                if identity == "seniority"
                 else ("internships", "projects")
-                if identity in {"experience", "seniority", "responsibilities"}
+                if identity in {"experience", "responsibilities"}
                 else ("skills", "internships", "projects")
             )
         }
@@ -152,6 +147,9 @@ def build_match_score(
                 for text in values
             }
             if identity != "preferences"
+            else {},
+            "background_documents": profile_documents
+            if identity not in {"education", "preferences"}
             else {},
         }
         key = fingerprint(inputs)
