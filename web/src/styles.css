@@ -80,7 +80,7 @@
   .workspace-page:has(.results-workspace) .search-criteria details[open] {
     border: 1px solid var(--color-base-300);
     border-radius: var(--radius-box);
-    background: var(--color-base-100);
+    background: color-mix(in srgb, var(--color-primary) 10%, var(--color-base-100));
     box-shadow: 0 8px 24px color-mix(in oklch, var(--color-base-content) 12%, transparent);
   }
 }
