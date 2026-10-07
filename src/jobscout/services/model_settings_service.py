@@ -163,6 +163,8 @@ class ModelSettingsService:
         return datetime.now(timezone(timedelta(hours=8))).date().isoformat()
 
     async def charge(self, owner: str, connection: BaseDBAsyncClient) -> None:
+        if not self.settings.production:
+            return
         day = self.day()
         for account, limit in [
             (owner, self.settings.server_daily_user_limit),
@@ -175,12 +177,15 @@ class ModelSettingsService:
             await row.save(using_db=connection, update_fields=["operations"])
 
     async def usage(self, owner: str) -> dict[str, Any]:
+        if not self.settings.production:
+            return {"enabled": False}
         day = self.day()
         counts = {
             row.owner_id: row.operations
             for row in await DailyUsage.filter(day=day, owner_id__in=[owner, "__all__"])
         }
         return {
+            "enabled": True,
             "day": day,
             "timezone": "Asia/Hong_Kong",
             "used": counts.get(owner, 0),

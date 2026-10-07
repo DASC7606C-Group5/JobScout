@@ -284,6 +284,9 @@ def test_operation_snapshots_limits_and_atomic_idempotent_allowance() -> None:
                 "llm_decision_api_key": "server-decision",
                 "credentials_key": Fernet.generate_key().decode(),
                 "server_daily_user_limit": 1,
+                "production": True,
+                "public_origin": "https://jobscout.example",
+                "cookie_secure": True,
             }
         )
         models = ModelSettingsService(settings)
@@ -299,6 +302,7 @@ def test_operation_snapshots_limits_and_atomic_idempotent_allowance() -> None:
             first = await manager.create(create_payload())
             assert (await manager.create(create_payload())).session_id == first.session_id
             assert (await models.usage("workflow-owner"))["used"] == 1
+            assert (await models.usage("workflow-owner"))["enabled"] is True
             await graph.started.wait()
             from jobscout.services.model_settings_service import ModelWrite
 
@@ -351,6 +355,73 @@ def test_operation_snapshots_limits_and_atomic_idempotent_allowance() -> None:
             await Tortoise.close_connections()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("existing_usage", [False, True])
+def test_nonproduction_operations_do_not_check_or_update_daily_usage(existing_usage: bool) -> None:
+    async def scenario() -> None:
+        from jobscout.models import DailyUsage
+        from jobscout.schemas.session import SessionResumeRequest
+
+        await Tortoise.init(config=tortoise_config("sqlite://:memory:"))
+        await Tortoise.generate_schemas()
+        models = ModelSettingsService(
+            Settings.model_validate(
+                {
+                    "production": False,
+                    "llm_semantic_api_key": "server-semantic",
+                    "llm_decision_api_key": "server-decision",
+                    "server_daily_user_limit": 1,
+                    "server_daily_total_limit": 1,
+                }
+            )
+        )
+        graph = ControlledGraph()
+        graph.release.set()
+        manager = SessionService(
+            graph, Memory(), model_settings=models, graph_factory=lambda _: graph
+        )
+        expected = []
+        try:
+            if existing_usage:
+                for owner in ["workflow-owner", "__all__"]:
+                    await DailyUsage.create(owner_id=owner, day=models.day(), operations=1)
+                    expected.append((owner, models.day(), 1))
+            for request_id in ["first", "second"]:
+                created = await manager.create(create_payload(request_id))
+                task = manager.sessions[created.session_id].task
+                assert task is not None
+                await task
+            completed = await manager.get(created.session_id)
+            resumed = await manager.resume(
+                created.session_id,
+                SessionResumeRequest(
+                    request_id="edit",
+                    expected_revision=completed.revision,
+                    action="edit_conditions",
+                ),
+            )
+            task = manager.sessions[resumed.session_id].task
+            assert task is not None
+            await task
+            assert (await manager.get(resumed.session_id)).outcome == "completed"
+            assert await models.usage("workflow-owner") == {"enabled": False}
+            assert sorted(
+                (row.owner_id, row.day, row.operations) for row in await DailyUsage.all()
+            ) == sorted(expected)
+        finally:
+            await manager.close()
+            await Tortoise.close_connections()
+
+    asyncio.run(scenario())
+
+
+def test_nonproduction_usage_api_reports_disabled_allowance() -> None:
+    with TestClient(create_replay_app()) as client:
+        register(client)
+        response = client.get("/api/v1/settings/usage")
+        assert response.status_code == 200
+        assert response.json() == {"enabled": False}
 
 
 @pytest.mark.parametrize("provider_name", ["openai", "openai_compatible", "deepseek"])
@@ -429,6 +500,10 @@ def test_site_capacity_and_allowance_rejection_roll_back_acceptance() -> None:
                 "llm_semantic_api_key": "server-semantic",
                 "llm_decision_api_key": "server-decision",
                 "server_daily_total_limit": 3,
+                "production": True,
+                "public_origin": "https://jobscout.example",
+                "cookie_secure": True,
+                "credentials_key": Fernet.generate_key().decode(),
             }
         )
         models = ModelSettingsService(settings)

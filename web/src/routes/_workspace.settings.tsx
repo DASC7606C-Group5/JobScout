@@ -25,13 +25,15 @@ interface ModelSettings {
   endpoints: { id: string; name: string; thinking_supported: boolean }[]
   personal_available: boolean
 }
-interface Usage {
+interface DailyUsage {
+  enabled: true
   remaining: number
   limit: number
   server_remaining: number
   day: string
   timezone: string
 }
+type Usage = DailyUsage | { enabled: false }
 interface ModelFields {
   endpoint_id: string
   model: string
@@ -356,7 +358,7 @@ function SettingsPage() {
         </button>
       </PageHeading>
       <p className="mb-5 text-base-content/70">Signed in as {account?.username}.</p>
-      {usage.data && (
+      {usage.data?.enabled && (
         <section
           aria-labelledby="usage-heading"
           className="card mb-8 border border-base-300 bg-base-100"
