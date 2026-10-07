@@ -9,10 +9,11 @@
 
 ## Plain language
 
-- Use short, direct sentences naming the actual data, actions, and rules. Keep precise technical terms; avoid vague assessment jargon.
+- Use concrete names and direct sentences in code, schemas, comments, prompts and UI. Name the actual data, action or rule; avoid umbrella terms such as evidence, signal, alignment or provenance. Keep established technical terms when accurate, such as AbortSignal.
 - Explain what the applicant has done, what the job asks for, and what is missing or unknown. Missing information does not prove inability.
 - In prompts, state the task and necessary constraints once. Add examples or prescribed steps only when they resolve a real ambiguity.
-- When editing wording, preserve business rules, supplied facts, exact quotations, and stable identifiers.
+- Name measurements by what they measure and their units: assessed_percentage instead of coverage, input_hash instead of input_fingerprint. Distinguish source quotes, applicant experience, job requirements and missing details rather than calling them all facts or context.
+- Preserve business rules, supplied facts and exact quotations. When renaming a contract, update producers, consumers and tests together; otherwise preserve its identifiers.
 
 ## Tests
 
