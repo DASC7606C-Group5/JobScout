@@ -63,7 +63,7 @@ export function Results({
         reviewActive={reviewActive}
       />
       {((!savedOnly && result) || footerActions) && (
-        <footer className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-base-300/70 pt-2">
+        <footer className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-1 pt-2">
           {!savedOnly && result && (
             <p className="flex items-center gap-1.5 text-xs text-base-content/60">
               <Icon name="clock" size={13} />
