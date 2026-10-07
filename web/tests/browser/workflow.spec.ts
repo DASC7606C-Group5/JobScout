@@ -889,6 +889,10 @@ test('final results preserve an open job and saved selection from an early previ
   await expect(
     page.getByRole('button', { name: 'Remove saved job: Engineer 0', exact: true }),
   ).toBeVisible()
+  await page.reload()
+  await expect(
+    page.getByRole('heading', { name: 'Engineer 0', exact: true, level: 2 }),
+  ).toBeVisible()
   const improved = structuredClone(running)
   const better = createRecommendationFixture()
   better.job = { ...better.job, job_id: 'better-engineer', title: 'Better Engineer' }
@@ -1156,6 +1160,52 @@ for (const outcome of ['running', 'completed'] as const) {
     }
   })
 }
+
+test('the first search after editing criteria ignores a job selected in the previous run', async ({
+  page,
+}) => {
+  const original = resultSession()
+  const state = await mockSessions(page, original)
+  state.seedSession(original)
+  const running = createSessionFixture({
+    ...original,
+    revision: original.revision + 2,
+    outcome: 'running',
+    current_stage: 'search',
+    run_id: 'edited-search-run',
+    recommendation: null,
+    progress: { ...createSessionFixture().progress, sequence: 1 },
+  })
+  await page.route('**/api/v1/sessions/session-1/resume', async (route) => {
+    const body = route.request().postDataJSON() as ResumeSessionRequest
+    if (body.action !== 'confirm_search') return route.fallback()
+    state.requests.push(body)
+    state.publish(running)
+    await route.fulfill({ status: 202, json: running })
+  })
+  await page.goto('/searches/session-1?job=test-job-1')
+  await expect(page.getByRole('article', { name: 'Job details', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Edit criteria', exact: true }).click()
+  await page.getByRole('button', { name: 'Continue editing', exact: true }).click()
+  await page.getByRole('button', { name: 'Confirm and search', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Finish search', exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Job screening activity' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Recommended jobs' })).toHaveCount(0)
+  expect(state.requests.map((request) => request.action)).toEqual([
+    'edit_conditions',
+    'confirm_search',
+  ])
+  expect(state.requests[1]?.expected_revision).toBe(original.revision + 1)
+  state.publish({
+    ...running,
+    outcome: 'completed',
+    current_stage: 'completed',
+    recommendation: original.recommendation,
+    progress: { ...running.progress, sequence: 2 },
+  })
+  await expect(page.getByRole('button', { name: 'View job: React Engineer' })).toBeVisible()
+  expect(state.createCount()).toBe(0)
+})
 
 test('criteria confirmation prevents duplicate edits and lets a failed request be retried', async ({
   page,

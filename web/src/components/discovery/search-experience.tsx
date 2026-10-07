@@ -12,9 +12,11 @@ import { SearchRecord } from './search-record'
 type SearchView = 'activity' | 'results' | 'history'
 
 function initialView(session: ScoutSession, selectedJob: unknown): SearchView {
-  return selectedJob || (session.outcome === 'failed' && session.recommendation)
-    ? 'results'
-    : 'activity'
+  const result = session.recommendation
+  const hasSelectedJob = [...(result?.jobs ?? []), ...(result?.pending_jobs ?? [])].some(
+    (item) => item.job.job_id === selectedJob,
+  )
+  return hasSelectedJob || (session.outcome === 'failed' && result) ? 'results' : 'activity'
 }
 
 export function SearchExperience({

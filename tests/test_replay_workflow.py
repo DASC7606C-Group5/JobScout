@@ -20,6 +20,67 @@ from tests.test_web_scaffold import settled
 DESCRIPTION = load_dataset().profile_input("data-analyst-internship")["description"]
 
 
+def test_completed_search_can_reconfirm_unchanged_criteria_on_the_first_attempt() -> None:
+    dataset = load_dataset()
+    with TestClient(create_replay_app()) as client:
+        created = client.post(
+            "/api/v1/sessions",
+            json={
+                "request_id": "repeat-create",
+                **dataset.profile_input("data-analyst-internship"),
+            },
+        )
+        assert created.status_code == 202, created.json()
+        session_id = created.json()["session_id"]
+        summary = settled(client, session_id)
+        previous_run_id = None
+        previous_job_ids: set[str] | None = None
+        for attempt in range(2):
+            confirmed = client.post(
+                f"/api/v1/sessions/{session_id}/resume",
+                json={
+                    "request_id": f"repeat-confirm-{attempt}",
+                    "expected_revision": summary["revision"],
+                    "action": "confirm_search",
+                },
+            )
+            assert confirmed.status_code == 202, confirmed.json()
+            completed = settled(client, session_id)
+            assert completed["session_id"] == session_id
+            assert completed["revision"] == summary["revision"] + 1
+            assert completed["outcome"] == "completed"
+            assert completed["run_id"] is not None
+            assert completed["run_id"] != previous_run_id
+            jobs = completed["recommendation"]["jobs"]
+            assert dataset.jobs[0]["job"]["source_url"] in {
+                item["job"]["source_url"] for item in jobs
+            }
+            job_ids = {item["job"]["job_id"] for item in jobs}
+            if previous_job_ids is not None:
+                assert job_ids == previous_job_ids
+            previous_run_id = completed["run_id"]
+            previous_job_ids = job_ids
+            if attempt == 0:
+                edited = client.post(
+                    f"/api/v1/sessions/{session_id}/resume",
+                    json={
+                        "request_id": "repeat-edit",
+                        "expected_revision": completed["revision"],
+                        "action": "edit_conditions",
+                    },
+                )
+                assert edited.status_code == 202, edited.json()
+                summary = settled(client, session_id)
+                assert summary["session_id"] == session_id
+                assert summary["revision"] == completed["revision"] + 1
+                assert summary["outcome"] == "paused"
+                assert summary["current_stage"] == "confirm"
+                assert summary["recommendation"] is None
+                assert summary["run_id"] is None
+                assert summary["search_summary"]["ready"]
+                assert not summary["search_summary"]["confirmed"]
+
+
 def test_replay_apps_use_their_own_profile_and_job_samples(tmp_path: Path) -> None:
     original = json.loads(DEFAULT_DATASET.read_text(encoding="utf-8"))
     alternate = json.loads(DEFAULT_DATASET.read_text(encoding="utf-8"))
