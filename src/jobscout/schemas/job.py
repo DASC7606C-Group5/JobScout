@@ -46,3 +46,11 @@ class JobPosting(BaseModel):
     description_is_excerpt: bool = False
     employment_type: str | None = None
     target_directions: list[str] = Field(default_factory=list)
+
+    def has_full_description(self) -> bool:
+        return bool(self.description.strip() and not self.description_is_excerpt) or any(
+            document.text.strip()
+            and not document.is_excerpt
+            and not document.document_id.endswith(":metadata")
+            for document in self.source_documents
+        )

@@ -112,6 +112,7 @@ class Assessment:
         rows = [
             RecommendationItem(
                 job=job,
+                recommendation_fit="possible",
                 verification_status="pending" if self.pending else "confirmed",
                 unknown_conditions=["location"] if self.pending else [],
             )
@@ -163,6 +164,93 @@ def test_requested_target_is_reached_by_relevant_vacancies(target: int) -> None:
             for event in events
             for item in event["recommendation"].jobs
         )
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("status,fit", [("unavailable", "unknown"), ("partial", "unlikely")])
+def test_failed_or_unsuitable_reviews_do_not_fill_the_success_target(status: str, fit: str) -> None:
+    class UnhelpfulAssessment(Assessment):
+        async def assess(self, *args: Any, **kwargs: Any) -> RecommendationResult:
+            result = await super().assess(*args, **kwargs)
+            result.jobs = [
+                row.model_copy(update={"analysis_status": status, "recommendation_fit": fit})
+                for row in result.jobs
+            ]
+            return result
+
+    async def scenario() -> None:
+        provider = ScriptedProvider(
+            [
+                lambda _: query(),
+                *[
+                    lambda o: (
+                        "assess_candidates",
+                        {
+                            "job_ids": [
+                                row["job_id"]
+                                for row in o["candidates"]
+                                if not row["analysis_attempts"]
+                            ][:5]
+                        },
+                    )
+                    for _ in range(3)
+                ],
+                lambda _: ("finish_search", {"reason": "target_reached"}),
+                lambda _: query(page=2),
+            ]
+        )
+        result = await run(provider, SnapshotSearch(15), UnhelpfulAssessment(), profile(5))
+        assert result["stop_reason"] == "source_exhausted"
+        assert len(result["analyzed_job_ids"]) == 15
+        assert provider.observations[4]["matched_count"] == 15
+        assert provider.observations[4]["useful_count"] == 0
+
+    asyncio.run(scenario())
+
+
+def test_promising_pending_job_is_not_crowded_out_by_failed_confirmed_reviews() -> None:
+    class MixedAssessment(Assessment):
+        async def assess(self, *args: Any, **kwargs: Any) -> RecommendationResult:
+            result = await super().assess(*args, **kwargs)
+            promising = result.jobs[-1]
+            result.jobs = [
+                row.model_copy(
+                    update={"analysis_status": "unavailable", "recommendation_fit": "unknown"}
+                )
+                for row in result.jobs[:-1]
+            ]
+            result.pending_jobs = [
+                promising.model_copy(
+                    update={
+                        "analysis_status": "partial",
+                        "recommendation_fit": "recommended",
+                        "verification_status": "pending",
+                        "unknown_conditions": ["location"],
+                    }
+                )
+            ]
+            return result
+
+    async def scenario() -> None:
+        provider = ScriptedProvider(
+            [
+                lambda _: query(),
+                lambda o: (
+                    "assess_candidates",
+                    {"job_ids": [row["job_id"] for row in o["candidates"]]},
+                ),
+                lambda _: ("finish_search", {"reason": "results_ready"}),
+            ]
+        )
+        result = await run(provider, SnapshotSearch(6), MixedAssessment(), profile(5))
+        selected = result["recommendation"]
+        assert len(selected.jobs) + len(selected.pending_jobs) == 5
+        assert result["progress"]["matched_count"] == len(selected.jobs)
+        assert result["progress"]["pending_count"] == len(selected.pending_jobs)
+        assert [row.job.source_url for row in selected.pending_jobs] == [
+            "https://jobsdb.example/jobs/5"
+        ]
 
     asyncio.run(scenario())
 
@@ -316,8 +404,10 @@ def test_decision_context_keeps_latest_feedback_without_replaying_old_snapshots(
         assert result["stop_reason"] == "results_ready"
         assert len(search.requests) == 1
         assert max(len(messages) for messages in provider.inputs) == 5
+        background = json.loads(provider.inputs[0][1]["content"])["applicant_experience"]
+        assert background["projects"] == [applicant.projects[0][:600]]
         assert all(
-            "PRIVATE_PROFILE_SENTINEL" not in json.dumps(messages) for messages in provider.inputs
+            applicant.projects[0] not in json.dumps(messages) for messages in provider.inputs
         )
         assert json.loads(provider.inputs[-1][-2]["content"])["error"] == "already_completed"
         assert (

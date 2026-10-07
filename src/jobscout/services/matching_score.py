@@ -16,6 +16,8 @@ from jobscout.schemas.profile import UserProfile
 if TYPE_CHECKING:
     from jobscout.services.job_assessment_service import JobAnalysis
 
+MIN_TOTAL_ASSESSED_PERCENTAGE = 60
+
 
 def hash_inputs(value: object) -> str:
     return hashlib.sha256(
@@ -30,6 +32,8 @@ def aggregate(dimensions: list[MatchDimension], *, incomplete: bool = False) -> 
     # Integer half-up rounding avoids runtime-dependent or banker's rounding.
     total = (2 * numerator + assessed) // (2 * assessed) if assessed else None
     assessed_percentage = (200 * assessed + applicable) // (2 * applicable) if applicable else 0
+    if assessed_percentage < MIN_TOTAL_ASSESSED_PERCENTAGE:
+        total = None
     provisional = incomplete or assessed != applicable or total is None
     return MatchScore(
         total=total,
@@ -38,7 +42,7 @@ def aggregate(dimensions: list[MatchDimension], *, incomplete: bool = False) -> 
         applicable_weight=applicable,
         assessed_percentage=assessed_percentage,
         provisional=provisional,
-        completeness="unknown" if total is None else "partial" if provisional else "complete",
+        completeness="unknown" if not assessed else "partial" if provisional else "complete",
         input_hash=hash_inputs([d.input_hash for d in dimensions]),
     )
 
@@ -83,18 +87,20 @@ def build_match_score(
             for q in row.profile_source_quotes
             if q.excerpt.strip() and q.excerpt in profile_documents.get(q.document_id, "")
         ]
-        valid = (
-            len(valid_job) == len(row.job_source_quotes)
-            and len(valid_profile) == len(row.profile_source_quotes)
-            and all(key in facts for key in row.profile_fact_ids)
-            and set(row.requirement_ids).issubset(known_requirements)
+        row = row.model_copy(
+            update={"job_source_quotes": valid_job, "profile_source_quotes": valid_profile}
         )
+        valid = all(key in facts for key in row.profile_fact_ids) and set(
+            row.requirement_ids
+        ).issubset(known_requirements)
         if row.status == "assessed":
             valid &= bool(valid_job) and bool(row.explanation.strip())
             if identity != "preferences":
-                valid &= bool(valid_profile) and bool(row.profile_fact_ids)
+                valid &= bool(valid_profile)
                 if identity == "education":
-                    valid &= all(key.startswith("education:") for key in row.profile_fact_ids)
+                    valid &= bool(row.profile_fact_ids) and all(
+                        key.startswith("education:") for key in row.profile_fact_ids
+                    )
             else:
                 valid &= bool(
                     profile.target_directions
@@ -129,7 +135,7 @@ def build_match_score(
             )
         }
         inputs = {
-            "scoring_rules": "six-dimension-v1",
+            "scoring_rules": "shared-comparisons-v2",
             "explanation_version": 2,
             "dimension": identity,
             "requirements": [r.model_dump(mode="json") for r in requirements],

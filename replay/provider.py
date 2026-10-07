@@ -45,7 +45,7 @@ class SyntheticProvider:
             row["job_id"] for row in observation["candidates"] if row["analysis_attempts"] == 0
         ]
         arguments: dict[str, Any]
-        if observation["matched_count"] >= observation["result_limit"]:
+        if observation["useful_count"] >= observation["result_limit"]:
             name, arguments = "finish_search", {"reason": "target_reached"}
         elif candidates and observation["remaining_candidates"]:
             name, arguments = "assess_candidates", {"job_ids": candidates[:10]}
@@ -71,7 +71,7 @@ class SyntheticProvider:
                     "finish_search",
                     {
                         "reason": "target_reached"
-                        if observation["matched_count"] >= observation["result_limit"]
+                        if observation["useful_count"] >= observation["result_limit"]
                         else "source_exhausted"
                     },
                 )
@@ -197,7 +197,7 @@ class SyntheticProvider:
                     output["changes"].append({"field": field, "value": match.group(1).strip()})
         elif payload.get("task") == "matching":
             output = {"jobs": []}
-            documents = payload["profile_documents"]
+            documents = payload["profile_quotes"]
             skills = {
                 fact["text"].casefold()
                 for fact in payload["profile_facts"].values()
@@ -209,11 +209,7 @@ class SyntheticProvider:
                 for requirement in job["requirements"]:
                     text = requirement["text"]
                     ref = next(
-                        (
-                            {"document_id": doc_id, "excerpt": text}
-                            for doc_id, content in documents.items()
-                            if text in content
-                        ),
+                        (doc_id for doc_id, content in documents.items() if text in content),
                         None,
                     )
                     strong = text.casefold() in skills and ref is not None
@@ -221,8 +217,8 @@ class SyntheticProvider:
                         {
                             "requirement_id": requirement["requirement_id"],
                             "level": "strong" if strong else "not_documented",
-                            "profile_source_quotes": [ref] if strong else [],
-                            "experience_source_quotes": [],
+                            "profile_quote_ids": [ref] if strong else [],
+                            "explanation": f"The supplied background {'documents' if strong else 'does not mention'} {text}.",
                             "profile_fact_ids": [
                                 identity
                                 for identity, fact in payload["profile_facts"].items()
@@ -234,21 +230,23 @@ class SyntheticProvider:
                         }
                     )
                     suggestions.append(
-                        {
-                            "requirement_id": requirement["requirement_id"],
-                            "suggestion": f"Prepare a small example demonstrating {text} and explain your approach.",
-                        }
+                        f"Prepare a small example demonstrating {text} and explain your approach."
                     )
                 output["jobs"].append(
                     {
                         "job_id": job["job_id"],
+                        "recommendation_fit": "possible",
+                        "recommendation_reason": "Your background offers experience relevant to this role.",
                         "matches": matches,
-                        "preparation_suggestions": suggestions[:10],
+                        "preparation_suggestions": suggestions[:2],
                     }
                 )
         else:
             raise ValueError("Unsupported replay schema; no live fallback")
-        return schema.model_validate(output)
+        result = output["jobs"][0] if payload.get("task") == "matching" else output
+        if schema.__name__ == "SummaryReviewResponse":
+            result.pop("preparation_suggestions", None)
+        return schema.model_validate(result)
 
 
 class ReplayProvider(SyntheticProvider):

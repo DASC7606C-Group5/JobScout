@@ -61,13 +61,18 @@ def test_exact_weights_half_up_and_partial_denominator() -> None:
     assert result.total == 63
     assert result.assessed_percentage == 100 and not result.provisional
     partial = aggregate(dimensions({"skills": 80, "preferences": 50}, {"education"}))
-    assert partial.total == 73  # 2900 / 40 = 72.5
+    assert partial.total is None
     assert (partial.assessed_weight, partial.applicable_weight, partial.assessed_percentage) == (
         40,
         95,
         42,
     )
     assert partial.provisional and partial.completeness == "partial"
+    assert partial.dimensions[0].score == 80
+    enough = aggregate(
+        dimensions({"skills": 72, "responsibilities": 74, "experience": 72, "education": 70})
+    )
+    assert enough.total == 73  # 5800 / 80 = 72.5
     unknown = aggregate(dimensions({}))
     assert unknown.total is None and unknown.assessed_percentage == 0
     assert unknown.completeness == "unknown"
@@ -93,7 +98,7 @@ def test_low_assessed_percentage_does_not_outrank_supported_fit_and_ties_use_job
     excluded = supported.model_copy(update={"recommendation_fit": "unlikely"})
     assert recommendation_key(sparse) < recommendation_key(excluded)
     incomplete = supported.model_copy(update={"analysis_status": "partial"})
-    assert recommendation_key(tied) < recommendation_key(incomplete)
+    assert recommendation_key(incomplete) == recommendation_key(supported)
 
 
 def judgment(identity: str, requirement: str, fact: str, excerpt: str) -> DimensionAssessment:
@@ -147,7 +152,7 @@ def test_bad_reference_isolated_and_input_changes_invalidate() -> None:
     first = score()
     assert first.dimensions[0].score == 80
     assert first.dimensions[4].status == "unknown"
-    assert first.total == 80 and first.assessed_percentage == 30 and first.provisional
+    assert first.total is None and first.assessed_percentage == 30 and first.provisional
     applicant.preferences.location = "Shanghai"
     preference_change = score()
     assert first.dimensions[0].input_hash == preference_change.dimensions[0].input_hash

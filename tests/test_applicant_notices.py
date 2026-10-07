@@ -92,7 +92,6 @@ def test_job_notices_are_deduplicated_and_do_not_become_search_notices() -> None
     assert [(item.code, item.job_id) for item in result.jobs[0].notices] == [
         ("listing_incomplete", "selected"),
         ("listing_status_unverified", "selected"),
-        ("analysis_partial", "selected"),
     ]
     assert all(item.action == "open_listing" for item in result.jobs[0].notices)
     assert result.notices == []

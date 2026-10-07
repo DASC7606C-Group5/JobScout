@@ -165,6 +165,10 @@ class SearchAgent:
                         "confirmed_profile": profile.model_dump(
                             mode="json", include={"target_directions", "skills", "preferences"}
                         ),
+                        "applicant_experience": {
+                            field: [text[:600] for text in getattr(profile, field)[:3]]
+                            for field in ("education", "internships", "projects")
+                        },
                         "available_sources": self.sources,
                         "result_limit": self.target,
                         "maximum_candidates": self.candidate_limit,
@@ -397,7 +401,7 @@ class SearchAgent:
                 return {"error": "search_not_started"}
             if arguments.reason == "results_ready" and not (self.matched or self.pending):
                 return {"error": "no_results", "observation": self.observation()}
-            if arguments.reason == "target_reached" and len(self.matched) < self.target:
+            if arguments.reason == "target_reached" and self.useful_count() < self.target:
                 return {"error": "target_not_reached"}
             if arguments.reason == "source_exhausted" and (
                 not self.query_history
@@ -650,8 +654,14 @@ class SearchAgent:
                 self.assessed_ids.add(job_id)
                 destination = self.pending if pending else self.matched
                 other = self.matched if pending else self.pending
+                previous = self.matched.get(job_id) or self.pending.get(job_id)
                 other.pop(job_id, None)
-                self.analysis_diagnostics.pop(job_id, None)
+                if (
+                    previous is not None
+                    and previous.analysis_status != "unavailable"
+                    and item.analysis_status == "unavailable"
+                ):
+                    item = previous.model_copy(update={"review_issue": item.review_issue})
                 destination[job_id] = item.model_copy(update={"review_status": "reviewed"})
                 await self.publish(
                     "analysis_completed", "Finished comparing a job with your experience."
@@ -730,7 +740,7 @@ class SearchAgent:
 
     def check_shortlist_improvement(self) -> None:
         """Allow later candidates to improve a full list, then stop at a plateau."""
-        if len(self.matched) < self.target:
+        if self.useful_count() < self.target:
             self.shortlist_quality = None
             self.unimproved_reviews = 0
             return
@@ -753,6 +763,13 @@ class SearchAgent:
         if self.unimproved_reviews >= MAX_UNIMPROVED_REVIEWS and not self.stop_event.is_set():
             raise SearchEnded("results_ready")
 
+    def useful_count(self) -> int:
+        return sum(
+            item.analysis_status != "unavailable"
+            and item.recommendation_fit in {"recommended", "possible"}
+            for item in self.matched.values()
+        )
+
     def observation(self) -> dict[str, Any]:
         candidates = sorted(
             self.jobs.values(),
@@ -768,6 +785,7 @@ class SearchAgent:
             "remaining_decisions": MAX_DECISIONS - self.decision_count,
             "result_limit": self.target,
             "matched_count": len(self.matched),
+            "useful_count": self.useful_count(),
             "pending_count": len(self.pending),
             "analyzed_count": len(self.assessed_ids),
             "unimproved_reviews": self.unimproved_reviews,
@@ -778,6 +796,7 @@ class SearchAgent:
                     "job_id": item.job.job_id,
                     "fit": item.recommendation_fit,
                     "reason": item.recommendation_reason,
+                    "analysis_status": item.analysis_status,
                 }
                 for item in self.ranked(list(self.matched.values()))[:5]
             ],
@@ -800,7 +819,10 @@ class SearchAgent:
                     "direction": job.target_direction,
                     "location": job.location,
                     "employment_type": job.employment_type,
-                    "needs_details": not job.description or job.description_is_excerpt,
+                    "summary": job.description[:700],
+                    "salary": job.salary,
+                    "needs_details": not job.has_full_description(),
+                    "detail_attempts": self.detail_attempts.get(job.job_id, 0),
                     "analysis_attempts": self.attempts.get(job.job_id, 0),
                     "analysis_diagnostic": self.analysis_diagnostics[job.job_id].model_dump()
                     if job.job_id in self.analysis_diagnostics
@@ -811,6 +833,8 @@ class SearchAgent:
         }
 
     def result(self, reason: str | None = None, *, final: bool = False) -> RecommendationResult:
+        selected = self.ranked([*self.matched.values(), *self.pending.values()])
+
         def displayed(items: list[RecommendationItem]) -> list[RecommendationItem]:
             return [
                 item.model_copy(
@@ -830,10 +854,10 @@ class SearchAgent:
             RecommendationResult(
                 session_id=self.session_id,
                 generated_at=datetime.now(UTC),
-                jobs=displayed(list(self.matched.values())),
-                pending_jobs=displayed(list(self.pending.values()))[
-                    : max(0, self.target - len(self.matched))
-                ],
+                jobs=displayed([item for item in selected if item.job.job_id in self.matched]),
+                pending_jobs=displayed(
+                    [item for item in selected if item.job.job_id in self.pending]
+                ),
                 introduction=self.finish_message(reason) if reason else "",
             )
         )
@@ -928,12 +952,13 @@ class SearchAgent:
         return sorted(items, key=recommendation_key)[: self.target]
 
     def progress(self) -> dict[str, Any]:
+        selected = self.ranked([*self.matched.values(), *self.pending.values()])
         return {
             "sequence": self.progress_seq,
             "discovered_count": len(self.jobs),
             "analyzed_count": len(self.assessed_ids),
-            "matched_count": min(len(self.matched), self.target),
-            "pending_count": min(len(self.pending), max(0, self.target - len(self.matched))),
+            "matched_count": sum(item.job.job_id in self.matched for item in selected),
+            "pending_count": sum(item.job.job_id in self.pending for item in selected),
             "elapsed_seconds": round(max(0, asyncio.get_running_loop().time() - self.started), 3),
             "retrieval_stopped": self.stop_event.is_set(),
             "events": self.events[-80:],
@@ -1027,13 +1052,16 @@ class SearchAgent:
             )
 
     def finish_message(self, reason: str | None) -> str:
-        matched = min(len(self.matched), self.target)
-        pending = min(len(self.pending), max(0, self.target - matched))
-        counts = f"Found {matched} {'match' if matched == 1 else 'matches'}."
-        if pending:
-            counts += (
-                f" {pending} more {'job needs' if pending == 1 else 'jobs need'} a closer look."
-            )
+        selected = self.ranked([*self.matched.values(), *self.pending.values()])
+        count = len(selected)
+        promising = sum(
+            item.analysis_status != "unavailable"
+            and item.recommendation_fit in {"recommended", "possible"}
+            for item in selected
+        )
+        counts = f"Found {count} {'job' if count == 1 else 'jobs'}."
+        if promising:
+            counts += f" {promising} worth exploring based on the available information."
         detail = {
             "target_reached": "",
             "results_ready": "Search complete. Review the opportunities found so far.",

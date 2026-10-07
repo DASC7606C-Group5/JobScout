@@ -129,7 +129,7 @@ class FakeAssessment:
         return RecommendationResult(
             session_id=session_id,
             generated_at=datetime.now(UTC),
-            jobs=[RecommendationItem(job=job) for job in jobs],
+            jobs=[RecommendationItem(job=job, recommendation_fit="possible") for job in jobs],
         )
 
 
@@ -625,8 +625,8 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
     from jobscout.services.job_assessment_service import (
         JDAnalysisBatch,
         JobAssessmentService,
-        MatchingBatch,
     )
+    from jobscout.services.review_response import ReviewResponse
 
     class AssessmentProvider(FakeProvider):
         def __init__(self) -> None:
@@ -662,7 +662,7 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
                         }
                     ]
                 return schema.model_validate(data)
-            if schema is MatchingBatch:
+            if schema is ReviewResponse:
                 self.match_calls += 1
                 self.match_profiles.append(
                     [
@@ -673,19 +673,17 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
                 )
                 return schema.model_validate(
                     {
-                        "jobs": [
+                        "job_id": payload["jobs"][0]["job_id"],
+                        "recommendation_fit": "possible",
+                        "recommendation_reason": "The data project is relevant to this role.",
+                        "matches": [
                             {
-                                "job_id": job["job_id"],
-                                "matches": [
-                                    {
-                                        "requirement_id": requirement["requirement_id"],
-                                        "level": "not_documented",
-                                    }
-                                    for requirement in job["requirements"]
-                                ],
+                                "requirement_id": requirement["requirement_id"],
+                                "level": "not_documented",
+                                "explanation": "The current profile does not list this skill.",
                             }
-                            for job in payload["jobs"]
-                        ]
+                            for requirement in payload["jobs"][0]["requirements"]
+                        ],
                     }
                 )
             return await super().structured(schema, messages, deadline=deadline)
@@ -714,7 +712,8 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
         json.dumps(state["jd_cache"])
         first_ids = set(state["analyzed_job_ids"])
         assert services[0].analyzed_count == 20
-        assert provider.jd_calls == provider.match_calls == 8
+        assert provider.jd_calls == 8
+        assert provider.match_calls == 20
         for skills in (["SQL"], ["Java"]):
             if rebuild_graph:
                 cleanup = getattr(graph, "cleanup_session", None)
@@ -739,8 +738,8 @@ def test_confirmed_search_resets_candidate_budget_but_reuses_session_jd_cache(
         assert len(services) == (3 if rebuild_graph else 1)
         assert len(services[-1].cache) == 40
         assert provider.jd_calls == 16
-        assert provider.match_calls == 24
-        assert provider.match_profiles == [["Python"]] * 8 + [["SQL"]] * 8 + [["Java"]] * 8
+        assert provider.match_calls == 60
+        assert provider.match_profiles == [["Python"]] * 20 + [["SQL"]] * 20 + [["Java"]] * 20
         cleanup = getattr(graph, "cleanup_session", None)
         assert callable(cleanup)
         await cleanup("s1")

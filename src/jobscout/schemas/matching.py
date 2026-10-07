@@ -27,7 +27,7 @@ class DimensionAssessment(BaseModel):
     status: Literal["assessed", "unknown", "not_applicable"] = "unknown"
     explanation: str = Field(default="", max_length=800)
     requirement_ids: list[str] = Field(default_factory=list, max_length=30)
-    profile_fact_ids: list[str] = Field(default_factory=list, max_length=30)
+    profile_fact_ids: list[str] = Field(default_factory=list)
     job_source_quotes: list[SourceQuoteReference] = Field(default_factory=list, max_length=10)
     profile_source_quotes: list[SourceQuoteReference] = Field(default_factory=list, max_length=10)
     missing_information: list[str] = Field(default_factory=list, max_length=10)

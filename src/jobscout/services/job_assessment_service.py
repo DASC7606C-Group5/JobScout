@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 
 from jobscout.schemas.conversation import MatchingReason, SourceQuoteReference
 from jobscout.schemas.job import FreshnessStatus, JobPosting, SourceDocument
@@ -27,7 +27,7 @@ from jobscout.services.llm_service import LLMProvider, ModelRouter, ModelService
 from jobscout.services.location_service import get_location_catalog, within
 from jobscout.services.matching_score import build_match_score
 from jobscout.services.notice_service import finalize_recommendation, make_notice
-from jobscout.services.prompts import JOB_ANALYSIS_PROMPT, MATCHING_PROMPT
+from jobscout.services.prompts import JOB_ANALYSIS_PROMPT, MATCHING_PROMPT, SUMMARY_MATCHING_PROMPT
 from jobscout.services.ranking import recommendation_key
 from jobscout.services.recommendation_service import (
     RecommendationError,
@@ -40,11 +40,12 @@ from jobscout.services.recommendation_service import (
 from jobscout.services.recommendation_service import (
     eligible_jobs as eligible_jobs,
 )
+from jobscout.services.review_response import ReviewResponse, SummaryReviewResponse, profile_quotes
 
 MAX_CANDIDATES = 30
 BATCH_SIZE = 3
 CONCURRENCY = 2
-_SCHEMA_VERSION = "job-assessment-v10"
+_SCHEMA_VERSION = "job-assessment-v11"
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -75,7 +76,7 @@ class Requirement(_StrictModel):
     category: Literal[
         "skill", "responsibility", "experience", "seniority", "education", "preference", "other"
     ] = "skill"
-    source_quotes: list[SourceQuote] = Field(min_length=1, max_length=5)
+    source_quotes: list[SourceQuote] = Field(min_length=1)
     qualification_options: list[str] = Field(default_factory=list, max_length=10)
     minimum_experience_months: int | None = Field(default=None, ge=0, le=1200, strict=True)
 
@@ -112,11 +113,11 @@ class JDAnalysisBatch(_StrictModel):
 class RequirementMatch(_StrictModel):
     requirement_id: str
     level: Literal["strong", "partial", "related_experience", "not_documented"]
-    profile_source_quotes: list[SourceQuote] = Field(default_factory=list, max_length=5)
-    experience_source_quotes: list[SourceQuote] = Field(default_factory=list, max_length=5)
-    profile_fact_ids: list[str] = Field(default_factory=list, max_length=10)
-    experience_fact_ids: list[str] = Field(default_factory=list, max_length=10)
-    qualifications: list[str] = Field(default_factory=list, max_length=10)
+    profile_source_quotes: list[SourceQuote] = Field(default_factory=list)
+    experience_source_quotes: list[SourceQuote] = Field(default_factory=list)
+    profile_fact_ids: list[str] = Field(default_factory=list)
+    experience_fact_ids: list[str] = Field(default_factory=list)
+    qualifications: list[str] = Field(default_factory=list)
     qualification_relation: Literal["meets", "partial", "does_not_meet", "unknown"] | None = None
     experience_months: int | None = Field(default=None, ge=0, le=1200, strict=True)
     explanation: str = Field(default="", max_length=500)
@@ -128,6 +129,8 @@ class PreparationSuggestion(_StrictModel):
 
 
 class JobMatch(_StrictModel):
+    _invalid_claims: bool = PrivateAttr(default=False)
+
     job_id: str
     dimensions: list[DimensionAssessment] = Field(default_factory=list, max_length=6)
     recommendation_fit: RecommendationFit = "unknown"
@@ -137,10 +140,6 @@ class JobMatch(_StrictModel):
         default_factory=list, max_length=10
     )
     incomplete: bool = False
-
-
-class MatchingBatch(_StrictModel):
-    jobs: list[JobMatch] = Field(max_length=BATCH_SIZE)
 
 
 class _JDCacheSnapshot(_StrictModel):
@@ -343,10 +342,8 @@ def _validate_matches(
         identifiers = [*item.profile_fact_ids, *item.experience_fact_ids]
         if any(identity not in facts for identity in identifiers):
             raise _InvalidAssessment("unknown current profile fact")
-        if item.level != "not_documented" and (
-            not item.profile_source_quotes or not item.profile_fact_ids
-        ):
-            raise _InvalidAssessment("positive match without current profile quotes")
+        if item.level != "not_documented" and not item.profile_source_quotes:
+            raise _InvalidAssessment("positive match without applicant source quotes")
         if item.level == "not_documented" and (
             item.profile_source_quotes
             or item.experience_source_quotes
@@ -444,13 +441,115 @@ def _validate_match(
     ][:2]
 
 
+def _review_match(
+    review: SummaryReviewResponse,
+    analysis: JobAnalysis,
+    profile: UserProfile,
+    documents: dict[str, str],
+) -> JobMatch:
+    quotes = profile_quotes(documents)
+    facts = _profile_facts(profile)
+    requirements = {r.requirement_id: r for r in analysis.requirements}
+    matches = []
+    invalid_claims = False
+    for row in review.matches:
+        if row.level == "not_documented":
+            matches.append(
+                RequirementMatch(
+                    requirement_id=row.requirement_id,
+                    level=row.level,
+                    explanation=row.explanation,
+                )
+            )
+            continue
+        invalid_claims |= any(key not in quotes for key in row.profile_quote_ids)
+        references = [SourceQuote(**quotes[key]) for key in row.profile_quote_ids if key in quotes]
+        experience_ids = [
+            key
+            for key in row.profile_fact_ids
+            if facts.get(key, {}).get("field")
+            in (
+                {"internships"}
+                if row.experience_months is not None
+                else {"internships", "projects"}
+            )
+        ]
+        matches.append(
+            RequirementMatch(
+                requirement_id=row.requirement_id,
+                level=row.level,
+                profile_fact_ids=row.profile_fact_ids,
+                profile_source_quotes=references,
+                experience_fact_ids=experience_ids,
+                experience_source_quotes=references if experience_ids else [],
+                qualifications=[
+                    facts[key]["text"]
+                    for key in row.profile_fact_ids
+                    if facts.get(key, {}).get("field") == "education"
+                    and row.requirement_id in requirements
+                    and requirements[row.requirement_id].category == "education"
+                ],
+                qualification_relation=row.qualification_relation
+                if row.requirement_id in requirements
+                and requirements[row.requirement_id].category == "education"
+                else None,
+                experience_months=row.experience_months,
+                explanation=row.explanation,
+            )
+        )
+    match = JobMatch(
+        job_id=review.job_id,
+        matches=matches,
+        recommendation_fit=review.recommendation_fit,
+        recommendation_reason=review.recommendation_reason,
+        incomplete=review.incomplete or invalid_claims,
+    )
+    original = match.model_copy(deep=True)
+    _validate_match(match, analysis, profile, documents)
+    match._invalid_claims = invalid_claims or original != match
+    for dimension in review.dimensions if isinstance(review, ReviewResponse) else []:
+        comparisons = [r for r in match.matches if r.requirement_id in dimension.requirement_ids]
+        job_refs = [
+            q
+            for key in dimension.requirement_ids
+            if key in requirements
+            for q in requirements[key].source_quotes
+        ]
+        if dimension.id == "preferences":
+            job_refs += analysis.direction_quotes
+            job_refs += [q for location in analysis.locations for q in location.source_quotes]
+            job_refs += [q for kind in analysis.employment for q in kind.source_quotes]
+        match.dimensions.append(
+            DimensionAssessment(
+                **dimension.model_dump(),
+                job_source_quotes=[SourceQuoteReference(**q.model_dump()) for q in job_refs][:10],
+                profile_fact_ids=list(
+                    dict.fromkeys(key for r in comparisons for key in r.profile_fact_ids)
+                ),
+                profile_source_quotes=[
+                    SourceQuoteReference(**q.model_dump())
+                    for r in comparisons
+                    for q in r.profile_source_quotes
+                ][:10],
+            )
+        )
+    valid_ids = [r.requirement_id for r in match.matches]
+    if valid_ids and isinstance(review, ReviewResponse):
+        match.preparation_suggestions = [
+            PreparationSuggestion(requirement_id=valid_ids[0], suggestion=text)
+            for text in review.preparation_suggestions
+            if text.strip()
+        ]
+    return match
+
+
 def _match_explanation(
     requirement: Requirement, match: RequirementMatch, profile: UserProfile
 ) -> str:
-    if match.level == "not_documented":
-        return ""
     if match.explanation.strip():
         return match.explanation.strip()
+    if match.level == "not_documented":
+        return ""
     candidates = match.experience_source_quotes or match.profile_source_quotes
     if not candidates:
         return ""
@@ -505,9 +604,35 @@ def _render(
                 profile_source_quotes=user_refs,
             )
         )
-    if not reasons:
+    full_description = job.has_full_description()
+    score = (
+        build_match_score(
+            match.dimensions,
+            analysis,
+            profile,
+            {key: value.text for key, value in documents.items()},
+            profile_documents,
+            incomplete=match.incomplete,
+            dimension_cache=dimension_cache,
+        )
+        if full_description
+        else None
+    )
+    has_comparison = bool(reasons) or (
+        score is not None
+        and any(
+            dimension.status == "assessed" and dimension.id != "preferences"
+            for dimension in score.dimensions
+        )
+    )
+    has_summary_advice = (
+        not full_description and bool(match.recommendation_reason.strip()) and not match.incomplete
+    )
+    if not has_comparison and not has_summary_advice:
         analysis_status = "unavailable"
         diagnostics.append(f"Job {job.job_id} has no validated matching conclusions.")
+    elif not full_description:
+        analysis_status = "partial"
     diagnostics.extend(_preference_check(profile, job)[1])
     if job.freshness_status == FreshnessStatus.UNKNOWN:
         diagnostics.append(
@@ -540,15 +665,7 @@ def _render(
             preparation_suggestions=suggestions,
             matching_reasons=reasons,
             analysis_status=analysis_status,
-            match_score=build_match_score(
-                match.dimensions,
-                analysis,
-                profile,
-                {key: value.text for key, value in documents.items()},
-                profile_documents,
-                incomplete=match.incomplete,
-                dimension_cache=dimension_cache,
-            ),
+            match_score=score,
             recommendation_fit=match.recommendation_fit
             if analysis_status != "unavailable"
             else "unknown",
@@ -582,6 +699,7 @@ class JobAssessmentService:
         self._search_id: str | None = None
         self._closed = False
         self._lock = asyncio.Lock()
+        self._matching_slots = asyncio.Semaphore(CONCURRENCY)
 
     @property
     def analyzed_count(self) -> int:
@@ -710,7 +828,13 @@ class JobAssessmentService:
         self, schema: type[ResultT], payload: dict[str, object], deadline: float | None
     ) -> ResultT:
         self._ensure_open()
-        instruction = JOB_ANALYSIS_PROMPT if schema is JDAnalysisBatch else MATCHING_PROMPT
+        instruction = (
+            JOB_ANALYSIS_PROMPT
+            if schema is JDAnalysisBatch
+            else SUMMARY_MATCHING_PROMPT
+            if schema is SummaryReviewResponse
+            else MATCHING_PROMPT
+        )
         provider = self.provider if schema is JDAnalysisBatch else self.decision_provider
         async with asyncio.timeout_at(deadline):
             response = await provider.structured(
@@ -725,7 +849,7 @@ class JobAssessmentService:
 
     async def _validated_rows[
         RowT: (JobAnalysis, JobMatch),
-        BatchT: (JDAnalysisBatch, MatchingBatch),
+        BatchT: BaseModel,
     ](
         self,
         schema: type[BatchT],
@@ -740,6 +864,7 @@ class JobAssessmentService:
         # call here would silently renew that budget after a syntax/schema repair.
         try:
             response = await self._request(schema, {**payload, "jobs": job_payloads}, deadline)
+            entries = rows(response)
         except (ModelServiceError, ValidationError, TimeoutError, ValueError) as error:
             for job in job_payloads:
                 self.diagnostics[str(job["job_id"])] = AssessmentDiagnostic(
@@ -756,7 +881,6 @@ class JobAssessmentService:
                 getattr(error, "code", type(error).__name__),
             )
             return accepted
-        entries = rows(response)
         expected = {item["job_id"] for item in job_payloads}
         for job_id in expected:
             found = [entry for entry in entries if entry.job_id == job_id]
@@ -774,7 +898,7 @@ class JobAssessmentService:
                         retryable=True,
                         public_issue=ReviewIssue(
                             code="unverifiable_claims"
-                            if original != found[0]
+                            if original != found[0] or getattr(found[0], "_invalid_claims", False)
                             else "incomplete_review",
                             stage="jd_analysis" if schema is JDAnalysisBatch else "matching",
                         ),
@@ -934,35 +1058,46 @@ class JobAssessmentService:
                 eligible[job.job_id] = list(
                     dict.fromkeys(["target_direction", *_preference_check(profile, job)[1]])
                 )
-        matches = (
-            await self._validated_rows(
-                MatchingBatch,
-                {
-                    "task": "matching",
-                    "target_directions": profile.target_directions,
-                    "preferences": profile.preferences.model_dump(mode="json"),
-                    "profile_documents": profile_documents,
-                    "profile_facts": _profile_facts(profile),
-                    "repair_feedback": repair_feedback or {},
-                },
-                [
+
+        async def compare(identity: str) -> dict[str, JobMatch]:
+            async with self._matching_slots:
+                job = next(job for job in valid_jobs if job.job_id == identity)
+                return await self._validated_rows(
+                    ReviewResponse if job.has_full_description() else SummaryReviewResponse,
                     {
-                        **analyses[identity].model_dump(),
-                        "title": next(job.title for job in valid_jobs if job.job_id == identity),
-                        "salary": next(job.salary for job in valid_jobs if job.job_id == identity),
-                    }
-                    for identity in eligible
-                    if identity in analyses
-                ],
-                lambda entry: _validate_match(
-                    entry, analyses[entry.job_id], profile, profile_documents
-                ),
-                lambda batch: batch.jobs,
-                deadline,
-            )
-            if any(identity in analyses for identity in eligible)
-            else {}
+                        "task": "matching",
+                        "assessment_date": datetime.now(UTC).date().isoformat(),
+                        "target_directions": profile.target_directions,
+                        "preferences": profile.preferences.model_dump(mode="json"),
+                        "profile_quotes": {
+                            key: row["excerpt"]
+                            for key, row in profile_quotes(profile_documents).items()
+                        },
+                        "profile_facts": _profile_facts(profile),
+                        "repair_feedback": {identity: repair_feedback[identity]}
+                        if repair_feedback and identity in repair_feedback
+                        else {},
+                    },
+                    [
+                        {
+                            **analyses[identity].model_dump(),
+                            "title": job.title,
+                            "salary": job.salary,
+                            "summary": job.description if not job.has_full_description() else None,
+                            "listing_scope": "full" if job.has_full_description() else "summary",
+                        }
+                    ],
+                    lambda entry: None,
+                    lambda response: [
+                        _review_match(response, analyses[identity], profile, profile_documents)
+                    ],
+                    deadline,
+                )
+
+        compared = await asyncio.gather(
+            *(compare(identity) for identity in eligible if identity in analyses)
         )
+        matches = {identity: match for response in compared for identity, match in response.items()}
         ranked: list[_Ranked] = []
         for job in valid_jobs:
             if job.job_id not in eligible:

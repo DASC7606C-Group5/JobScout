@@ -23,6 +23,7 @@ from jobscout.services.job_assessment_service import (
 )
 from jobscout.services.recommendation_service import RecommendationError
 from tests.location_fixtures import catalog_snapshot as catalog
+from tests.review_samples import wire_review
 
 NOW = datetime(2026, 10, 4, tzinfo=UTC)
 PROFILE_DOCUMENTS = {"resume": "Python. Built a Python dashboard. Bachelor of Computer Science."}
@@ -154,13 +155,10 @@ class ReplayProvider:
                         }
                     )
                 else:
-                    has_python = (
-                        any(
-                            fact["text"] == "Python" and fact["field"] == "skills"
-                            for fact in payload["profile_facts"].values()
-                        )
-                        and "resume" in payload["profile_documents"]
-                    )
+                    has_python = any(
+                        fact["text"] == "Python" and fact["field"] == "skills"
+                        for fact in payload["profile_facts"].values()
+                    ) and any("Python" in text for text in payload["profile_quotes"].values())
                     rows.append(
                         {
                             "job_id": candidate["job_id"],
@@ -190,7 +188,11 @@ class ReplayProvider:
             response = {"jobs": rows}
             if self.mutate:
                 self.mutate(task, response)
-            return schema.model_validate(response)
+            data = wire_review(response["jobs"][0], payload) if task == "matching" else response
+            if schema.__name__ == "SummaryReviewResponse":
+                data.pop("dimensions", None)
+                data.pop("preparation_suggestions", None)
+            return schema.model_validate(data)
         finally:
             self.in_flight -= 1
 
@@ -253,7 +255,6 @@ def test_requested_count_and_source_facts_are_preserved(count: int) -> None:
         "requirement_id",
         "duplicate",
         "missing",
-        "experience",
     ],
 )
 def test_unverifiable_quotes_remove_only_the_analysis_and_preserve_source_vacancy(
@@ -272,19 +273,13 @@ def test_unverifiable_quotes_remove_only_the_analysis_and_preserve_source_vacanc
                 row["requirements"][0]["source_quotes"][0]["excerpt"] = "Invented requirement"
         if task == "matching":
             if damage == "user_quote":
-                row["matches"][0]["profile_source_quotes"] = [
-                    {"document_id": "doc-a", "excerpt": "Python"}
-                ]
+                row["matches"][0]["profile_quote_ids"] = ["missing"]
             if damage == "requirement_id":
                 row["matches"][0]["requirement_id"] = "forged"
             if damage == "duplicate":
                 row["matches"].append(dict(row["matches"][0]))
             if damage == "missing":
                 row["matches"] = []
-            if damage == "experience":
-                row["matches"][0]["experience_source_quotes"] = [
-                    {"document_id": "resume", "excerpt": "Python"}
-                ]
 
     result = assess(ReplayProvider(corrupt), [job("a"), job("b")])
     rows = {row.job.job_id: row for row in [*result.jobs, *result.pending_jobs]}

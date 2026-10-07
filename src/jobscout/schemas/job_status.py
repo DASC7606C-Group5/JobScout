@@ -9,6 +9,7 @@ JobStatus = Literal[
     "queued",
     "reviewing",
     "reviewed",
+    "summary_reviewed",
     "not_reviewed",
     "partial",
     "timeout",

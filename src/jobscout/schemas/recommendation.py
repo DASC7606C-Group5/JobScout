@@ -42,6 +42,8 @@ class RecommendationItem(BaseModel):
         if self.analysis_status == "unavailable":
             return issue_status(self.review_issue)
         if self.analysis_status == "partial":
+            if not self.job.has_full_description() and self.review_issue is None:
+                return "summary_reviewed"
             return "partial"
         if self.verification_status != "confirmed":
             return "unverified"

@@ -20,10 +20,10 @@ from jobscout.services.conversation_service import (
 from jobscout.services.job_assessment_service import (
     JDAnalysisBatch,
     JobAssessmentService,
-    MatchingBatch,
 )
 from jobscout.services.llm_service import get_llm_provider
 from jobscout.services.prompts import STRUCTURED_OUTPUT_PROMPT
+from jobscout.services.review_response import ReviewResponse, SummaryReviewResponse
 from tests.test_job_assessment_service import PROFILE_DOCUMENTS, ReplayProvider, job, profile
 from tests.test_live_graph import FakeProvider, FakeSearch, configuration, initial, raw, resume
 
@@ -52,7 +52,8 @@ def install_transport(
             QuestionGeneration,
             AnswerInterpretation,
             JDAnalysisBatch,
-            MatchingBatch,
+            ReviewResponse,
+            SummaryReviewResponse,
         )
     }
     requests: list[tuple[str, str, str, str]] = []
@@ -74,7 +75,11 @@ def install_transport(
                 body["messages"][0]["content"].removeprefix(STRUCTURED_OUTPUT_PROMPT)
             )["title"]
             schema = schemas[schema_name]
-            delegate = assessment if schema in (JDAnalysisBatch, MatchingBatch) else conversation
+            delegate = (
+                assessment
+                if schema in (JDAnalysisBatch, ReviewResponse, SummaryReviewResponse)
+                else conversation
+            )
             response = await delegate.structured(schema, body["messages"][1:])
             message = {"role": "assistant", "content": response.model_dump_json()}
             finish = "stop"
@@ -156,11 +161,11 @@ def test_graph_routes_conversation_and_jd_to_semantic_search_and_matching_to_dec
         "QuestionGeneration",
         "AnswerInterpretation",
         "JDAnalysisBatch",
-        "MatchingBatch",
+        "ReviewResponse",
         "tool_turn",
     }
     for schema, url, authorization, model in requests:
-        role = "decision" if schema in {"MatchingBatch", "tool_turn"} else "semantic"
+        role = "decision" if schema in {"ReviewResponse", "tool_turn"} else "semantic"
         version = "v2" if role == "decision" else "v1"
         assert url == f"https://{role}.example.invalid/{version}/chat/completions"
         assert authorization == f"Bearer synthetic-{role}-key"
@@ -192,8 +197,8 @@ def test_jd_cache_tracks_semantic_model_and_endpoint_but_recomputes_decisions(
         assert second.jobs[0].matching_reasons[0].level == "not_documented"
         assert [name for name, *_ in requests] == [
             "JDAnalysisBatch",
-            "MatchingBatch",
-            "MatchingBatch",
+            "ReviewResponse",
+            "ReviewResponse",
         ]
         assert requests[-1][-1] == "synthetic-new-decision"
 
@@ -202,7 +207,7 @@ def test_jd_cache_tracks_semantic_model_and_endpoint_but_recomputes_decisions(
         changed.import_cache(snapshot, "s")
         await changed.begin_search("third")
         await changed.assess(user, [candidate], PROFILE_DOCUMENTS, "s")
-        assert [name for name, *_ in requests[-2:]] == ["JDAnalysisBatch", "MatchingBatch"]
+        assert [name for name, *_ in requests[-2:]] == ["JDAnalysisBatch", "ReviewResponse"]
         assert requests[-2][1] == "https://other-semantic.example.invalid/v3/chat/completions"
 
     asyncio.run(scenario())

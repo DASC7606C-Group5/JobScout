@@ -113,10 +113,7 @@ def finalize_recommendation(
         )
         values = [notice for notice in values if notice.job_id == job.job_id]
         # A complete mirror takes precedence over an excerpt from another source.
-        complete_description = bool(job.description.strip() and not job.description_is_excerpt)
-        complete_description |= any(
-            document.text.strip() and not document.is_excerpt for document in job.source_documents
-        )
+        complete_description = job.has_full_description()
         derived_codes = {
             "listing_incomplete",
             "listing_status_unverified",
@@ -129,7 +126,10 @@ def finalize_recommendation(
             values.append(make_notice("listing_incomplete", job_id=job.job_id))
         if job.freshness_status == FreshnessStatus.UNKNOWN:
             values.append(make_notice("listing_status_unverified", job_id=job.job_id))
-        if item.analysis_status != "complete":
+        if item.analysis_status == "unavailable" or (
+            item.analysis_status == "partial"
+            and (complete_description or item.review_issue is not None)
+        ):
             values.append(
                 make_notice(
                     "analysis_partial"
