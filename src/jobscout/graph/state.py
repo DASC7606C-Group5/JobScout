@@ -30,6 +30,8 @@ WorkflowStage = Literal[
 
 
 class AgentState(TypedDict):
+    profile_revision: NotRequired[int]
+    task_title: NotRequired[str]
     session_id: str
     input_data: NotRequired[dict[str, object]]
     profile: NotRequired[UserProfile | None]

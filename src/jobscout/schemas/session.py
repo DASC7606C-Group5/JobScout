@@ -24,6 +24,7 @@ class SessionCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     request_id: str = Field(min_length=1, max_length=128)
+    use_current_profile: bool = False
     description: str = ""
     resume: ResumeInput | None = None
     target_directions: list[str] = Field(default_factory=list)

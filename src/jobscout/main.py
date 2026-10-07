@@ -13,12 +13,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from jobscout.api.career import router as career_router
 from jobscout.api.resumes import router as resumes_router
 from jobscout.api.sessions import router as sessions_router
 from jobscout.api.workspace import router as workspace_router
 from jobscout.config import get_settings
 from jobscout.database import database_lifespan, sqlite_path
 from jobscout.graph.checkpoints import checkpoint_serializer
+from jobscout.services.career_service import CareerService
 from jobscout.services.notice_service import public_error
 from jobscout.services.session_service import SessionService
 from jobscout.services.workspace_service import WorkspaceService
@@ -87,6 +89,7 @@ def create_app(
             )
             await application.state.sessions.open()
             application.state.workspace = WorkspaceService(application.state.sessions)
+            application.state.career = CareerService(application.state.sessions)
             try:
                 yield
             finally:
@@ -115,6 +118,7 @@ def create_app(
     application.include_router(resumes_router)
     application.include_router(sessions_router)
     application.include_router(workspace_router)
+    application.include_router(career_router)
     return application
 
 

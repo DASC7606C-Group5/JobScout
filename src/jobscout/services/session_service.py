@@ -22,7 +22,7 @@ from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.execution import SearchProgress
 from jobscout.schemas.job import JobPosting, SourceDocument
 from jobscout.schemas.notices import ApplicantNotice
-from jobscout.schemas.profile import UserProfile
+from jobscout.schemas.profile import ProfilePreferences, UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
 from jobscout.schemas.search import ClarificationMessage, SearchRequest
 from jobscout.schemas.session import (
@@ -267,7 +267,7 @@ class SessionService:
                 return self._response(record)
             if not payload.description.strip() and not (
                 payload.resume and payload.resume.text.strip()
-            ):
+            ) and not payload.use_current_profile:
                 raise SessionOperationError(422, "Provide a resume or personal introduction.")
             session_id = str(uuid4())
             state: dict[str, Any] = {
@@ -276,6 +276,23 @@ class SessionService:
                 "revision": 1,
                 "current_stage": "ingest",
             }
+            if payload.use_current_profile:
+                from jobscout.services.career_service import load_current_profile
+
+                current = await load_current_profile()
+                if not current.revision:
+                    raise SessionOperationError(422, "Save a current profile first.")
+                data["description"] = current.description
+                data["resume"] = current.resume.model_dump() if current.resume else None
+                state["profile"] = UserProfile(
+                    profile_id=session_id,
+                    **current.background.model_dump(),
+                    target_directions=payload.target_directions,
+                    preferences=ProfilePreferences.model_validate(payload.preferences.model_dump()),
+                    search_options=payload.search_options,
+                )
+                state["profile_documents"] = current.documents
+                state["profile_revision"] = current.revision
             now = datetime.now(UTC)
             record = _Session(
                 session_id,

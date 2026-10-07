@@ -309,7 +309,7 @@ def build_live_graph(
             inputs = state.get("input_data", {})
             source_documents = profile_documents(inputs, state["session_id"])
             documents = list(state.get("profile_documents", [])) or source_documents
-            if not source_documents:
+            if not source_documents and not state.get("profile"):
                 return _failure("profile_input", "profile")
             profile = state.get("profile")
             if profile is None:
