@@ -1619,7 +1619,7 @@ test('result panes scroll independently and restore reading positions by job ide
   ).toBe(true)
 })
 
-test('closing search criteria keeps results stationary throughout the collapse animation', async ({
+test('closing search criteria immediately hides its content and keeps results stationary', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -1633,24 +1633,32 @@ test('closing search criteria keeps results stationary throughout the collapse a
       element.getAnimations({ subtree: true }).map((animation) => animation.finished),
     )
   })
-  const positions = await criteria.evaluate(async (element) => {
+  await expect(criteria.locator('.collapse-content')).toBeVisible()
+  const samples = await criteria.evaluate(async (element) => {
     const results = document.querySelector<HTMLElement>('[aria-label="Recommended jobs"]')!
     const summary = element.querySelector('summary')!
-    const samples = [results.getBoundingClientRect().top]
+    const content = element.querySelector<HTMLElement>('.collapse-content')!
+    const positions = [results.getBoundingClientRect().top]
+    const contentVisible: boolean[] = []
+    function record() {
+      positions.push(results.getBoundingClientRect().top)
+      contentVisible.push(content.checkVisibility())
+    }
     summary.click()
-    samples.push(results.getBoundingClientRect().top)
+    record()
     const started = performance.now()
     await new Promise<void>((resolve) => {
       function sample(now: number) {
-        samples.push(results.getBoundingClientRect().top)
+        record()
         if (now - started >= 350) resolve()
         else requestAnimationFrame(sample)
       }
       requestAnimationFrame(sample)
     })
-    return samples
+    return { positions, contentVisible }
   })
-  expect(Math.max(...positions) - Math.min(...positions)).toBeLessThanOrEqual(1)
+  expect(Math.max(...samples.positions) - Math.min(...samples.positions)).toBeLessThanOrEqual(1)
+  expect(samples.contentVisible.every((visible) => !visible)).toBe(true)
   await expect(criteria.locator('details')).not.toHaveAttribute('open')
   await expect(
     page.getByRole('button', { name: 'View job: React Engineer', exact: true }),

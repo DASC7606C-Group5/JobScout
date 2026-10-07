@@ -63,13 +63,18 @@
     z-index: 20;
   }
 
-  /* Keep the closing animation out of the results layout as well. */
+  /* The criteria overlay must leave the results unobstructed as soon as it closes. */
   .workspace-page:has(.results-workspace) .search-criteria details {
     position: absolute;
     inset: 0 0 auto;
     max-height: 65dvh;
     overflow-y: auto;
     overscroll-behavior-y: contain;
+    transition: none;
+  }
+
+  .workspace-page:has(.results-workspace) .search-criteria details::details-content {
+    transition: none;
   }
 
   .workspace-page:has(.results-workspace) .search-criteria details[open] {

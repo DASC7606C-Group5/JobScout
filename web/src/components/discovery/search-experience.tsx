@@ -130,43 +130,39 @@ function SearchProgress({
   return (
     <section
       aria-label="Search progress"
-      className={
-        showResults
-          ? 'mb-4 flex flex-wrap items-center justify-between gap-3'
-          : 'card border border-base-300 bg-base-100 p-5 sm:p-6'
-      }
+      className={showResults ? 'mb-4' : 'card border border-base-300 bg-base-100 p-5 sm:p-6'}
     >
-      <SearchPhaseIndicator completed={completed} presentation={presentation} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SearchPhaseIndicator completed={completed} presentation={presentation} />
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            disabled={!hasResults && !showResults}
+            onClick={onView}
+          >
+            {showResults && <Icon name="arrow" className="rotate-180" size={16} />}
+            {showResults ? 'Back to search' : completed ? 'View matches' : 'View matches so far'}
+            {!showResults && <Icon name="arrow" size={16} />}
+          </button>
+          {(presentation.canFinish || presentation.finishing) && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={stopping || presentation.finishing}
+              aria-busy={stopping || presentation.finishing}
+              onClick={onStop}
+            >
+              {stopping || presentation.finishing ? 'Finishing…' : 'Finish search'}
+            </button>
+          )}
+        </div>
+      </div>
       {!showResults && (
         <div className="mt-5 sm:mt-6">
           <SearchActivity jobs={session.progress.activity} completed={completed} />
         </div>
       )}
-      <div
-        className={`flex flex-wrap items-center justify-between gap-2 ${showResults ? '' : '-mx-5 mt-5 border-t border-base-300 px-5 pt-5 sm:-mx-6 sm:mt-6 sm:px-6 sm:pt-6'}`}
-      >
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          disabled={!hasResults && !showResults}
-          onClick={onView}
-        >
-          {showResults && <Icon name="arrow" className="rotate-180" size={16} />}
-          {showResults ? 'Back to search' : completed ? 'View matches' : 'View matches so far'}
-          {!showResults && <Icon name="arrow" size={16} />}
-        </button>
-        {(presentation.canFinish || presentation.finishing) && (
-          <button
-            type="button"
-            className="btn btn-sm"
-            disabled={stopping || presentation.finishing}
-            aria-busy={stopping || presentation.finishing}
-            onClick={onStop}
-          >
-            {stopping || presentation.finishing ? 'Finishing…' : 'Finish search'}
-          </button>
-        )}
-      </div>
     </section>
   )
 }
