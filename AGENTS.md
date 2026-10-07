@@ -7,6 +7,13 @@
 - Don't retain legacy or backward compatibility code; only keep database or data‑migration components if required.
 - Don’t produce documentation unless the user explicitly requests it.
 
+## Plain language
+
+- Use short, direct sentences naming the actual data, actions, and rules. Keep precise technical terms; avoid vague assessment jargon.
+- Explain what the applicant has done, what the job asks for, and what is missing or unknown. Missing information does not prove inability.
+- In prompts, state the task and necessary constraints once. Add examples or prescribed steps only when they resolve a real ambiguity.
+- When editing wording, preserve business rules, supplied facts, exact quotations, and stable identifiers.
+
 ## Tests
 
 - Cover behavior, business rules, data contracts, security, state transitions, and concrete regressions with tests that detect meaningful failures.

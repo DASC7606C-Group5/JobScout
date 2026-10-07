@@ -404,12 +404,11 @@ function DeleteSearchDialog({
       onClose={onClose}
     >
       <div className="modal-box">
-        <h2 id="delete-search-title" className="truncate text-md font-semibold">
+        <h2 id="delete-search-title" className="text-md truncate font-semibold">
           Delete {candidate ? `"${searchTitle(candidate)}"` : 'search'}?
         </h2>
         <p id="delete-search-consequence" className="mt-2 text-sm leading-6 text-base-content/70">
-          This permanently removes this search.
-          Your saved jobs will stay.
+          This permanently removes this search. Your saved jobs will stay.
         </p>
         {deletion.error && (
           <p role="alert" className="mt-4 text-sm text-error">
