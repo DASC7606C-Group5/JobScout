@@ -17,6 +17,7 @@ from jobscout.schemas.workspace import (
     SaveJobRequest,
     SummaryDraft,
 )
+from jobscout.services.identity import owner_id
 from jobscout.services.session_service import SessionOperationError, SessionService, _fingerprint
 
 DraftSection = Literal["clarification", "summary"]
@@ -53,7 +54,9 @@ class WorkspaceService:
     ) -> DraftResponse:
         async with self.sessions.lock:
             scope = self._scope(session_id, session_revision, section)
-            return self._draft_response(await WorkspaceDraft.get_or_none(scope=scope))
+            return self._draft_response(
+                await WorkspaceDraft.get_or_none(owner_id=owner_id(), scope=scope)
+            )
 
     async def save_draft(
         self,
@@ -79,9 +82,9 @@ class WorkspaceService:
             scope = self._scope(session_id, session_revision, section)
             request_scope = f"draft:{scope}"
             previous = await AcceptedRequest.get_or_none(
-                scope=request_scope, request_id=payload.request_id
+                owner_id=owner_id(), scope=request_scope, request_id=payload.request_id
             )
-            current = await WorkspaceDraft.get_or_none(scope=scope)
+            current = await WorkspaceDraft.get_or_none(owner_id=owner_id(), scope=scope)
             if previous:
                 if previous.fingerprint != fingerprint:
                     raise SessionOperationError(
@@ -92,7 +95,7 @@ class WorkspaceService:
                 if current is None or current.revision != payload.expected_revision + 1:
                     raise SessionOperationError(
                         409,
-                        "The shared draft changed after this save. Reload before saving.",
+                        "The draft changed after this save. Reload before saving.",
                         code="draft_conflict",
                     )
                 return self._draft_response(current)
@@ -100,7 +103,7 @@ class WorkspaceService:
             if payload.expected_revision != revision:
                 raise SessionOperationError(
                     409,
-                    "The shared draft has changed. Reload before saving.",
+                    "The draft has changed. Reload before saving.",
                     code="draft_conflict",
                 )
             now = datetime.now(UTC)
@@ -112,11 +115,16 @@ class WorkspaceService:
                     "updated_at": now,
                 }
                 updated = (
-                    await WorkspaceDraft.filter(scope=scope).using_db(connection).update(**values)
+                    await WorkspaceDraft.filter(owner_id=owner_id(), scope=scope)
+                    .using_db(connection)
+                    .update(**values)
                 )
                 if not updated:
-                    await WorkspaceDraft.create(scope=scope, using_db=connection, **values)
+                    await WorkspaceDraft.create(
+                        owner_id=owner_id(), scope=scope, using_db=connection, **values
+                    )
                 await AcceptedRequest.create(
+                    owner_id=owner_id(),
                     scope=request_scope,
                     request_id=payload.request_id,
                     fingerprint=fingerprint,
@@ -129,7 +137,9 @@ class WorkspaceService:
         return SavedJobsResponse(
             items=[
                 RecommendationItem.model_validate(record.item)
-                for record in await SavedJob.all().order_by("-saved_at", "job_id")
+                for record in await SavedJob.filter(owner_id=owner_id()).order_by(
+                    "-saved_at", "job_id"
+                )
             ]
         )
 
@@ -167,10 +177,10 @@ class WorkspaceService:
                 "session_revision": payload.expected_revision,
                 "saved_at": datetime.now(UTC),
             }
-            updated = await SavedJob.filter(job_id=job_id).update(**values)
+            updated = await SavedJob.filter(owner_id=owner_id(), job_id=job_id).update(**values)
             if not updated:
-                await SavedJob.create(job_id=job_id, **values)
+                await SavedJob.create(owner_id=owner_id(), job_id=job_id, **values)
             return item
 
     async def unsave_job(self, job_id: str) -> None:
-        await SavedJob.filter(job_id=job_id).delete()
+        await SavedJob.filter(owner_id=owner_id(), job_id=job_id).delete()

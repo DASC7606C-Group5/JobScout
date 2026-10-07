@@ -8,7 +8,6 @@ from typing import Any
 from urllib.parse import quote
 
 import pytest
-from fastapi.testclient import TestClient
 from pydantic import BaseModel
 from replay.app import create_replay_app
 from replay.dataset import load_dataset
@@ -18,6 +17,7 @@ from tortoise.backends.base.client import BaseDBAsyncClient
 from jobscout.main import create_app
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult
 from jobscout.services.session_service import _Session
+from tests.auth_client import AuthenticatedClient as TestClient
 from tests.test_applicant_notices import NOW, posting
 from tests.test_session_operations import ControlledGraph
 from tests.test_web_scaffold import settled

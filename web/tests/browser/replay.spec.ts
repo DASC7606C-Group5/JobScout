@@ -8,6 +8,18 @@ import { replayInput } from '../replay-scenarios'
 const input = replayInput('data-analyst-internship')
 const description = input.description
 
+test.beforeEach(async ({ page, baseURL }) => {
+  const response = await page.request.post('/api/v1/auth/register', {
+    headers: { Origin: baseURL! },
+    data: {
+      username: `replay-${Date.now()}`,
+      password: 'synthetic-browser-password',
+      registration_code: 'synthetic-class-code',
+    },
+  })
+  expect(response.status()).toBe(201)
+})
+
 async function snapshot(page: Page, id: string): Promise<ScoutSession> {
   const response = await page.request.get(`/api/v1/sessions/${id}`)
   expect(response.status()).toBe(200)
@@ -141,7 +153,13 @@ async function confirmAndVerifyResults(page: Page, id: string) {
   await expect(page.getByRole('region', { name: 'Recommended jobs' })).toBeVisible()
   expect((await snapshot(page, id)).recommendation).toEqual(results.recommendation)
   expect(await page.evaluate(() => Object.keys(sessionStorage))).toEqual([])
-  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBe(id)
+  const account = await (await page.request.get('/api/v1/auth/me')).json()
+  expect(
+    await page.evaluate(
+      (userId) => localStorage.getItem(`jobscout.session_id.${userId}`),
+      account.user_id,
+    ),
+  ).toBe(id)
 }
 
 for (const complete of [true, false]) {
@@ -178,7 +196,17 @@ for (const complete of [true, false]) {
       console.log('REPLAY_FAILURE_SNAPSHOT', JSON.stringify(failure))
       throw error
     } finally {
-      expect((await page.request.delete(`/api/v1/sessions/${id}`)).status()).toBe(204)
+      const account = await (await page.request.get('/api/v1/auth/me')).json()
+      expect(
+        (
+          await page.request.delete(`/api/v1/sessions/${id}`, {
+            headers: {
+              Origin: test.info().project.use.baseURL!,
+              'X-CSRF-Token': account.csrf_token,
+            },
+          })
+        ).status(),
+      ).toBe(204)
     }
   })
 }

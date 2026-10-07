@@ -10,13 +10,20 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspaceRouteImport } from './routes/_workspace'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as WorkspaceIndexRouteImport } from './routes/_workspace.index'
 import { Route as WorkspaceNewRouteImport } from './routes/_workspace.new'
 import { Route as WorkspaceSavedRouteImport } from './routes/_workspace.saved'
+import { Route as WorkspaceSettingsRouteImport } from './routes/_workspace.settings'
 import { Route as WorkspaceSearchesSessionIdRouteImport } from './routes/_workspace.searches.$sessionId'
 
 const WorkspaceRoute = WorkspaceRouteImport.update({
   id: '/_workspace',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WorkspaceIndexRoute = WorkspaceIndexRouteImport.update({
@@ -34,6 +41,11 @@ const WorkspaceSavedRoute = WorkspaceSavedRouteImport.update({
   path: '/saved',
   getParentRoute: () => WorkspaceRoute,
 } as any)
+const WorkspaceSettingsRoute = WorkspaceSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => WorkspaceRoute,
+} as any)
 const WorkspaceSearchesSessionIdRoute =
   WorkspaceSearchesSessionIdRouteImport.update({
     id: '/searches/$sessionId',
@@ -43,40 +55,50 @@ const WorkspaceSearchesSessionIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof WorkspaceIndexRoute
+  '/login': typeof LoginRoute
   '/new': typeof WorkspaceNewRoute
   '/saved': typeof WorkspaceSavedRoute
+  '/settings': typeof WorkspaceSettingsRoute
   '/searches/$sessionId': typeof WorkspaceSearchesSessionIdRoute
 }
 export interface FileRoutesByTo {
+  '/login': typeof LoginRoute
   '/new': typeof WorkspaceNewRoute
   '/saved': typeof WorkspaceSavedRoute
+  '/settings': typeof WorkspaceSettingsRoute
   '/': typeof WorkspaceIndexRoute
   '/searches/$sessionId': typeof WorkspaceSearchesSessionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_workspace': typeof WorkspaceRouteWithChildren
+  '/login': typeof LoginRoute
   '/_workspace/new': typeof WorkspaceNewRoute
   '/_workspace/saved': typeof WorkspaceSavedRoute
+  '/_workspace/settings': typeof WorkspaceSettingsRoute
   '/_workspace/': typeof WorkspaceIndexRoute
   '/_workspace/searches/$sessionId': typeof WorkspaceSearchesSessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/new' | '/saved' | '/searches/$sessionId'
+  fullPaths:
+    '/' | '/login' | '/new' | '/saved' | '/settings' | '/searches/$sessionId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/new' | '/saved' | '/' | '/searches/$sessionId'
+  to: '/login' | '/new' | '/saved' | '/settings' | '/' | '/searches/$sessionId'
   id:
     | '__root__'
     | '/_workspace'
+    | '/login'
     | '/_workspace/new'
     | '/_workspace/saved'
+    | '/_workspace/settings'
     | '/_workspace/'
     | '/_workspace/searches/$sessionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   WorkspaceRoute: typeof WorkspaceRouteWithChildren
+  LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -86,6 +108,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof WorkspaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_workspace/': {
@@ -109,6 +138,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceSavedRouteImport
       parentRoute: typeof WorkspaceRoute
     }
+    '/_workspace/settings': {
+      id: '/_workspace/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof WorkspaceSettingsRouteImport
+      parentRoute: typeof WorkspaceRoute
+    }
     '/_workspace/searches/$sessionId': {
       id: '/_workspace/searches/$sessionId'
       path: '/searches/$sessionId'
@@ -122,6 +158,7 @@ declare module '@tanstack/react-router' {
 interface WorkspaceRouteChildren {
   WorkspaceNewRoute: typeof WorkspaceNewRoute
   WorkspaceSavedRoute: typeof WorkspaceSavedRoute
+  WorkspaceSettingsRoute: typeof WorkspaceSettingsRoute
   WorkspaceIndexRoute: typeof WorkspaceIndexRoute
   WorkspaceSearchesSessionIdRoute: typeof WorkspaceSearchesSessionIdRoute
 }
@@ -129,6 +166,7 @@ interface WorkspaceRouteChildren {
 const WorkspaceRouteChildren: WorkspaceRouteChildren = {
   WorkspaceNewRoute: WorkspaceNewRoute,
   WorkspaceSavedRoute: WorkspaceSavedRoute,
+  WorkspaceSettingsRoute: WorkspaceSettingsRoute,
   WorkspaceIndexRoute: WorkspaceIndexRoute,
   WorkspaceSearchesSessionIdRoute: WorkspaceSearchesSessionIdRoute,
 }
@@ -139,6 +177,7 @@ const WorkspaceRouteWithChildren = WorkspaceRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   WorkspaceRoute: WorkspaceRouteWithChildren,
+  LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

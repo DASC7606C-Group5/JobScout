@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from jobscout.main import create_app
@@ -24,6 +23,7 @@ from jobscout.services.notice_service import (
     source_notices,
 )
 from jobscout.services.session_service import SessionOperationError, SessionService, _Session
+from tests.auth_client import AuthenticatedClient as TestClient
 
 NOW = datetime(2026, 10, 6, tzinfo=UTC)
 PRIVATE = "PRIVATE_DIAGNOSTIC_7db9"
@@ -251,11 +251,22 @@ def test_incomplete_analysis_does_not_invent_unresolved_preferences(analysis_sta
     assert result.pending_jobs[0].job == item.job
 
 
-def test_session_projection_keeps_diagnostics_private_and_honors_retryability() -> None:
+@pytest.mark.parametrize(
+    "code",
+    [
+        "model_auth",
+        "model_configuration",
+        "model_http",
+        "model_output",
+        "model_transport",
+        "model_timeout",
+    ],
+)
+def test_session_projection_keeps_diagnostics_private_and_honors_retryability(code: str) -> None:
     async def check() -> None:
         manager = SessionService(object(), object())
         error = WorkflowError(
-            code="model_auth", message=PRIVATE, stage="private-stage", details={"secret": PRIVATE}
+            code=code, message=PRIVATE, stage="private-stage", details={"secret": PRIVATE}
         )
         record = _Session(
             "s",
@@ -270,7 +281,7 @@ def test_session_projection_keeps_diagnostics_private_and_honors_retryability() 
         manager.sessions["s"] = record
         response = await manager.get("s")
         assert [(item.code, item.action) for item in response.errors] == [
-            ("service_unavailable", "edit_conditions")
+            ("model_unavailable", "edit_conditions")
         ]
         assert response.retryable is False
         assert "warnings" not in response.model_dump()
@@ -301,12 +312,13 @@ def test_http_missing_search_and_validation_failures_return_public_codes() -> No
 def test_unexpected_http_failure_retains_status_and_hides_exception_details() -> None:
     application = create_app(graph=object())
 
-    @application.get("/test-unexpected-failure")
+    @application.get("/api/v1/test-unexpected-failure")
     def unexpected_failure() -> None:
         raise RuntimeError(PRIVATE)
 
+    application.router.routes.insert(0, application.router.routes.pop())
     with TestClient(application, raise_server_exceptions=False) as client:
-        response = client.get("/test-unexpected-failure")
+        response = client.get("/api/v1/test-unexpected-failure")
     assert response.status_code == 500
     assert response.json()["detail"]["code"] == "service_unavailable"
     assert response.json()["detail"]["action"] == "retry"

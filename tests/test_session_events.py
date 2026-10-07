@@ -2,19 +2,72 @@
 
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from jobscout.api.sessions import router, session_events
+from jobscout.models import LoginSession, User
 from jobscout.schemas.execution import SearchProgress
 from jobscout.schemas.session import SessionStopRequest
+from jobscout.services.auth_service import Identity
 from jobscout.services.session_service import SessionOperationError, SessionService, _Session
+from tests.auth_client import AuthenticatedClient as TestClient
 from tests.test_search_stop import ProgressGraph
 from tests.test_session_operations import Memory, close_manager, create_payload, manager_for
+
+
+@pytest.mark.parametrize("reason", ["logout", "expiry"])
+def test_authentication_ends_an_idle_event_stream_without_stopping_the_operation(
+    reason: str,
+) -> None:
+    async def scenario() -> None:
+        graph = ProgressGraph()
+        manager = await manager_for(graph, Memory())
+        try:
+            created = await manager.create(create_payload())
+            await graph.started.wait()
+            identity = Identity(
+                User(user_id="workflow-owner", username="student", password_hash="synthetic"),
+                LoginSession(
+                    token_hash="synthetic",
+                    owner_id="workflow-owner",
+                    csrf_token="synthetic",
+                    expires_at=datetime.now(UTC) + timedelta(hours=1),
+                ),
+            )
+            app = FastAPI()
+            app.state.sessions = manager
+            request = Request({"type": "http", "app": app, "state": {"identity": identity}})
+            response = await session_events(request, created.session_id)
+            iterator = aiter(response.body_iterator)
+            await anext(iterator)
+            await anext(iterator)
+            if reason == "expiry":
+                identity.session.expires_at = datetime.now(UTC) + timedelta(milliseconds=20)
+            pending = asyncio.ensure_future(anext(iterator))
+            await asyncio.sleep(0)
+            if reason == "logout":
+                identity.revoked.set()
+            # Expiry can emit the final heartbeat before ending the stream.
+            try:
+                await asyncio.wait_for(pending, 1)
+            except StopAsyncIteration:
+                pass
+            else:
+                with pytest.raises(StopAsyncIteration):
+                    await asyncio.wait_for(anext(iterator), 1)
+            assert created.session_id not in manager.subscribers
+            assert not graph.cancelled.is_set()
+            task = manager.sessions[created.session_id].task
+            assert task is not None and not task.done()
+        finally:
+            await close_manager(manager)
+
+    asyncio.run(scenario())
 
 
 def test_stream_pushes_progress_stop_and_completion_and_reconnects_to_current_state() -> None:

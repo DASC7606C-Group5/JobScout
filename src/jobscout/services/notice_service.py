@@ -167,6 +167,10 @@ def finalize_recommendation(
 
 
 _ERRORS: dict[str, tuple[str, str | None]] = {
+    "model_unavailable": (
+        "The model request failed. Your input is saved. Check Settings or retry.",
+        "retry",
+    ),
     "search_unavailable": (
         "Job sources are temporarily unavailable. Your input is saved; try again later.",
         "retry",
@@ -211,8 +215,12 @@ _ERRORS: dict[str, tuple[str, str | None]] = {
 
 def public_error(code: str, *, retryable: bool = True) -> ApplicantError:
     code = {
-        "model_auth": "service_unavailable",
-        "model_configuration": "service_unavailable",
+        "model_auth": "model_unavailable",
+        "model_configuration": "model_unavailable",
+        "model_http": "model_unavailable",
+        "model_output": "model_unavailable",
+        "model_transport": "model_unavailable",
+        "model_timeout": "model_unavailable",
         "operation_timeout": "search_timeout",
         "profile_input": "invalid_input",
     }.get(code, code)

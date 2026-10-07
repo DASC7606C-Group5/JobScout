@@ -7,7 +7,6 @@ from threading import Event
 from typing import Any
 
 import pytest
-from fastapi.testclient import TestClient
 from pydantic import BaseModel, ValidationError
 from replay.app import create_replay_app
 from replay.dataset import DEFAULT_DATASET, load_dataset
@@ -15,6 +14,7 @@ from replay.provider import ReplayProvider
 
 from jobscout.main import create_app
 from jobscout.services.llm_service import ToolTurn
+from tests.auth_client import AuthenticatedClient as TestClient
 from tests.test_web_scaffold import settled
 
 DESCRIPTION = load_dataset().profile_input("data-analyst-internship")["description"]

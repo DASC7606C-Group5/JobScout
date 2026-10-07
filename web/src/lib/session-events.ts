@@ -1,4 +1,5 @@
 import { ApplicantRequestError } from './applicant-errors'
+import { identityEvents, loadAccount } from './auth-client'
 import type { ScoutSession } from './contracts'
 import { isSessionResponse } from './session-response'
 
@@ -25,7 +26,9 @@ export function subscribeToSession(
     if (closed) return
     closed = true
     source.close()
+    identityEvents.removeEventListener('change', close)
   }
+  identityEvents.addEventListener('change', close)
   source.addEventListener('snapshot', (event) => {
     if (closed) return
     let data: unknown
@@ -45,7 +48,10 @@ export function subscribeToSession(
     handlers.onSnapshot(data)
   })
   source.onerror = () => {
-    if (!closed) handlers.onError(new ApplicantRequestError('connection_unavailable'))
+    if (!closed) {
+      handlers.onError(new ApplicantRequestError('connection_unavailable'))
+      void loadAccount(true).catch(() => {})
+    }
   }
   return close
 }

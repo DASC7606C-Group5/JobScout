@@ -1,10 +1,10 @@
 """Multipart file uploads and integration with the profile workflow."""
 
 import pytest
-from fastapi.testclient import TestClient
 
 from jobscout.main import create_app
 from jobscout.services.resume_service import MAX_RESUME_BYTES
+from tests.auth_client import AuthenticatedClient as TestClient
 from tests.test_resume_service import make_docx, make_pdf
 
 

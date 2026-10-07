@@ -3,6 +3,24 @@ import type { ApplicantRecovery } from './contracts'
 type ErrorDefinition = { message: string; action: ApplicantRecovery }
 
 const errors = {
+  model_unavailable: {
+    message: 'The model request failed. Your input is saved. Check Settings or retry.',
+    action: 'retry',
+  },
+  authentication_required: { message: 'Sign in to continue.', action: 'reload' },
+  model_key_required: {
+    message: 'Open Settings and configure your models before continuing.',
+    action: 'retry',
+  },
+  operation_capacity: {
+    message: 'Another operation is running. Try again after it finishes.',
+    action: 'retry',
+  },
+  server_daily_limit: {
+    message:
+      'The server model daily allowance has been used. Configure personal models in Settings or try tomorrow.',
+    action: 'retry',
+  },
   search_unavailable: {
     message: 'Job sources are unavailable. Try again later.',
     action: 'retry',

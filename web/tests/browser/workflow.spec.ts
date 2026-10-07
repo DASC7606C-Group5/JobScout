@@ -236,6 +236,17 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
     const method = route.request().method()
     const url = new URL(route.request().url())
     const path = url.pathname.replace('/api/v1', '')
+    if (path === '/auth/me') {
+      await route.fulfill({
+        json: {
+          user_id: 'synthetic-browser-account',
+          username: 'student',
+          csrf_token: 'synthetic-csrf',
+          expires_at: new Date(Date.now() + 43_200_000).toISOString(),
+        },
+      })
+      return
+    }
     if (path === '/sessions' && method === 'GET') {
       historyRequests.push(url)
       const start = Number(url.searchParams.get('cursor') || 0)
@@ -1187,7 +1198,7 @@ test('three-step flow uses IDs, explicit confirmation, source excerpts, saved jo
   }))
   expect(storage.session).toEqual({})
   expect(storage.local).toEqual({
-    'jobscout.session_id': 'session-1',
+    'jobscout.session_id.synthetic-browser-account': 'session-1',
     'jobscout.sidebar-expanded': 'true',
   })
 })
@@ -1295,7 +1306,11 @@ test('reload recovers the stream by ID and delete prevents restoration', async (
   const count = state.getCount()
   await page.waitForTimeout(1300)
   expect(state.getCount()).toBe(count)
-  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBeNull()
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem('jobscout.session_id.synthetic-browser-account'),
+    ),
+  ).toBeNull()
 })
 
 test('workflow failure uses backend retry without creating a second session', async ({ page }) => {
@@ -1420,7 +1435,11 @@ test('a missing search route offers a fresh start without browser-stored private
   await page.goto('/searches/expired')
   await page.getByRole('main').getByRole('link', { name: 'New search', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Analyze and continue' })).toBeEnabled()
-  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBeNull()
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem('jobscout.session_id.synthetic-browser-account'),
+    ),
+  ).toBeNull()
 })
 
 test('conversation preserves supplied free text and structured answers', async ({ page }) => {
@@ -2150,7 +2169,11 @@ test('deletion requires confirmation and a failed deletion preserves the search,
   await expect(
     page.getByRole('button', { name: 'Remove saved job: React Engineer', exact: true }),
   ).toBeVisible()
-  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBe('session-1')
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem('jobscout.session_id.synthetic-browser-account'),
+    ),
+  ).toBe('session-1')
   await trigger.click()
   await dialog.getByRole('button', { name: 'Delete search', exact: true }).click()
   await expect(page.getByLabel('About you', { exact: true })).toHaveValue(introduction)
@@ -2158,7 +2181,11 @@ test('deletion requires confirmation and a failed deletion preserves the search,
     page.getByRole('button', { name: 'Remove resume: original.txt', exact: true }),
   ).toBeVisible()
   expect(deletions).toEqual([deletions[0], deletions[0]])
-  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBeNull()
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem('jobscout.session_id.synthetic-browser-account'),
+    ),
+  ).toBeNull()
   await page.getByRole('link', { name: 'Saved jobs', exact: false }).first().click()
   await expect(
     page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
@@ -2259,7 +2286,11 @@ test('a delayed mutation response cannot restore a search after confirmed deleti
   await expect(
     page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
   ).toHaveCount(0)
-  expect(await page.evaluate(() => localStorage.getItem('jobscout.session_id'))).toBeNull()
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem('jobscout.session_id.synthetic-browser-account'),
+    ),
+  ).toBeNull()
 })
 
 test('desktop drawer remembers expansion and focuses the current search', async ({ page }) => {

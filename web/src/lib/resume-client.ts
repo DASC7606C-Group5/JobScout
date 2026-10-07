@@ -1,4 +1,5 @@
 import { ApplicantRequestError, responseErrorCode } from './applicant-errors'
+import { authenticatedFetch } from './auth-client'
 import type { ScoutInput } from './contracts'
 
 export const RESUME_FILE_ACCEPT =
@@ -22,7 +23,7 @@ function validateText(text: string): string {
 
 export function createResumeReader(
   baseUrl = '/api/v1',
-  fetcher: (url: string, init: RequestInit) => Promise<Response> = fetch,
+  fetcher: (url: string, init: RequestInit) => Promise<Response> = authenticatedFetch,
 ) {
   const base = baseUrl.replace(/\/+$/, '')
   return async function readResume(file: File, signal?: AbortSignal): Promise<ResumePayload> {

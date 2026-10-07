@@ -7,6 +7,7 @@ from tortoise.models import Model
 
 
 class SearchSession(Model):
+    owner_id = fields.CharField(max_length=36, db_index=True)
     session_id = fields.CharField(max_length=36, primary_key=True)
     state: fields.JSONField[dict[str, Any]] = fields.JSONField()
     revision = fields.IntField(default=1)
@@ -23,6 +24,7 @@ class SearchSession(Model):
 
 
 class AcceptedRequest(Model):
+    owner_id = fields.CharField(max_length=36, db_index=True)
     id = fields.IntField(primary_key=True)
     scope = fields.CharField(max_length=192)
     request_id = fields.CharField(max_length=128)
@@ -31,11 +33,13 @@ class AcceptedRequest(Model):
 
     class Meta:
         table = "workspace_requests"
-        unique_together = (("scope", "request_id"),)
+        unique_together = (("owner_id", "scope", "request_id"),)
 
 
 class WorkspaceDraft(Model):
-    scope = fields.CharField(max_length=192, primary_key=True)
+    id = fields.IntField(primary_key=True)
+    owner_id = fields.CharField(max_length=36, db_index=True)
+    scope = fields.CharField(max_length=192)
     session_id = fields.CharField(max_length=36, null=True, db_index=True)
     revision = fields.IntField(default=0)
     data: fields.JSONField[dict[str, object]] = fields.JSONField()
@@ -43,10 +47,13 @@ class WorkspaceDraft(Model):
 
     class Meta:
         table = "workspace_drafts"
+        unique_together = (("owner_id", "scope"),)
 
 
 class SavedJob(Model):
-    job_id = fields.CharField(max_length=512, primary_key=True)
+    id = fields.IntField(primary_key=True)
+    owner_id = fields.CharField(max_length=36, db_index=True)
+    job_id = fields.CharField(max_length=512)
     item: fields.JSONField[dict[str, object]] = fields.JSONField()
     session_id = fields.CharField(max_length=36)
     session_revision = fields.IntField()
@@ -54,3 +61,40 @@ class SavedJob(Model):
 
     class Meta:
         table = "workspace_saved_jobs"
+        unique_together = (("owner_id", "job_id"),)
+
+
+class User(Model):
+    user_id = fields.CharField(max_length=36, primary_key=True)
+    username = fields.CharField(max_length=32, unique=True)
+    password_hash = fields.TextField()
+
+
+class LoginSession(Model):
+    token_hash = fields.CharField(max_length=64, primary_key=True)
+    owner_id = fields.CharField(max_length=36, db_index=True)
+    csrf_token = fields.CharField(max_length=64)
+    expires_at = fields.DatetimeField(db_index=True)
+
+
+class PersonalModel(Model):
+    id = fields.IntField(primary_key=True)
+    owner_id = fields.CharField(max_length=36, db_index=True)
+    role = fields.CharField(max_length=16)
+    endpoint_id = fields.CharField(max_length=64)
+    model = fields.CharField(max_length=128)
+    encrypted_key = fields.TextField()
+    thinking = fields.BooleanField(default=False)
+
+    class Meta:
+        unique_together = (("owner_id", "role"),)
+
+
+class DailyUsage(Model):
+    id = fields.IntField(primary_key=True)
+    owner_id = fields.CharField(max_length=36)
+    day = fields.CharField(max_length=10)
+    operations = fields.IntField(default=0)
+
+    class Meta:
+        unique_together = (("owner_id", "day"),)

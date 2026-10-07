@@ -32,6 +32,7 @@ from jobscout.schemas.session import (
     SessionStopRequest,
 )
 from jobscout.schemas.workspace import SessionHistoryItem, SessionHistoryResponse
+from jobscout.services.identity import owner_id
 from jobscout.services.job_retrieval.models import SourceOutcome
 from jobscout.services.notice_service import (
     dedupe_notices,
@@ -56,6 +57,7 @@ class SessionOperationError(ValueError):
 class _Session:
     session_id: str
     state: dict[str, Any]
+    owner_id: str = field(default_factory=owner_id)
     revision: int = 1
     outcome: str = "running"
     task: asyncio.Task[None] | None = None
@@ -109,12 +111,23 @@ def _restore_state(state: dict[str, Any]) -> dict[str, Any]:
 
 
 class SessionService:
-    def __init__(self, graph: Any, checkpointer: Any, *, mode: str = "live") -> None:
+    def __init__(
+        self,
+        graph: Any,
+        checkpointer: Any,
+        *,
+        mode: str = "live",
+        model_settings: Any = None,
+        graph_factory: Any = None,
+    ) -> None:
+        self.model_settings = model_settings
+        self.graph_factory = graph_factory
+        self.testing_users: set[str] = set()
         self.graph = graph
         self.checkpointer = checkpointer
         self.mode = mode
         self.sessions: dict[str, _Session] = {}
-        self.creation_requests: dict[str, tuple[str, str]] = {}
+        self.creation_requests: dict[tuple[str, str], tuple[str, str]] = {}
         self.lock = asyncio.Lock()
         self.closing = False
         self.subscribers: dict[str, set[asyncio.Queue[SessionResponse | None]]] = {}
@@ -157,6 +170,7 @@ class SessionService:
             record = _Session(
                 stored.session_id,
                 _restore_state(stored.state),
+                owner_id=stored.owner_id,
                 revision=stored.revision,
                 outcome=stored.outcome,
                 thread_id=stored.thread_id,
@@ -193,7 +207,7 @@ class SessionService:
             await self._persist(record)
         for accepted in await AcceptedRequest.all():
             if accepted.scope == "create" and accepted.session_id:
-                self.creation_requests[accepted.request_id] = (
+                self.creation_requests[(accepted.owner_id, accepted.request_id)] = (
                     accepted.fingerprint,
                     accepted.session_id,
                 )
@@ -230,6 +244,7 @@ class SessionService:
     async def _persist(record: _Session, *, connection: BaseDBAsyncClient | None = None) -> None:
         state = _JSON_ADAPTER.dump_python(record.state, mode="json")
         values = {
+            "owner_id": record.owner_id,
             "state": state,
             "revision": record.revision,
             "outcome": record.outcome,
@@ -254,7 +269,7 @@ class SessionService:
         data = payload.model_dump(mode="json")
         fingerprint = _fingerprint(data)
         async with self.lock:
-            previous = self.creation_requests.get(payload.request_id)
+            previous = self.creation_requests.get((owner_id(), payload.request_id))
             if previous:
                 previous_fingerprint, session_id = previous
                 if fingerprint != previous_fingerprint:
@@ -269,6 +284,8 @@ class SessionService:
                 payload.resume and payload.resume.text.strip()
             ):
                 raise SessionOperationError(422, "Provide a resume or personal introduction.")
+            self.check_capacity()
+            models = await self.model_settings.prepare(owner_id()) if self.model_settings else None
             session_id = str(uuid4())
             state: dict[str, Any] = {
                 "session_id": session_id,
@@ -288,7 +305,10 @@ class SessionService:
             )
             async with in_transaction() as connection:
                 await self._persist(record, connection=connection)
+                if models and models.uses_server:
+                    await self.model_settings.charge(owner_id(), connection)
                 await AcceptedRequest.create(
+                    owner_id=owner_id(),
                     scope="create",
                     request_id=payload.request_id,
                     fingerprint=fingerprint,
@@ -296,8 +316,8 @@ class SessionService:
                     using_db=connection,
                 )
             self.sessions[session_id] = record
-            self.creation_requests[payload.request_id] = (fingerprint, session_id)
-            self._start(record, state)
+            self.creation_requests[(owner_id(), payload.request_id)] = (fingerprint, session_id)
+            self._start(record, state, models=models)
             return self._response(record)
 
     async def resume(self, session_id: str, payload: SessionResumeRequest) -> SessionResponse:
@@ -352,6 +372,8 @@ class SessionService:
                     409, "This search cannot be retried.", code="search_not_retryable"
                 )
             self._validate_answers(record, payload)
+            self.check_capacity(exclude_session=session_id if editing_run else None)
+            models = await self.model_settings.prepare(owner_id()) if self.model_settings else None
             previous_state = dict(record.state)
             previous_outcome = record.outcome
             previous_thread = record.thread_id
@@ -392,7 +414,10 @@ class SessionService:
             try:
                 async with in_transaction() as connection:
                     await self._persist(record, connection=connection)
+                    if models and models.uses_server:
+                        await self.model_settings.charge(owner_id(), connection)
                     await AcceptedRequest.create(
+                        owner_id=owner_id(),
                         scope=f"resume:{session_id}",
                         request_id=payload.request_id,
                         fingerprint=fingerprint,
@@ -411,7 +436,7 @@ class SessionService:
             record.requests[payload.request_id] = fingerprint
             if previous_task is not None:
                 previous_task.cancel()
-            self._start(record, next_input, previous_task=previous_task)
+            self._start(record, next_input, previous_task=previous_task, models=models)
             self._notify(record)
             return self._response(record)
 
@@ -489,7 +514,7 @@ class SessionService:
                     409, "The search run has changed.", code="search_changed"
                 )
             previous = await AcceptedRequest.get_or_none(
-                scope=f"stop:{session_id}", request_id=payload.request_id
+                owner_id=owner_id(), scope=f"stop:{session_id}", request_id=payload.request_id
             )
             if previous:
                 if previous.fingerprint != fingerprint:
@@ -521,6 +546,7 @@ class SessionService:
                 async with in_transaction() as connection:
                     await self._persist(record, connection=connection)
                     await AcceptedRequest.create(
+                        owner_id=owner_id(),
                         scope=f"stop:{session_id}",
                         request_id=payload.request_id,
                         fingerprint=fingerprint,
@@ -617,7 +643,7 @@ class SessionService:
     async def history(
         self, *, cursor: str | None = None, limit: int = 20
     ) -> SessionHistoryResponse:
-        query = SearchSession.filter(deleting=False)
+        query = SearchSession.filter(deleting=False, owner_id=owner_id())
         if cursor:
             try:
                 timestamp, session_id = json.loads(urlsafe_b64decode(cursor.encode("ascii")))
@@ -666,8 +692,14 @@ class SessionService:
         async with self.lock:
             record = self.sessions.get(session_id)
             if record is None:
-                if await AcceptedRequest.filter(scope="create", session_id=session_id).exists():
+                if await AcceptedRequest.filter(
+                    owner_id=owner_id(), scope="create", session_id=session_id
+                ).exists():
                     return
+                raise SessionOperationError(
+                    404, "This search was not found.", code="search_not_found"
+                )
+            if record.owner_id != owner_id():
                 raise SessionOperationError(
                     404, "This search was not found.", code="search_not_found"
                 )
@@ -726,7 +758,7 @@ class SessionService:
 
     def _get(self, session_id: str) -> _Session:
         record = self.sessions.get(session_id)
-        if record is None or record.deleted:
+        if record is None or record.deleted or record.owner_id != owner_id():
             raise SessionOperationError(
                 404, "This session does not exist or has expired.", code="search_not_found"
             )
@@ -736,12 +768,35 @@ class SessionService:
     def _config(session_id: str) -> dict[str, Any]:
         return {"configurable": {"thread_id": session_id}, "recursion_limit": 100}
 
+    def check_capacity(self, exclude_session: str | None = None) -> None:
+        if self.model_settings is None:
+            return
+        active = [
+            record
+            for record in self.sessions.values()
+            if record.session_id != exclude_session
+            and record.task is not None
+            and not record.task.done()
+        ]
+        settings = self.model_settings.settings
+        account_count = sum(record.owner_id == owner_id() for record in active) + (
+            owner_id() in self.testing_users
+        )
+        if (
+            account_count >= settings.concurrent_user_limit
+            or len(active) + len(self.testing_users) >= settings.concurrent_total_limit
+        ):
+            from jobscout.services.auth_service import auth_error
+
+            raise auth_error(429, "operation_capacity")
+
     def _start(
         self,
         record: _Session,
         graph_input: Any,
         *,
         previous_task: asyncio.Task[None] | None = None,
+        models: Any = None,
     ) -> None:
         run_id = uuid4().hex
         record.active_run_id = run_id
@@ -750,7 +805,7 @@ class SessionService:
             run_id=None, progress=SearchProgress(), progress_seq=0, stop_reason=None
         )
         record.task = asyncio.create_task(
-            self._operate(record, graph_input, run_id, previous_task=previous_task)
+            self._operate(record, graph_input, run_id, previous_task=previous_task, models=models)
         )
 
     async def _operate(
@@ -760,9 +815,11 @@ class SessionService:
         run_id: str,
         *,
         previous_task: asyncio.Task[None] | None = None,
+        models: Any = None,
     ) -> None:
         revision = record.revision
         thread_id = record.thread_id
+        graph = self.graph_factory(models.provider) if models is not None else self.graph
 
         async def on_progress(update: dict[str, Any]) -> None:
             await self._progress(record, run_id, revision, update)
@@ -774,8 +831,8 @@ class SessionService:
         try:
             if previous_task is not None:
                 await asyncio.gather(previous_task, return_exceptions=True)
-            state = await self.graph.ainvoke(graph_input, config)
-            snapshot = await self.graph.aget_state(self._config(thread_id))
+            state = await graph.ainvoke(graph_input, config)
+            snapshot = await graph.aget_state(self._config(thread_id))
             async with self.lock:
                 if (
                     record.deleted
@@ -799,7 +856,7 @@ class SessionService:
         except Exception:
             recovered: dict[str, Any] = {}
             try:
-                snapshot = await self.graph.aget_state(self._config(thread_id))
+                snapshot = await graph.aget_state(self._config(thread_id))
                 recovered = snapshot.values
             except Exception:
                 pass
@@ -828,6 +885,11 @@ class SessionService:
                 self._retain_accepted_command(record)
                 await self._persist(record)
                 self._notify(record)
+
+        finally:
+            if models is not None:
+                await graph.cleanup_session(record.session_id)
+                await models.provider.aclose()
 
     def _response(self, record: _Session) -> SessionResponse:
         state = record.state

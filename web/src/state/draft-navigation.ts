@@ -6,6 +6,11 @@ interface PendingDraft {
 
 const drafts = new Map<PendingDraft, string>()
 
+export function discardAllDrafts() {
+  for (const draft of drafts.keys()) draft.discard()
+  drafts.clear()
+}
+
 export function registerDraft(draft: PendingDraft, path: string) {
   drafts.set(draft, path)
   return () => {

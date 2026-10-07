@@ -1,4 +1,5 @@
 import { ApplicantRequestError, responseErrorCode } from './applicant-errors'
+import { authenticatedFetch } from './auth-client'
 import type { DraftResponse, SessionHistory, WorkspaceClient } from './contracts'
 import { SessionHttpError } from './session-client'
 import { isRecommendationItem } from './session-response'
@@ -13,7 +14,7 @@ function record(value: unknown): value is Record<string, unknown> {
 
 export function createWorkspaceClient(
   baseUrl = '/api/v1',
-  fetcher: (url: string, init: RequestInit) => Promise<Response> = fetch,
+  fetcher: (url: string, init: RequestInit) => Promise<Response> = authenticatedFetch,
 ): WorkspaceClient {
   const base = baseUrl.replace(/\/+$/, '')
   async function request(path: string, method: string, body?: unknown, signal?: AbortSignal) {

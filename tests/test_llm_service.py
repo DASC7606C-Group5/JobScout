@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from jobscout.config import Settings
 from jobscout.services.llm_service import (
-    DeepSeekProvider,
+    LangChainModelProvider,
     LLMProvider,
     ModelRole,
     ModelRouter,
@@ -81,7 +81,7 @@ def test_json_wire_format_typed_response_and_borrowed_client(settings: Settings)
     async def scenario() -> None:
         original = messages()
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             result = await provider.structured(Answer, original)
             assert_type(result, Answer)
             assert result == Answer(name="synthetic", count=2)
@@ -103,7 +103,7 @@ def test_json_wire_format_typed_response_and_borrowed_client(settings: Settings)
     assert request.headers["authorization"] == "Bearer synthetic-test-token"
     assert body["response_format"] == {"type": "json_object"}
     assert body["thinking"] == {"type": "disabled"}
-    assert body["stream"] is False
+    assert body.get("stream", False) is False
     assert body["model"] == "deepseek-flash"
     assert body["max_tokens"] == 100
     assert "JSON" in body["messages"][0]["content"]
@@ -154,7 +154,7 @@ def test_one_schema_or_json_repair(settings: Settings, content: str) -> None:
     async def scenario() -> None:
         original = messages()
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             assert (await provider.structured(Answer, original)).count == 2
             assert provider.usage.repairs == 1
             assert provider.usage.requests == 2
@@ -189,7 +189,7 @@ def test_invalid_responses_exhaust_exactly_one_repair_safely(
 
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             with pytest.raises(ModelServiceError) as caught:
                 await provider.structured(Answer, messages())
             assert caught.value.code == "model_output"
@@ -215,7 +215,7 @@ def test_one_transient_http_retry(settings: Settings, status: int) -> None:
 
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             assert (await provider.structured(Answer, messages())).count == 2
             assert provider.usage.retries == 1
             assert provider.usage.repairs == 0
@@ -243,7 +243,7 @@ def test_http_failure_codes_are_safe_and_bounded(
 
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             with pytest.raises(ModelServiceError) as caught:
                 await provider.structured(Answer, messages())
             assert caught.value.code == code
@@ -265,7 +265,7 @@ def test_retry_budget_is_shared_across_repair(settings: Settings) -> None:
 
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             with pytest.raises(ModelServiceError, match="could not complete"):
                 await provider.structured(Answer, messages())
             assert provider.usage.retries == 1
@@ -284,7 +284,7 @@ def test_repair_can_use_remaining_retry_and_usage_accumulates(settings: Settings
 
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             await provider.structured(Answer, messages())
             await provider.structured(Answer, messages())
             assert provider.usage.structured_calls == 2
@@ -306,7 +306,7 @@ def test_transport_failure_retries_once(
 
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             with pytest.raises(ModelServiceError) as caught:
                 await provider.structured(Answer, messages())
             expected = "model_timeout" if error_type is httpx.ReadTimeout else "model_transport"
@@ -335,7 +335,7 @@ def test_whole_operation_timeout_cancels_pending_http(
     async def scenario() -> None:
         settings.llm_timeout = 2 if use_deadline else 0.02
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             end = asyncio.get_running_loop().time() + 0.02 if use_deadline else None
             with pytest.raises(ModelServiceError) as caught:
                 await asyncio.wait_for(provider.structured(Answer, messages(), deadline=end), 1)
@@ -355,7 +355,7 @@ def test_retry_sleep_does_not_reset_timeout(settings: Settings) -> None:
     async def scenario() -> None:
         settings.llm_timeout = 0.02
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             with pytest.raises(ModelServiceError) as caught:
                 await asyncio.wait_for(provider.structured(Answer, messages()), 1)
             assert caught.value.code == "model_timeout"
@@ -370,7 +370,7 @@ def test_expired_deadline_makes_no_http_request(settings: Settings) -> None:
 
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             with pytest.raises(ModelServiceError) as caught:
                 await provider.structured(Answer, messages(), deadline=0)
             assert caught.value.code == "model_timeout"
@@ -393,7 +393,7 @@ def test_external_cancellation_propagates_without_retry(settings: Settings) -> N
                 stopped.set()
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             task = asyncio.create_task(provider.structured(Answer, messages()))
             await started.wait()
             task.cancel()
@@ -419,7 +419,7 @@ def test_concurrent_requests_keep_independent_retry_budgets(settings: Settings) 
 
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             results = await asyncio.gather(
                 provider.structured(Answer, [{"role": "user", "content": "synthetic A"}]),
                 provider.structured(Answer, [{"role": "user", "content": "synthetic B"}]),
@@ -434,7 +434,7 @@ def test_concurrent_requests_keep_independent_retry_budgets(settings: Settings) 
 
 
 @pytest.mark.parametrize("role", ["semantic", "decision"])
-@pytest.mark.parametrize("provider_name", ["demo", "openai_compatible", "synthetic unknown"])
+@pytest.mark.parametrize("provider_name", ["demo", "unsupported", "synthetic unknown"])
 def test_factory_rejects_unknown_provider_without_fallback(
     settings: Settings, provider_name: str, role: ModelRole
 ) -> None:
@@ -466,7 +466,7 @@ def test_missing_or_unsafe_configuration_fails_before_io(
     setattr(settings, f"llm_{role}_{field}", value)
 
     async def scenario() -> None:
-        provider = DeepSeekProvider(settings, role=role)
+        provider = LangChainModelProvider(settings, role=role)
         with pytest.raises(ModelServiceError) as caught:
             await provider.structured(Answer, messages())
         assert caught.value.code == "model_configuration"
@@ -518,7 +518,7 @@ def test_aclose_does_not_close_borrowed_client(settings: Settings) -> None:
         async with httpx.AsyncClient(
             transport=httpx.MockTransport(lambda request: reply())
         ) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             await provider.aclose()
             await provider.aclose()
             assert not client.is_closed
@@ -533,7 +533,8 @@ def test_invalid_timeout_is_rejected(settings: Settings, value: float) -> None:
         Settings.model_validate({**settings.model_dump(), "llm_timeout": value})
 
 
-def test_redirects_do_not_forward_credentials(settings: Settings) -> None:
+@pytest.mark.parametrize("follow_redirects", [False, True])
+def test_redirects_do_not_forward_credentials(settings: Settings, follow_redirects: bool) -> None:
     attempts = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -543,24 +544,26 @@ def test_redirects_do_not_forward_credentials(settings: Settings) -> None:
 
     async def scenario() -> None:
         async with httpx.AsyncClient(
-            transport=httpx.MockTransport(handler), follow_redirects=True
+            transport=httpx.MockTransport(handler), follow_redirects=follow_redirects
         ) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             with pytest.raises(ModelServiceError) as caught:
                 await provider.structured(Answer, messages())
-            assert caught.value.code == "model_http"
+            assert caught.value.code == (
+                "model_configuration" if follow_redirects else "model_http"
+            )
 
     asyncio.run(scenario())
-    assert attempts == 1
+    assert attempts == (0 if follow_redirects else 1)
 
 
-def test_invalid_usage_is_not_trusted(settings: Settings) -> None:
+def test_negative_token_usage_cannot_reduce_counters(settings: Settings) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        return reply(usage={"prompt_tokens": -7, "completion_tokens": True, "total_tokens": "99"})
+        return reply(usage={"prompt_tokens": -7, "completion_tokens": -5, "total_tokens": -12})
 
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             await provider.structured(Answer, messages())
             assert provider.usage.total_tokens == 0
             assert provider.usage.prompt_tokens == 0
@@ -571,10 +574,10 @@ def test_invalid_usage_is_not_trusted(settings: Settings) -> None:
 
 def test_provider_closes_owned_client(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
     client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: reply()))
-    monkeypatch.setattr("jobscout.services.llm_service.httpx.AsyncClient", lambda: client)
+    monkeypatch.setattr("jobscout.services.llm_service._new_http_client", lambda: client)
 
     async def scenario() -> None:
-        await DeepSeekProvider(settings).structured(Answer, messages())
+        await LangChainModelProvider(settings).structured(Answer, messages())
         assert client.is_closed
 
     asyncio.run(scenario())
@@ -583,7 +586,7 @@ def test_provider_closes_owned_client(settings: Settings, monkeypatch: pytest.Mo
 @pytest.mark.parametrize("deadline", [float("nan"), float("inf"), -float("inf")])
 def test_nonfinite_deadline_is_rejected(settings: Settings, deadline: float) -> None:
     async def scenario() -> None:
-        provider = DeepSeekProvider(settings)
+        provider = LangChainModelProvider(settings)
         with pytest.raises(ModelServiceError) as caught:
             await provider.structured(Answer, messages(), deadline=deadline)
         assert caught.value.code == "model_input"
@@ -604,7 +607,7 @@ def test_transport_retry_can_recover(settings: Settings) -> None:
 
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             assert (await provider.structured(Answer, messages())).count == 2
             assert provider.usage.requests == 2
             assert provider.usage.retries == 1
@@ -619,7 +622,7 @@ def test_usage_total_falls_back_to_reported_components(settings: Settings) -> No
 
     async def scenario() -> None:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             await provider.structured(Answer, messages())
             assert provider.usage.total_tokens == 5
 
@@ -627,18 +630,17 @@ def test_usage_total_falls_back_to_reported_components(settings: Settings) -> No
 
 
 def test_valid_json_returned_after_deadline_is_not_accepted(settings: Settings) -> None:
-    class LateClient(httpx.AsyncClient):
-        async def post(self, *args: object, **kwargs: object) -> httpx.Response:
-            try:
-                await asyncio.sleep(10)
-            except asyncio.CancelledError:
-                return reply()
+    async def handler(request: httpx.Request) -> httpx.Response:
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
             return reply()
+        return reply()
 
     async def scenario() -> None:
         settings.llm_timeout = 0.02
-        async with LateClient() as client:
-            provider = DeepSeekProvider(settings, client=client)
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = LangChainModelProvider(settings, client=client)
             with pytest.raises(ModelServiceError) as caught:
                 await provider.structured(Answer, messages())
             assert caught.value.code == "model_timeout"
@@ -650,7 +652,7 @@ def test_valid_json_returned_after_deadline_is_not_accepted(settings: Settings) 
 @pytest.mark.parametrize("invalid", [[], [{"role": "tool", "content": "synthetic"}]])
 def test_invalid_messages_fail_before_io(settings: Settings, invalid: list[dict[str, str]]) -> None:
     async def scenario() -> None:
-        provider = DeepSeekProvider(settings)
+        provider = LangChainModelProvider(settings)
         with pytest.raises(ModelServiceError) as caught:
             await provider.structured(Answer, invalid)
         assert caught.value.code == "model_input"
@@ -676,6 +678,7 @@ def test_native_tool_call_protocol_preserves_call_identity_and_arguments(
                         {
                             "finish_reason": "tool_calls",
                             "message": {
+                                "role": "assistant",
                                 "tool_calls": [
                                     {
                                         "id": "native-call",
@@ -691,7 +694,7 @@ def test_native_tool_call_protocol_preserves_call_identity_and_arguments(
                                             ),
                                         },
                                     }
-                                ]
+                                ],
                             },
                         }
                     ],
@@ -700,7 +703,7 @@ def test_native_tool_call_protocol_preserves_call_identity_and_arguments(
             )
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             with provider.usage_scope() as usage:
                 result = await provider.tool_turn(
                     [{"role": "user", "content": "Synthetic search"}], ToolRegistry().schemas()
@@ -732,6 +735,7 @@ def test_invalid_native_tool_results_fail_without_exposing_provider_body(
                         {
                             "finish_reason": finish,
                             "message": {
+                                "role": "assistant",
                                 "content": "PRIVATE_SENTINEL",
                                 "tool_calls": [
                                     {
@@ -747,10 +751,11 @@ def test_invalid_native_tool_results_fail_without_exposing_provider_body(
             )
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            provider = DeepSeekProvider(settings, client=client)
+            provider = LangChainModelProvider(settings, client=client)
             with pytest.raises(ModelServiceError) as rejected:
                 await provider.tool_turn(
-                    [{"role": "user", "content": "Synthetic"}], [{"type": "function"}]
+                    [{"role": "user", "content": "Synthetic"}],
+                    [{"type": "function", "function": {"name": "search_jobs"}}],
                 )
             assert rejected.value.code == "model_output"
             assert "PRIVATE_SENTINEL" not in str(rejected.value)
@@ -769,8 +774,8 @@ def test_usage_scopes_isolate_concurrent_runs_and_inherit_into_child_tasks(
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             provider = ModelRouter(
-                DeepSeekProvider(settings, role="semantic", client=client),
-                DeepSeekProvider(settings, role="decision", client=client),
+                LangChainModelProvider(settings, role="semantic", client=client),
+                LangChainModelProvider(settings, role="decision", client=client),
             )
 
             async def execute(count: int) -> tuple[int, int]:
@@ -788,5 +793,72 @@ def test_usage_scopes_isolate_concurrent_runs_and_inherit_into_child_tasks(
             assert first == (2, 10)
             assert second == (6, 30)
             assert provider.usage.requests == 8
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("provider_name", ["deepseek", "openai"])
+def test_thinking_uses_provider_parameters_and_preserves_private_tool_reasoning(
+    settings: Settings,
+    provider_name: str,
+) -> None:
+    settings.llm_decision_provider = provider_name
+    settings.llm_decision_thinking = True
+    observed: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        observed.append(body)
+        if provider_name == "deepseek":
+            assert body["thinking"] == {"type": "enabled"}
+            assert body["tool_choice"] == "auto"
+            assert "reasoning_effort" not in body
+            if len(observed) == 2:
+                assert body["messages"][-2]["reasoning_content"] == "synthetic-private-reasoning"
+        else:
+            assert "thinking" not in body
+            assert body["reasoning_effort"] == "high"
+            assert body["tool_choice"] == "required"
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "reasoning_content": "synthetic-private-reasoning",
+                            "tool_calls": [
+                                {
+                                    "id": "check",
+                                    "type": "function",
+                                    "function": {"name": "check_connection", "arguments": "{}"},
+                                }
+                            ],
+                        },
+                    }
+                ]
+            },
+        )
+
+    async def scenario() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            provider = LangChainModelProvider(settings, role="decision", client=client)
+            history: list[dict[str, object]] = [
+                {"role": "user", "content": "Call check_connection"}
+            ]
+            tools = [{"type": "function", "function": {"name": "check_connection"}}]
+            turn = await provider.tool_turn(history, tools)
+            assert "synthetic-private-reasoning" not in turn.model_dump_json()
+            assert "synthetic-private-reasoning" not in repr(turn)
+            history.extend(
+                [
+                    turn.assistant_message(),
+                    {"role": "tool", "tool_call_id": "check", "content": "ok"},
+                ]
+            )
+            assert (await provider.tool_turn(history, tools)).calls[0].id == "check"
+            assert LangChainModelProvider(settings).thinking is False
 
     asyncio.run(scenario())

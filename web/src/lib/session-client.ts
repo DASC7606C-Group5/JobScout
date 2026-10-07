@@ -5,6 +5,7 @@ import {
   responseErrorCode,
   type ApplicantErrorCode,
 } from './applicant-errors'
+import { authenticatedFetch } from './auth-client'
 import type { SessionClient } from './contracts'
 import { subscribeToSession } from './session-events'
 import { isSessionResponse } from './session-response'
@@ -24,7 +25,7 @@ export class SessionHttpError extends Error {
 
 export function createSessionClient(
   baseUrl = '/api/v1',
-  fetcher: (url: string, init: RequestInit) => Promise<Response> = fetch,
+  fetcher: (url: string, init: RequestInit) => Promise<Response> = authenticatedFetch,
 ): SessionClient {
   const base = baseUrl.replace(/\/+$/, '')
   async function request(path: string, method: string, body?: unknown, signal?: AbortSignal) {

@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router'
 
+import { AccountObserver } from '../components/account-observer'
 import { NotificationProvider } from '../components/notifications'
 
 interface RouterContext {
@@ -15,6 +16,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function RootLayout() {
   return (
     <NotificationProvider>
+      <AccountObserver />
       <Outlet />
     </NotificationProvider>
   )

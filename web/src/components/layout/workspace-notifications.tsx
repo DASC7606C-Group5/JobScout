@@ -69,6 +69,9 @@ export function WorkspaceNotifications() {
         message: applicantErrorMessage(code),
         tone: 'error',
         actions: [
+          ...(code === 'model_unavailable'
+            ? [{ label: 'Model settings', onClick: () => navigate({ to: '/settings' }) }]
+            : []),
           ...(session.retryable ? [{ label: 'Try again', onClick: retry }] : []),
           { label: 'Edit search criteria', onClick: edit },
         ],

@@ -3,12 +3,13 @@
 import time
 from typing import Any, TypedDict, cast
 
-from fastapi.testclient import TestClient
+from fastapi.testclient import TestClient as BaseTestClient
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
 from jobscout.main import create_app
+from tests.auth_client import AuthenticatedClient as TestClient
 
 SESSION_INPUT: dict[str, object] = {
     "request_id": "http-create",
@@ -46,7 +47,7 @@ def fixture_graph() -> Any:
     return compiled
 
 
-def settled(client: TestClient, session_id: str) -> dict[str, Any]:
+def settled(client: BaseTestClient, session_id: str) -> dict[str, Any]:
     for _ in range(100):
         data: dict[str, Any] = client.get(f"/api/v1/sessions/{session_id}").json()
         if data["outcome"] != "running":

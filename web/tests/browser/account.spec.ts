@@ -1,0 +1,46 @@
+import { expect, test } from '@playwright/test'
+
+test('registration, independent model settings and sign-out protect the workspace', async ({
+  page,
+}) => {
+  await page.goto('/new')
+  await expect(page).toHaveURL(/\/login$/)
+  await page.getByRole('button', { name: 'New here? Create an account' }).click()
+  const username = `student-${Date.now()}`
+  await page.getByLabel('Username', { exact: true }).fill(username)
+  await page.getByLabel('Password', { exact: true }).fill('browser-password-123')
+  await page.getByLabel('Class registration code').fill('synthetic-class-code')
+  await page.getByRole('button', { name: 'Create account', exact: true }).click()
+  await expect(page).toHaveURL(/\/new$/)
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
+  await expect(page.getByText(`Signed in as ${username}.`)).toBeVisible()
+  const semantic = page.getByRole('group', { name: 'Profile and job analysis' })
+  await semantic.getByLabel('Model service').selectOption('openai')
+  await semantic.getByLabel('Model name').fill('synthetic-personal-model')
+  await semantic.getByLabel('API key').fill('synthetic-personal-key')
+  await semantic.getByLabel('Request thinking').check()
+  await semantic.getByRole('button', { name: 'Save configuration' }).click()
+  await expect(semantic.getByLabel('API key')).toHaveValue('')
+  await expect(
+    semantic.getByText('A key is saved. Leave this field empty to keep it.'),
+  ).toBeVisible()
+  const response = await page.request.get('/api/v1/settings/models')
+  expect(response.status()).toBe(200)
+  expect(await response.text()).not.toContain('synthetic-personal-key')
+  await page.reload()
+  await expect(semantic.getByLabel('Model name')).toHaveValue('synthetic-personal-model')
+  await expect(semantic.getByLabel('Request thinking')).toBeChecked()
+  await semantic.getByLabel('Model service').selectOption('server')
+  await semantic.getByRole('button', { name: 'Save configuration' }).click()
+  await expect(semantic.getByLabel('Model name')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click()
+  await expect(page).toHaveURL(/\/login$/)
+  expect((await page.request.get('/api/v1/saved-jobs')).status()).toBe(401)
+  await page.goto('/settings')
+  await expect(page).toHaveURL(/\/login$/)
+  await page.getByLabel('Username', { exact: true }).fill(username)
+  await page.getByLabel('Password', { exact: true }).fill('browser-password-123')
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await expect(page).toHaveURL(/\/new$/)
+})

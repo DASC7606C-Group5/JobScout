@@ -63,6 +63,11 @@ def install_transport(
             schema_name = "tool_turn"
             turn = await conversation.tool_turn(body["messages"], body["tools"])
             message = turn.assistant_message()
+            if body.get("thinking") == {"type": "enabled"}:
+                message["reasoning_content"] = "synthetic-private-tool-reasoning"
+                for previous in body["messages"]:
+                    if previous["role"] == "assistant" and previous.get("tool_calls"):
+                        assert previous["reasoning_content"] == "synthetic-private-tool-reasoning"
             finish = "tool_calls"
         else:
             schema_name = json.loads(
@@ -86,17 +91,21 @@ def install_transport(
 
     client_factory = httpx.AsyncClient
     monkeypatch.setattr(
-        "jobscout.services.llm_service.httpx.AsyncClient",
+        "jobscout.services.llm_service._new_http_client",
         lambda: client_factory(transport=httpx.MockTransport(handler)),
     )
     return requests
 
 
+@pytest.mark.parametrize("thinking", [False, True])
 def test_graph_routes_conversation_and_jd_to_semantic_search_and_matching_to_decision(
     monkeypatch: pytest.MonkeyPatch,
+    thinking: bool,
 ) -> None:
     requests = install_transport(monkeypatch)
-    provider = get_llm_provider(settings())
+    active = settings()
+    active.llm_decision_thinking = thinking
+    provider = get_llm_provider(active)
     directory = ReplayProvider().location_catalog
     monkeypatch.setattr(provider, "location_catalog", directory, raising=False)
     monkeypatch.setattr(
@@ -109,8 +118,9 @@ def test_graph_routes_conversation_and_jd_to_semantic_search_and_matching_to_dec
         candidates = [raw(index) for index in range(5)]
         for candidate in candidates:
             candidate.description = "Python required. Bachelor degree required."
+        checkpointer = InMemorySaver()
         graph = build_live_graph(
-            InMemorySaver(), provider, FakeSearch([SearchResult(raw_jobs=candidates)])
+            checkpointer, provider, FakeSearch([SearchResult(raw_jobs=candidates)])
         )
         state = await graph.ainvoke(initial(), configuration())
         assert state["current_stage"] == "confirm"
@@ -130,6 +140,14 @@ def test_graph_routes_conversation_and_jd_to_semantic_search_and_matching_to_dec
         search_requests = provider.usage.requests - before_search
         assert completed["model_usage"]["requests"] == search_requests
         assert completed["model_usage"]["total_tokens"] == search_requests * 5
+        stored = repr((checkpointer.storage, checkpointer.writes, checkpointer.blobs))
+        for secret in (
+            "synthetic-semantic-key",
+            "synthetic-decision-key",
+            "synthetic-private-tool-reasoning",
+        ):
+            assert secret not in stored
+            assert secret not in repr(completed)
 
     asyncio.run(scenario())
     assert {name for name, *_ in requests} == {

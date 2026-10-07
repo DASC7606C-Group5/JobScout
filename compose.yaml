@@ -1,0 +1,40 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env.deploy
+    environment:
+      PRODUCTION: "true"
+      COOKIE_SECURE: "true"
+      PUBLIC_ORIGIN: https://${DOMAIN:?Set DOMAIN in the Compose environment}
+      DATABASE_URL: sqlite:///data/jobscout.sqlite3
+    volumes:
+      - workspace:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in the Compose environment}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  workspace:
+  caddy_data:
+  caddy_config:

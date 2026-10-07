@@ -270,6 +270,23 @@ function SidebarNavigation({
             </span>
           </Link>
         </li>
+        <li
+          className="w-full is-drawer-close:tooltip is-drawer-close:tooltip-right"
+          data-tip="Settings"
+        >
+          <Link
+            to="/settings"
+            onClick={beforeNavigate}
+            className={`flex h-11 w-full flex-nowrap items-center gap-3 p-0 text-sm leading-normal shadow-none ${pathname === '/settings' ? 'bg-primary/20 font-semibold text-primary-content' : 'text-base-content/75'}`}
+            aria-label="Settings"
+            aria-current={pathname === '/settings' ? 'page' : undefined}
+          >
+            <span className="flex size-11 shrink-0 items-center justify-center">
+              <Icon name="settings" size={20} />
+            </span>
+            <span className="whitespace-nowrap is-drawer-close:hidden">Settings</span>
+          </Link>
+        </li>
       </ul>
     </nav>
   )

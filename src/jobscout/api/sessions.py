@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import cast
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
@@ -64,12 +65,41 @@ async def session_events(request: Request, session_id: str) -> StreamingResponse
         raise HTTPException(error.status, public_error(error.code).model_dump()) from error
 
     async def events() -> AsyncIterator[str]:
+        identity = getattr(request.state, "identity", None)
+        revoked = asyncio.create_task(identity.revoked.wait()) if identity is not None else None
         try:
             yield "retry: 1500\n\n"
             while True:
+                if identity is not None and (
+                    identity.revoked.is_set() or identity.session.expires_at <= datetime.now(UTC)
+                ):
+                    return
+                received = asyncio.create_task(queue.get())
                 try:
-                    snapshot = await asyncio.wait_for(queue.get(), timeout=15)
-                except TimeoutError:
+                    waiting = {received, revoked} if revoked is not None else {received}
+                    timeout = (
+                        min(
+                            15,
+                            max(
+                                0, (identity.session.expires_at - datetime.now(UTC)).total_seconds()
+                            ),
+                        )
+                        if identity is not None
+                        else 15
+                    )
+                    done, _ = await asyncio.wait(
+                        waiting, timeout=timeout, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    if revoked is not None and revoked in done:
+                        return
+                    if received in done:
+                        snapshot = received.result()
+                    else:
+                        snapshot = None
+                finally:
+                    received.cancel()
+                    await asyncio.gather(received, return_exceptions=True)
+                if received not in done:
                     yield ": heartbeat\n\n"
                     continue
                 if snapshot is None:
@@ -78,6 +108,9 @@ async def session_events(request: Request, session_id: str) -> StreamingResponse
                 if snapshot.outcome != "running":
                     return
         finally:
+            if revoked is not None:
+                revoked.cancel()
+                await asyncio.gather(revoked, return_exceptions=True)
             service.unsubscribe(session_id, queue)
 
     return StreamingResponse(

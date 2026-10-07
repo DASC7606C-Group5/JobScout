@@ -1,15 +1,24 @@
-"""Asynchronous DeepSeek JSON and tool calls with replaceable clients for tests."""
+"""LangChain model integrations with per-operation limits and validated business output."""
 
 import asyncio
 import json
 import math
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from typing import Any, Literal, Protocol
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+import openai
+from langchain_core.language_models import LanguageModelInput
+from langchain_core.messages import AIMessage
+from langchain_core.outputs import ChatResult
+from langchain_core.runnables import Runnable
+from langchain_deepseek import ChatDeepSeek
+from langchain_openai import ChatOpenAI
+from langchain_openai.chat_models.base import BaseChatOpenAI
+from langsmith import tracing_context
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from jobscout.config import Settings, get_settings
 from jobscout.schemas.model import ModelUsage
@@ -27,6 +36,10 @@ _ERROR_MESSAGES = {
 _TRANSIENT_STATUS = {408, 425, 429}
 _RETRY_DELAY_SECONDS = 0.25
 type ModelRole = Literal["semantic", "decision"]
+
+
+def _new_http_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(follow_redirects=False)
 
 
 class ModelServiceError(RuntimeError):
@@ -60,11 +73,17 @@ class ToolTurn(BaseModel):
     """Use the model's function-call interface; do not store or display its private reasoning."""
 
     calls: list[ToolCall] = Field(min_length=1, max_length=4)
+    _reasoning_content: str | None = PrivateAttr(default=None)
 
     def assistant_message(self) -> dict[str, Any]:
         return {
             "role": "assistant",
             "content": None,
+            **(
+                {"reasoning_content": self._reasoning_content}
+                if self._reasoning_content is not None
+                else {}
+            ),
             "tool_calls": [
                 {
                     "id": call.id,
@@ -76,14 +95,63 @@ class ToolTurn(BaseModel):
         }
 
 
-class DeepSeekProvider:
-    """One repair and one transient retry per call, sharing an absolute deadline.
+def _validate_tool_arguments(response: object) -> None:
+    """Reject arrays before LangChain normalizes falsy tool arguments into empty objects."""
+    payload = response.model_dump() if isinstance(response, openai.BaseModel) else response
+    if not isinstance(payload, dict):
+        return
+    for choice in payload.get("choices") or []:
+        for call in choice.get("message", {}).get("tool_calls") or []:
+            if call["type"] != "function" or not isinstance(
+                json.loads(call["function"]["arguments"]), dict
+            ):
+                raise ModelServiceError("model_output")
 
-    An injected client is borrowed, not closed. Otherwise a client is opened and
-    closed for each structured call, so providers need no application shutdown hook.
+
+class OpenAIChatModel(ChatOpenAI):
+    def _create_chat_result(
+        self,
+        response: dict[str, Any] | openai.BaseModel,
+        generation_info: dict[str, Any] | None = None,
+    ) -> ChatResult:
+        _validate_tool_arguments(response)
+        return super()._create_chat_result(response, generation_info)
+
+
+class DeepSeekChatModel(ChatDeepSeek):
+    """Preserve thinking replies in subsequent tool requests in langchain-deepseek 1.1.1."""
+
+    def _create_chat_result(
+        self,
+        response: dict[str, Any] | openai.BaseModel,
+        generation_info: dict[str, Any] | None = None,
+    ) -> ChatResult:
+        _validate_tool_arguments(response)
+        return super()._create_chat_result(response, generation_info)
+
+    def _get_request_payload(
+        self,
+        input_: LanguageModelInput,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        messages = self._convert_input(input_).to_messages()
+        payload = super()._get_request_payload(messages, stop=stop, **kwargs)
+        for message, outgoing in zip(messages, payload["messages"], strict=True):
+            if isinstance(message, AIMessage):
+                reasoning = message.additional_kwargs.get("reasoning_content")
+                if isinstance(reasoning, str):
+                    outgoing["reasoning_content"] = reasoning
+        return payload
+
+
+class LangChainModelProvider:
+    """A role-specific model factory with one repair and one transient retry per call.
+
+    LangChain owns requests, message conversion, JSON parsing and tool binding.
+    JobScout keeps deadline, retry and output rules consistent across providers.
     """
-
-    provider_name = "deepseek"
 
     def __init__(
         self,
@@ -102,15 +170,21 @@ class DeepSeekProvider:
         self._usage = ModelUsage()
         self._run_usage: ContextVar[ModelUsage | None] = ContextVar("run_model_usage", default=None)
         self.model: str = getattr(settings, f"llm_{role}_model")
+        self.provider_name: str = getattr(settings, f"llm_{role}_provider")
+        self.thinking: bool = getattr(settings, f"llm_{role}_thinking")
+        if self.provider_name not in {"deepseek", "openai", "openai_compatible"} or (
+            self.thinking and self.provider_name == "openai_compatible"
+        ):
+            raise ModelServiceError("model_configuration")
 
     @property
-    def cache_identity(self) -> tuple[str, str, str]:
-        return (self.provider_name, self._base_url, self.model)
+    def cache_identity(self) -> tuple[str, str, str, bool]:
+        return (self.provider_name, self._base_url, self.model, self.thinking)
 
     async def aclose(self) -> None:
-        """Lifecycle hook; per-call clients self-close and borrowed clients remain owned by caller."""
+        """Models and owned clients close per call; injected clients belong to their caller."""
 
-    def _request_url(self) -> str:
+    def _validate_configuration(self) -> None:
         if not self.model.strip() or not self._api_key.strip():
             raise ModelServiceError("model_configuration")
         try:
@@ -124,18 +198,61 @@ class DeepSeekProvider:
             or url.query
             or url.fragment
             or any(character in self._api_key for character in "\r\n")
+            or (self._client is not None and self._client.follow_redirects)
         ):
             raise ModelServiceError("model_configuration")
-        return str(url).rstrip("/") + "/chat/completions"
+
+    @asynccontextmanager
+    async def _chat_model(self) -> AsyncIterator[BaseChatOpenAI]:
+        self._validate_configuration()
+        if self._client is None:
+            async with _new_http_client() as client:
+                model = self._create_model(client)
+                try:
+                    yield model
+                finally:
+                    model.root_client.close()
+        else:
+            model = self._create_model(self._client)
+            try:
+                yield model
+            finally:
+                model.root_client.close()
+
+    def _create_model(self, client: httpx.AsyncClient) -> BaseChatOpenAI:
+        parameters: dict[str, Any] = {
+            "model": self.model,
+            "api_key": self._api_key,
+            "base_url": self._base_url,
+            "timeout": self._timeout,
+            "max_retries": 0,
+            "http_async_client": client,
+            "http_socket_options": (),
+            "use_responses_api": False,
+            "cache": False,
+            "verbose": False,
+        }
+        if self.provider_name == "deepseek":
+            parameters.update(
+                max_tokens=self._max_tokens,
+                extra_body={"thinking": {"type": "enabled" if self.thinking else "disabled"}},
+            )
+            return DeepSeekChatModel(**parameters)
+        if self.provider_name == "openai":
+            parameters["max_tokens"] = self._max_tokens
+            if self.thinking:
+                parameters["reasoning_effort"] = "high"
+        else:
+            parameters["extra_body"] = {"max_tokens": self._max_tokens}
+        return OpenAIChatModel(**parameters)
 
     @property
     def usage(self) -> ModelUsage:
-        """Return a detached counter snapshot; no messages or reasoning are retained."""
+        """Return detached counters without retaining messages, keys or reasoning."""
         return self._usage.model_copy()
 
     @contextmanager
     def usage_scope(self, usage: ModelUsage | None = None) -> Iterator[ModelUsage]:
-        """Counters inherited by this run's child tasks, isolated from concurrent runs."""
         usage = usage if usage is not None else ModelUsage()
         token = self._run_usage.set(usage)
         try:
@@ -149,29 +266,20 @@ class DeepSeekProvider:
         if scoped is not None:
             setattr(scoped, field, getattr(scoped, field) + amount)
 
-    async def tool_turn(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
-        *,
-        deadline: float | None = None,
-    ) -> ToolTurn:
-        """Request standard DeepSeek function calls with one transient retry."""
+    @asynccontextmanager
+    async def _operation(self, deadline: float | None) -> AsyncIterator[float]:
         try:
-            url = self._request_url()
+            self._validate_configuration()
             end = asyncio.get_running_loop().time() + self._timeout
             if deadline is not None:
                 if not math.isfinite(deadline):
                     raise ModelServiceError("model_input")
                 end = min(end, deadline)
-            if not messages or not tools:
-                raise ModelServiceError("model_input")
-            async with asyncio.timeout_at(end):
-                if self._client is not None:
-                    result = await self._tool_turn(self._client, url, messages, tools, end)
-                else:
-                    async with httpx.AsyncClient() as client:
-                        result = await self._tool_turn(client, url, messages, tools, end)
+            self._remaining(end)
+            # Never export applicant data or private tool reasoning to remote tracing.
+            with tracing_context(enabled=False):
+                async with asyncio.timeout_at(end):
+                    yield end
         except asyncio.CancelledError:
             self._count("cancellations")
             raise
@@ -182,80 +290,93 @@ class DeepSeekProvider:
             self._count("failed_calls")
             raise
         self._count("successful_calls")
-        return result
 
-    async def _tool_turn(
+    async def _invoke(
         self,
-        client: httpx.AsyncClient,
-        url: str,
+        runnable: Runnable[LanguageModelInput, Any],
         messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
         deadline: float,
-    ) -> ToolTurn:
-        retried = False
+        retry_used: list[bool],
+    ) -> Any:
         while True:
+            self._remaining(deadline)
             self._count("requests")
             try:
-                response = await client.post(
-                    url,
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                    json={
-                        "model": self.model,
-                        "messages": messages,
-                        "tools": tools,
-                        "tool_choice": "required",
-                        "thinking": {"type": "disabled"},
-                        "max_tokens": self._max_tokens,
-                        "stream": False,
-                    },
-                    timeout=httpx.Timeout(self._remaining(deadline)),
-                    follow_redirects=False,
-                )
-            except httpx.TransportError as error:
-                if retried:
+                return await runnable.ainvoke(messages, config={"callbacks": []})
+            except openai.APIStatusError as error:
+                if error.status_code in {401, 403}:
+                    raise ModelServiceError("model_auth") from None
+                transient = error.status_code in _TRANSIENT_STATUS or 500 <= error.status_code < 600
+                if not transient or retry_used[0]:
+                    raise ModelServiceError("model_http") from None
+            except openai.APIConnectionError as error:
+                if retry_used[0]:
                     raise ModelServiceError(
                         "model_timeout"
-                        if isinstance(error, httpx.TimeoutException)
+                        if isinstance(error, openai.APITimeoutError)
                         else "model_transport"
                     ) from None
-                retried = True
-                await self._retry(deadline)
-                continue
-            except httpx.InvalidURL, httpx.RequestError:
-                raise ModelServiceError("model_transport") from None
-            if response.status_code in {401, 403}:
-                raise ModelServiceError("model_auth")
-            if response.status_code in _TRANSIENT_STATUS or 500 <= response.status_code < 600:
-                if retried:
-                    raise ModelServiceError("model_http")
-                retried = True
-                await self._retry(deadline)
-                continue
-            if not response.is_success:
-                raise ModelServiceError("model_http")
+            except (
+                openai.APIError,
+                openai.LengthFinishReasonError,
+                openai.ContentFilterFinishReasonError,
+                ValueError,
+                TypeError,
+                KeyError,
+                IndexError,
+                AttributeError,
+            ):
+                raise ModelServiceError("model_output") from None
+            retry_used[0] = True
+            self._count("retries")
+            await asyncio.sleep(min(_RETRY_DELAY_SECONDS, self._remaining(deadline)))
+
+    async def tool_turn(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        deadline: float | None = None,
+    ) -> ToolTurn:
+        async with self._operation(deadline) as end:
+            if not messages or not tools:
+                raise ModelServiceError("model_input")
+            async with self._chat_model() as model:
+                try:
+                    runnable = model.bind_tools(
+                        tools,
+                        tool_choice="auto"
+                        if self.provider_name == "deepseek" and self.thinking
+                        else "required",
+                    )
+                except ValueError, TypeError:
+                    raise ModelServiceError("model_input") from None
+                response = await self._invoke(runnable, messages, end, [False])
             try:
-                payload = response.json()
-                self._record_usage(payload)
-                choice = payload["choices"][0]
-                if choice["finish_reason"] != "tool_calls":
-                    raise ValueError
-                if any(call["type"] != "function" for call in choice["message"]["tool_calls"]):
+                self._record_usage(response)
+                if (
+                    not isinstance(response, AIMessage)
+                    or response.response_metadata.get("finish_reason") != "tool_calls"
+                    or response.invalid_tool_calls
+                ):
                     raise ValueError
                 calls = [
-                    ToolCall(
-                        id=call["id"],
-                        name=call["function"]["name"],
-                        arguments=json.loads(call["function"]["arguments"]),
+                    ToolCall.model_validate(
+                        {"id": call["id"], "name": call["name"], "arguments": call["args"]}
                     )
-                    for call in choice["message"]["tool_calls"]
-                    if call["type"] == "function"
+                    for call in response.tool_calls
                 ]
                 if len({call.id for call in calls}) != len(calls):
                     raise ValueError
                 result = ToolTurn(calls=calls)
-            except ValueError, KeyError, TypeError, IndexError:
+                if self.provider_name == "deepseek" and self.thinking:
+                    reasoning = response.additional_kwargs.get("reasoning_content")
+                    if not isinstance(reasoning, str):
+                        raise ValueError
+                    result._reasoning_content = reasoning
+            except ValueError, TypeError, KeyError:
                 raise ModelServiceError("model_output") from None
-            self._remaining(deadline)
+            self._remaining(end)
             return result
 
     async def structured[SchemaT: BaseModel](
@@ -265,33 +386,47 @@ class DeepSeekProvider:
         *,
         deadline: float | None = None,
     ) -> SchemaT:
-        self._count("structured_calls", 1)
-        try:
-            url = self._request_url()
-            end = asyncio.get_running_loop().time() + self._timeout
-            if deadline is not None:
-                if not math.isfinite(deadline):
-                    raise ModelServiceError("model_input")
-                end = min(end, deadline)
-            self._remaining(end)
+        self._count("structured_calls")
+        async with self._operation(deadline) as end:
             prompt = self._prepare_messages(schema, messages)
-            async with asyncio.timeout_at(end):
-                if self._client is not None:
-                    result = await self._structured(self._client, url, schema, prompt, end)
-                else:
-                    async with httpx.AsyncClient() as client:
-                        result = await self._structured(client, url, schema, prompt, end)
-        except asyncio.CancelledError:
-            self._count("cancellations", 1)
-            raise
-        except TimeoutError:
-            self._count("failed_calls", 1)
-            raise ModelServiceError("model_timeout") from None
-        except ModelServiceError:
-            self._count("failed_calls", 1)
-            raise
-        self._count("successful_calls", 1)
-        return result
+            async with self._chat_model() as model:
+                runnable = model.with_structured_output(
+                    schema, method="json_mode", include_raw=True
+                )
+                retry_used = [False]
+                for attempt in range(2):
+                    content = None
+                    try:
+                        response = await self._invoke(runnable, prompt, end, retry_used)
+                    except ModelServiceError as error:
+                        if error.code != "model_output":
+                            raise
+                    else:
+                        raw = response["raw"]
+                        self._record_usage(raw)
+                        if isinstance(raw, AIMessage):
+                            content = raw.content if isinstance(raw.content, str) else None
+                            if raw.response_metadata.get("finish_reason") == "stop":
+                                try:
+                                    if not isinstance(json.loads(content or ""), dict):
+                                        raise ValueError
+                                    parsed = response["parsed"]
+                                    if (
+                                        isinstance(parsed, schema)
+                                        and response["parsing_error"] is None
+                                    ):
+                                        self._remaining(end)
+                                        return parsed
+                                except ValueError:
+                                    pass
+                    if attempt == 1:
+                        raise ModelServiceError("model_output")
+                    self._remaining(end)
+                    self._count("repairs")
+                    if content is not None:
+                        prompt.append({"role": "assistant", "content": content})
+                    prompt.append({"role": "user", "content": JSON_REPAIR_PROMPT})
+        raise ModelServiceError("model_output")
 
     @staticmethod
     def _prepare_messages(
@@ -309,90 +444,6 @@ class DeepSeekProvider:
         )
         return [{"role": "system", "content": instruction}, *[dict(item) for item in messages]]
 
-    async def _structured[SchemaT: BaseModel](
-        self,
-        client: httpx.AsyncClient,
-        url: str,
-        schema: type[SchemaT],
-        messages: list[dict[str, str]],
-        deadline: float,
-    ) -> SchemaT:
-        retried = False
-        repaired = False
-        while True:
-            remaining = self._remaining(deadline)
-            self._count("requests", 1)
-            try:
-                response = await client.post(
-                    url,
-                    headers={"Authorization": f"Bearer {self._api_key}"},
-                    json={
-                        "model": self.model,
-                        "messages": messages,
-                        "response_format": {"type": "json_object"},
-                        "thinking": {"type": "disabled"},
-                        "max_tokens": self._max_tokens,
-                        "stream": False,
-                    },
-                    timeout=httpx.Timeout(remaining),
-                    follow_redirects=False,
-                )
-            except httpx.TransportError as error:
-                if retried:
-                    code = (
-                        "model_timeout"
-                        if isinstance(error, httpx.TimeoutException)
-                        else "model_transport"
-                    )
-                    raise ModelServiceError(code) from None
-                retried = True
-                await self._retry(deadline)
-                continue
-            except httpx.InvalidURL, httpx.RequestError:
-                raise ModelServiceError("model_transport") from None
-
-            if response.status_code in {401, 403}:
-                raise ModelServiceError("model_auth")
-            if response.status_code in _TRANSIENT_STATUS or 500 <= response.status_code < 600:
-                if retried:
-                    raise ModelServiceError("model_http")
-                retried = True
-                await self._retry(deadline)
-                continue
-            if not response.is_success:
-                raise ModelServiceError("model_http")
-
-            content = self._content(response)
-            if content is not None:
-                try:
-                    # JSON mode promises an object, not a scalar or a fenced block.
-                    if not isinstance(json.loads(content), dict):
-                        raise ValueError
-                    result = schema.model_validate_json(content)
-                except ValueError, ValidationError:
-                    pass
-                else:
-                    self._remaining(deadline)
-                    return result
-            if repaired:
-                raise ModelServiceError("model_output")
-            self._remaining(deadline)
-            repaired = True
-            self._count("repairs", 1)
-            if content is not None:
-                messages.append({"role": "assistant", "content": content})
-            messages.append(
-                {
-                    "role": "user",
-                    "content": JSON_REPAIR_PROMPT,
-                }
-            )
-
-    async def _retry(self, deadline: float) -> None:
-        remaining = self._remaining(deadline)
-        self._count("retries", 1)
-        await asyncio.sleep(min(_RETRY_DELAY_SECONDS, remaining))
-
     @staticmethod
     def _remaining(deadline: float) -> float:
         remaining = deadline - asyncio.get_running_loop().time()
@@ -400,30 +451,10 @@ class DeepSeekProvider:
             raise ModelServiceError("model_timeout")
         return remaining
 
-    def _content(self, response: httpx.Response) -> str | None:
-        try:
-            data = response.json()
-        except ValueError, UnicodeError:
-            return None
-        if not isinstance(data, dict):
-            return None
-        self._record_usage(data)
-        choices = data.get("choices")
-        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-            return None
-        choice = choices[0]
-        if choice.get("finish_reason") != "stop":
-            return None
-        message = choice.get("message")
-        if not isinstance(message, dict):
-            return None
-        content = message.get("content")
-        return content if isinstance(content, str) else None
-
-    def _record_usage(self, data: object) -> None:
-        if not isinstance(data, dict):
+    def _record_usage(self, message: object) -> None:
+        if not isinstance(message, AIMessage):
             return
-        usage = data.get("usage")
+        usage = message.response_metadata.get("token_usage")
         if isinstance(usage, dict):
             prompt = self._token_count(usage.get("prompt_tokens"))
             completion = self._token_count(usage.get("completion_tokens"))
@@ -440,7 +471,7 @@ class DeepSeekProvider:
 class ModelRouter:
     """Route JSON extraction and tool selection to separate models with shared usage counters."""
 
-    def __init__(self, semantic: DeepSeekProvider, decision: DeepSeekProvider) -> None:
+    def __init__(self, semantic: LangChainModelProvider, decision: LangChainModelProvider) -> None:
         self.semantic = semantic
         self.decision = decision
 
@@ -453,7 +484,7 @@ class ModelRouter:
         return {"semantic": self.semantic.model, "decision": self.decision.model}
 
     @property
-    def cache_identity(self) -> tuple[str, str, str]:
+    def cache_identity(self) -> tuple[str, str, str, bool]:
         return self.semantic.cache_identity
 
     @property
@@ -499,7 +530,7 @@ class ModelRouter:
 def get_llm_provider(settings: Settings | None = None) -> ModelRouter:
     active_settings = settings or get_settings()
     if any(
-        provider != "deepseek"
+        provider not in {"deepseek", "openai", "openai_compatible"}
         for provider in (
             active_settings.llm_semantic_provider,
             active_settings.llm_decision_provider,
@@ -507,6 +538,6 @@ def get_llm_provider(settings: Settings | None = None) -> ModelRouter:
     ):
         raise ModelServiceError("model_configuration")
     return ModelRouter(
-        DeepSeekProvider(active_settings, role="semantic"),
-        DeepSeekProvider(active_settings, role="decision"),
+        LangChainModelProvider(active_settings, role="semantic"),
+        LangChainModelProvider(active_settings, role="decision"),
     )

@@ -8,17 +8,23 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from jobscout.api.auth import router as auth_router
 from jobscout.api.resumes import router as resumes_router
+from jobscout.api.security import SecurityMiddleware
 from jobscout.api.sessions import router as sessions_router
+from jobscout.api.settings import router as settings_router
 from jobscout.api.workspace import router as workspace_router
 from jobscout.config import get_settings
 from jobscout.database import database_lifespan, sqlite_path
 from jobscout.graph.checkpoints import checkpoint_serializer
+from jobscout.services.auth_service import AuthService
+from jobscout.services.model_settings_service import ModelSettingsService
 from jobscout.services.notice_service import public_error
 from jobscout.services.session_service import SessionService
 from jobscout.services.workspace_service import WorkspaceService
@@ -42,6 +48,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
+        settings = get_settings()
         active_provider = provider
         active_search = search_service
         active_database_url = database_url or get_settings().database_url
@@ -56,6 +63,9 @@ def create_app(
             await stack.enter_async_context(
                 database_lifespan(application, database_url=active_database_url)
             )
+            application.state.auth = AuthService(settings)
+            await application.state.auth.open()
+            application.state.model_settings = ModelSettingsService(settings)
             checkpointer: Any = getattr(graph, "checkpointer", None)
             if checkpointer is None:
                 checkpointer = await stack.enter_async_context(
@@ -78,7 +88,19 @@ def create_app(
             application.state.checkpointer = checkpointer
             application.state.graph = active_graph
             application.state.sessions = SessionService(
-                active_graph, checkpointer, mode=active_mode
+                active_graph,
+                checkpointer,
+                mode=active_mode,
+                model_settings=application.state.model_settings
+                if active_mode == "live" and graph is None and provider is None
+                else None,
+                graph_factory=(
+                    lambda model: build_live_graph(
+                        checkpointer=checkpointer, provider=model, search_service=active_search
+                    )
+                )
+                if active_mode == "live" and graph is None and provider is None
+                else None,
             )
             await application.state.sessions.open()
             application.state.workspace = WorkspaceService(application.state.sessions)
@@ -92,7 +114,15 @@ def create_app(
                         if inspect.isawaitable(result):
                             await result
 
-    application = FastAPI(title="JobScout API", lifespan=lifespan)
+    settings = get_settings()
+    application = FastAPI(
+        title="JobScout API",
+        lifespan=lifespan,
+        docs_url=None if settings.production else "/docs",
+        redoc_url=None if settings.production else "/redoc",
+        openapi_url=None if settings.production else "/openapi.json",
+    )
+    application.add_middleware(SecurityMiddleware)
 
     @application.exception_handler(RequestValidationError)
     async def invalid_request(_request: Any, _error: RequestValidationError) -> JSONResponse:
@@ -110,6 +140,22 @@ def create_app(
     application.include_router(resumes_router)
     application.include_router(sessions_router)
     application.include_router(workspace_router)
+    application.include_router(auth_router)
+    application.include_router(settings_router)
+    frontend = Path(settings.frontend_directory).resolve()
+    if (frontend / "assets").is_dir():
+        application.mount("/assets", StaticFiles(directory=frontend / "assets"))
+
+    @application.get("/{path:path}", include_in_schema=False)
+    async def frontend_page(path: str) -> FileResponse:
+        if (
+            path.startswith("api/")
+            or path in {"docs", "redoc", "openapi.json"}
+            or not (frontend / "index.html").is_file()
+        ):
+            raise HTTPException(404, {"code": "not_found"})
+        return FileResponse(frontend / "index.html", headers={"Cache-Control": "no-cache"})
+
     return application
 
 

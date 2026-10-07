@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useEffectEvent } from 'react'
+import { toast } from 'sonner'
 
 type NotificationAction =
   | { label: string; onClick: () => unknown; href?: never }
@@ -32,4 +33,12 @@ export function useNotification(trigger: unknown, notification: Notification) {
     else dismiss(id)
     return () => dismiss(id)
   }, [trigger, id, dismiss])
+}
+export const pendingActions = new Set<string>()
+export const pendingDismissals = new Set<string>()
+
+export function clearNotifications() {
+  toast.dismiss()
+  pendingActions.clear()
+  pendingDismissals.clear()
 }

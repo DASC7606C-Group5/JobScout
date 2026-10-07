@@ -1,12 +1,14 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { toast, Toaster, useSonner } from 'sonner'
 
-import { NotificationContext, type Notification } from '../state/notifications'
+import {
+  NotificationContext,
+  pendingActions,
+  pendingDismissals,
+  type Notification,
+} from '../state/notifications'
 import { AsyncButton } from './async-button'
 import { Icon } from './icon'
-
-const pendingActions = new Set<string>()
-const pendingDismissals = new Set<string>()
 
 function notify(notification: Notification) {
   pendingDismissals.delete(notification.id)

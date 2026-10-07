@@ -4,13 +4,20 @@ import {
   useParams,
   useRouter,
   useRouterState,
+  redirect,
 } from '@tanstack/react-router'
 
 import { WorkspaceLayout } from '../components/layout/workspace-layout'
+import { loadAccount } from '../lib/auth-client'
 import { flushPendingDrafts, hasPendingDrafts } from '../state/draft-navigation'
 import { ScoutProvider } from '../state/scout-provider'
 
-export const Route = createFileRoute('/_workspace')({ component: Workspace })
+export const Route = createFileRoute('/_workspace')({
+  beforeLoad: async () => {
+    if (!(await loadAccount())) throw redirect({ to: '/login' })
+  },
+  component: Workspace,
+})
 
 function Workspace() {
   const { sessionId } = useParams({ strict: false })

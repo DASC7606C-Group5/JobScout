@@ -1,6 +1,20 @@
 import type { CSSProperties } from 'react'
 
 const paths = {
+  server: (
+    <>
+      <rect x="3" y="3" width="18" height="7" rx="2" />
+      <rect x="3" y="14" width="18" height="7" rx="2" />
+      <path d="M7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6" />
+    </>
+  ),
+  settings: (
+    <>
+      <path d="M4 7h16M4 17h16" />
+      <circle cx="9" cy="7" r="3" />
+      <circle cx="15" cy="17" r="3" />
+    </>
+  ),
   compass: (
     <>
       <circle cx="12" cy="12" r="9" />
