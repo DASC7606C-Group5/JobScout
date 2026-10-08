@@ -82,15 +82,15 @@ export function ResumeField({
                   <label className="flex items-start gap-3 rounded-field border border-base-300 bg-base-200/45 px-4 py-3">
                     <input
                       type="checkbox"
-                      className="checkbox checkbox-primary checkbox-sm mt-0.5"
+                      className="checkbox mt-0.5 checkbox-sm checkbox-primary"
                       checked={field.value}
                       onChange={(event) => field.onChange(event.target.checked)}
                       onBlur={field.onBlur}
                       ref={field.ref}
                     />
                     <span className="text-sm text-base-content/80">
-                      I understand my resume text will be sent to the configured AI model (for
-                      example DeepSeek) to extract my profile.
+                      I understand my resume text will be sent to the configured AI model (e.g.
+                      DeepSeek) to extract my profile.
                     </span>
                   </label>
                   {fieldState.error && (
