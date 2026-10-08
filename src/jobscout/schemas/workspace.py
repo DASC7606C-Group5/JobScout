@@ -59,6 +59,7 @@ class ProfileDraft(WireModel):
 
     description: str
     resume: ResumeInput | None
+    resume_consent: bool = False
     directions: str
     preferences: RawPreferences
     search_options: DraftSearchOptions = Field(default_factory=lambda: DraftSearchOptions())

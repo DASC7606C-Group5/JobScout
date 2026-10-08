@@ -185,6 +185,10 @@ _ERRORS: dict[str, tuple[str, str | None]] = {
         "retry",
     ),
     "invalid_input": ("Check the information you entered and try again.", "edit_conditions"),
+    "resume_consent_required": (
+        "Confirm that you consent to sending your resume to the configured AI model.",
+        "edit_conditions",
+    ),
     "invalid_answer": ("Check your answer or update your search criteria.", "edit_conditions"),
     "search_changed": ("Your search has changed. Reload it before continuing.", "reload"),
     "draft_conflict": ("The shared draft has changed. Reload it before saving.", "reload"),

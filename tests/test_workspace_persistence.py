@@ -32,6 +32,7 @@ RAW_DRAFT: dict[str, Any] = {
     "search_options": {"result_count": 10},
     "description": "  学生经历\nPython, SQL  ",
     "resume": {"name": "简历.txt", "text": "Education\n项目经历，SQL\n"},
+    "resume_consent": True,
     "directions": "数据分析， 前端开发，",
     "preferences": {
         "location": "  深圳  ",

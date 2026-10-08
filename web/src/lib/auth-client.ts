@@ -107,6 +107,7 @@ export function accountErrorMessage(code: string): string {
     server_daily_limit:
       'The server model daily allowance has been used. Set your own models or try tomorrow.',
     operation_capacity: 'Another operation is running. Try again after it finishes.',
+    account_deletion_failed: 'Could not delete all account data. Please try again.',
   }
   return messages[code] ?? 'Could not complete the request. Please try again.'
 }
@@ -136,6 +137,7 @@ export const accountClient = {
   changePassword: (body: PasswordChange) =>
     client.request('post', '/api/v1/auth/password', { body }),
   logout: () => client.request('post', '/api/v1/auth/logout', {}),
+  deleteAccount: () => client.request('delete', '/api/v1/auth/account', {}),
   models: (signal?: AbortSignal) =>
     client.request('get', '/api/v1/settings/models', signal ? { signal } : {}, vModelSettings),
   usage: (signal?: AbortSignal) =>

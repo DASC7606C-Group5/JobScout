@@ -47,6 +47,7 @@ class AuthService:
             maxsize=MAX_AUTH_RATE_KEYS, ttl=AUTH_RATE_WINDOW_SECONDS
         )
         self.user_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
+        self.write_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
         self.session_lock = asyncio.Lock()
         self.listeners: dict[str, list[Identity]] = {}
         self.dummy_hash: str = ""
@@ -103,6 +104,9 @@ class AuthService:
     def user_lock(self, user_id: str) -> asyncio.Lock:
         return self.user_locks.setdefault(user_id, asyncio.Lock())
 
+    def write_lock(self, user_id: str) -> asyncio.Lock:
+        return self.write_locks.setdefault(user_id, asyncio.Lock())
+
     async def issue(self, user: User) -> tuple[str, LoginSession]:
         token = secrets.token_urlsafe(32)
         session = await LoginSession.create(
@@ -147,9 +151,12 @@ class AuthService:
             )
             hashes = await query.values_list("token_hash", flat=True)
             await query.delete()
-            for hashed in hashes:
-                for identity in self.listeners.pop(str(hashed), []):
-                    identity.revoked.set()
+            self.notify_revoked([str(hashed) for hashed in hashes])
+
+    def notify_revoked(self, token_hashes: list[str]) -> None:
+        for hashed in token_hashes:
+            for identity in self.listeners.pop(hashed, []):
+                identity.revoked.set()
 
     @staticmethod
     def public(user: User, session: LoginSession) -> dict[str, Any]:

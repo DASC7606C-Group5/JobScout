@@ -16,6 +16,7 @@ from tortoise.backends.base.client import BaseDBAsyncClient
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
+from jobscout.config import get_settings
 from jobscout.models import AcceptedRequest, SearchSession, WorkspaceDraft
 from jobscout.schemas.conversation import ConversationMessage, SearchSummary
 from jobscout.schemas.errors import WorkflowError
@@ -32,6 +33,11 @@ from jobscout.schemas.session import (
     SessionStopRequest,
 )
 from jobscout.schemas.workspace import SessionHistoryItem, SessionHistoryResponse
+from jobscout.services.encryption import (
+    ProfileDocumentCipher,
+    decrypt_documents,
+    encrypt_documents,
+)
 from jobscout.services.identity import owner_id
 from jobscout.services.job_retrieval.models import SourceOutcome
 from jobscout.services.notice_service import (
@@ -81,7 +87,9 @@ def _fingerprint(value: dict[str, Any]) -> str:
     ).hexdigest()
 
 
-def _restore_state(state: dict[str, Any]) -> dict[str, Any]:
+def _restore_state(
+    state: dict[str, Any], cipher: ProfileDocumentCipher | None = None
+) -> dict[str, Any]:
     """Reconstitute workflow models rather than passing JSON dictionaries to graph nodes."""
     models: dict[str, type[BaseModel]] = {
         "profile": UserProfile,
@@ -107,6 +115,19 @@ def _restore_state(state: dict[str, Any]) -> dict[str, Any]:
     for key, model in sequences.items():
         if key in restored:
             restored[key] = [model.model_validate(item) for item in restored[key]]
+    if cipher is not None:
+        documents = restored.get("profile_documents")
+        if isinstance(documents, list) and documents:
+            restored["profile_documents"] = decrypt_documents(cipher, documents)
+        input_data = restored.get("input_data")
+        if isinstance(input_data, dict):
+            resume = input_data.get("resume")
+            if isinstance(resume, dict) and isinstance(resume.get("text"), str):
+                input_data = {
+                    **input_data,
+                    "resume": {**resume, "text": cipher.decrypt(resume["text"])},
+                }
+                restored["input_data"] = input_data
     return restored
 
 
@@ -119,9 +140,13 @@ class SessionService:
         mode: str = "live",
         model_settings: Any = None,
         graph_factory: Any = None,
+        profile_cipher: ProfileDocumentCipher | None = None,
     ) -> None:
         self.model_settings = model_settings
         self.graph_factory = graph_factory
+        self.profile_cipher = profile_cipher or ProfileDocumentCipher(
+            get_settings().credentials_key.get_secret_value()
+        )
         self.testing_users: set[str] = set()
         self.graph = graph
         self.checkpointer = checkpointer
@@ -169,7 +194,7 @@ class SessionService:
         for stored in await SearchSession.all():
             record = _Session(
                 stored.session_id,
-                _restore_state(stored.state),
+                _restore_state(stored.state, self.profile_cipher),
                 owner_id=stored.owner_id,
                 revision=stored.revision,
                 outcome=stored.outcome,
@@ -242,9 +267,22 @@ class SessionService:
             )
         ]
 
-    @staticmethod
-    async def _persist(record: _Session, *, connection: BaseDBAsyncClient | None = None) -> None:
-        state = _JSON_ADAPTER.dump_python(record.state, mode="json")
+    async def _persist(
+        self, record: _Session, *, connection: BaseDBAsyncClient | None = None
+    ) -> None:
+        state = dict(record.state)
+        documents = state.get("profile_documents")
+        if isinstance(documents, list) and documents:
+            state["profile_documents"] = encrypt_documents(self.profile_cipher, documents)
+        input_data = state.get("input_data")
+        if isinstance(input_data, dict):
+            resume = input_data.get("resume")
+            if isinstance(resume, dict) and isinstance(resume.get("text"), str):
+                state["input_data"] = {
+                    **input_data,
+                    "resume": {**resume, "text": self.profile_cipher.encrypt(resume["text"])},
+                }
+        state = _JSON_ADAPTER.dump_python(state, mode="json")
         values = {
             "owner_id": record.owner_id,
             "state": state,
@@ -286,6 +324,12 @@ class SessionService:
                 payload.resume and payload.resume.text.strip()
             ):
                 raise SessionOperationError(422, "Provide a resume or personal introduction.")
+            if payload.resume and payload.resume.text.strip() and not payload.resume_consent:
+                raise SessionOperationError(
+                    422,
+                    "Confirm that you consent to sending your resume to the configured AI model.",
+                    code="resume_consent_required",
+                )
             self.check_capacity()
             models = await self.model_settings.prepare(owner_id()) if self.model_settings else None
             session_id = str(uuid4())

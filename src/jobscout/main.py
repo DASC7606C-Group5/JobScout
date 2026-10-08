@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 from jobscout.api.auth import router as auth_router
 from jobscout.api.resumes import router as resumes_router
@@ -21,8 +22,9 @@ from jobscout.api.sessions import router as sessions_router
 from jobscout.api.settings import router as settings_router
 from jobscout.api.workspace import router as workspace_router
 from jobscout.config import get_settings
-from jobscout.database import database_lifespan, sqlite_path
+from jobscout.database import database_lifespan, encrypt_existing_resume_data, sqlite_path
 from jobscout.services.auth_service import AuthService
+from jobscout.services.encryption import ProfileDocumentCipher
 from jobscout.services.model_settings_service import ModelSettingsService
 from jobscout.services.notice_service import public_error
 from jobscout.services.session_service import SessionService
@@ -54,6 +56,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
         settings = get_settings()
+        profile_cipher = ProfileDocumentCipher(settings.credentials_key.get_secret_value())
         active_provider = provider
         active_search = search_service
         active_database_url = database_url or get_settings().database_url
@@ -78,23 +81,26 @@ def create_app(
                 active_database_url = (
                     f"sqlite://{(Path(workspace_directory) / 'workspace.sqlite3').as_posix()}"
                 )
+            await run_in_threadpool(
+                encrypt_existing_resume_data, active_database_url, profile_cipher
+            )
             await stack.enter_async_context(
                 database_lifespan(application, database_url=active_database_url)
             )
+            application.state.database_url = active_database_url
             application.state.auth = AuthService(settings)
             await application.state.auth.open()
             application.state.resume_slots = asyncio.Semaphore(2)
             application.state.model_settings = ModelSettingsService(settings)
             checkpointer: Any = getattr(graph, "checkpointer", None)
             if checkpointer is None:
-                from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-
-                from jobscout.graph.checkpoints import checkpoint_serializer
+                from jobscout.graph.encrypted_saver import EncryptedSqliteSaver
 
                 checkpointer = await stack.enter_async_context(
-                    AsyncSqliteSaver.from_conn_string(sqlite_path(active_database_url))
+                    EncryptedSqliteSaver.connect_encrypted(
+                        sqlite_path(active_database_url), profile_cipher
+                    )
                 )
-                checkpointer.serde = checkpoint_serializer()
                 # A read initializes the official saver's tables without creating a checkpoint.
                 await checkpointer.aget_tuple({"configurable": {"thread_id": "__setup__"}})
             active_graph = graph
@@ -118,6 +124,7 @@ def create_app(
                 model_settings=application.state.model_settings
                 if active_mode == "live" and graph is None and provider is None
                 else None,
+                profile_cipher=profile_cipher,
                 graph_factory=(
                     lambda model: build_live_graph(
                         checkpointer=checkpointer, provider=model, search_service=active_search
@@ -128,7 +135,9 @@ def create_app(
             )
             stack.push_async_callback(application.state.sessions.close)
             await application.state.sessions.open()
-            application.state.workspace = WorkspaceService(application.state.sessions)
+            application.state.workspace = WorkspaceService(
+                application.state.sessions, profile_cipher=profile_cipher
+            )
             yield
 
     settings = get_settings()

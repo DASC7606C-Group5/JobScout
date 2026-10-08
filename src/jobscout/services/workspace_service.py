@@ -17,15 +17,33 @@ from jobscout.schemas.workspace import (
     SaveJobRequest,
     SummaryDraft,
 )
+from jobscout.services.encryption import ProfileDocumentCipher
 from jobscout.services.identity import owner_id
 from jobscout.services.session_service import SessionOperationError, SessionService, _fingerprint
 
 DraftSection = Literal["clarification", "summary"]
 
 
+def _encrypt_profile_draft(data: dict[str, Any], cipher: ProfileDocumentCipher) -> dict[str, Any]:
+    resume = data.get("resume")
+    if isinstance(resume, dict) and isinstance(resume.get("text"), str):
+        return {**data, "resume": {**resume, "text": cipher.encrypt(resume["text"])}}
+    return data
+
+
+def _decrypt_profile_draft(data: dict[str, Any], cipher: ProfileDocumentCipher) -> dict[str, Any]:
+    resume = data.get("resume")
+    if isinstance(resume, dict) and isinstance(resume.get("text"), str):
+        return {**data, "resume": {**resume, "text": cipher.decrypt(resume["text"])}}
+    return data
+
+
 class WorkspaceService:
-    def __init__(self, sessions: SessionService) -> None:
+    def __init__(
+        self, sessions: SessionService, *, profile_cipher: ProfileDocumentCipher | None = None
+    ) -> None:
         self.sessions = sessions
+        self.profile_cipher = profile_cipher or sessions.profile_cipher
 
     def _scope(
         self, session_id: str | None, session_revision: int | None, section: DraftSection | None
@@ -54,9 +72,13 @@ class WorkspaceService:
     ) -> DraftResponse:
         async with self.sessions.lock:
             scope = self._scope(session_id, session_revision, section)
-            return self._draft_response(
-                await WorkspaceDraft.get_or_none(owner_id=owner_id(), scope=scope)
-            )
+            draft = await WorkspaceDraft.get_or_none(owner_id=owner_id(), scope=scope)
+            if draft is not None and scope == "profile":
+                data = _decrypt_profile_draft(draft.data, self.profile_cipher)
+                return DraftResponse(
+                    data=data, revision=draft.revision, updated_at=draft.updated_at
+                )
+            return self._draft_response(draft)
 
     async def save_draft(
         self,
@@ -74,9 +96,14 @@ class WorkspaceService:
             else SummaryDraft
         )
         try:
-            data = model.model_validate(payload.data).model_dump(mode="json", by_alias=True)
+            plain_data = model.model_validate(payload.data).model_dump(mode="json", by_alias=True)
         except ValidationError as error:
             raise SessionOperationError(422, "The draft fields are invalid.") from error
+        data = (
+            _encrypt_profile_draft(plain_data, self.profile_cipher)
+            if session_id is None
+            else plain_data
+        )
         fingerprint = _fingerprint(payload.model_dump(mode="json"))
         async with self.sessions.lock:
             scope = self._scope(session_id, session_revision, section)
@@ -98,7 +125,15 @@ class WorkspaceService:
                         "The draft changed after this save. Reload before saving.",
                         code="draft_conflict",
                     )
-                return self._draft_response(current)
+                return DraftResponse(
+                    data=(
+                        _decrypt_profile_draft(current.data, self.profile_cipher)
+                        if scope == "profile"
+                        else current.data
+                    ),
+                    revision=current.revision,
+                    updated_at=current.updated_at,
+                )
             revision = current.revision if current else 0
             if payload.expected_revision != revision:
                 raise SessionOperationError(
@@ -131,7 +166,18 @@ class WorkspaceService:
                     session_id=session_id,
                     using_db=connection,
                 )
-            return DraftResponse(data=data, revision=revision + 1, updated_at=now)
+            return DraftResponse(data=plain_data, revision=revision + 1, updated_at=now)
+
+    async def delete_draft(
+        self,
+        *,
+        session_id: str | None = None,
+        session_revision: int | None = None,
+        section: DraftSection | None = None,
+    ) -> None:
+        async with self.sessions.lock:
+            scope = self._scope(session_id, session_revision, section)
+            await WorkspaceDraft.filter(owner_id=owner_id(), scope=scope).delete()
 
     async def saved_jobs(self) -> SavedJobsResponse:
         return SavedJobsResponse(
