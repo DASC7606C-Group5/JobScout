@@ -297,9 +297,6 @@ function PasswordForm() {
               />
             </label>
           </div>
-          <p className="text-xs text-base-content/70">
-            Changing your password signs out all devices.
-          </p>
           {error && (
             <div role="alert" className="alert alert-soft alert-error">
               {error}
