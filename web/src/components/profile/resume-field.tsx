@@ -79,18 +79,19 @@ export function ResumeField({
               }}
               render={({ field, fieldState }) => (
                 <>
-                  <label className="flex items-start gap-3 rounded-field border border-base-300 bg-base-200/45 px-4 py-3">
+                  <label className="flex cursor-pointer items-start gap-3 rounded-field border border-base-300 bg-base-200/45 px-4 py-3">
                     <input
                       type="checkbox"
-                      className="checkbox mt-0.5 checkbox-sm checkbox-primary"
+                      className="checkbox mt-0.5 shrink-0 rounded-sm border-2 border-base-content/60 checkbox-primary"
+                      name={field.name}
+                      aria-invalid={fieldState.invalid}
                       checked={field.value}
                       onChange={(event) => field.onChange(event.target.checked)}
                       onBlur={field.onBlur}
                       ref={field.ref}
                     />
                     <span className="text-sm text-base-content/80">
-                      I understand my resume text will be sent to the configured AI model (e.g.
-                      DeepSeek) to extract my profile.
+                      I agree to send my resume to the configured AI model for profile analysis.
                     </span>
                   </label>
                   {fieldState.error && (

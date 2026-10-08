@@ -43,7 +43,7 @@ class WorkspaceService:
         self, sessions: SessionService, *, profile_cipher: ProfileDocumentCipher | None = None
     ) -> None:
         self.sessions = sessions
-        self.profile_cipher = profile_cipher or ProfileDocumentCipher("")
+        self.profile_cipher = profile_cipher or sessions.profile_cipher
 
     def _scope(
         self, session_id: str | None, session_revision: int | None, section: DraftSection | None

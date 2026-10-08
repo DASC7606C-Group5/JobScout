@@ -6,8 +6,8 @@ from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 from tortoise.exceptions import IntegrityError
+from tortoise.transactions import in_transaction
 
-from jobscout.config import get_settings
 from jobscout.database import vacuum_sqlite
 from jobscout.models import (
     AcceptedRequest,
@@ -105,7 +105,9 @@ async def login(request: Request, response: Response, payload: Credentials) -> d
         await auth.verify(await auth.dummy_password_hash(), payload.password)
         raise auth_error(401, "invalid_credentials")
     async with auth.user_lock(user.user_id):
-        await user.refresh_from_db()
+        user = await User.get_or_none(user_id=user.user_id)
+        if user is None:
+            raise auth_error(401, "invalid_credentials")
         if not await auth.verify(user.password_hash, payload.password):
             raise auth_error(401, "invalid_credentials")
         if PASSWORD_HASHER.check_needs_rehash(user.password_hash):
@@ -153,15 +155,27 @@ async def delete_account(request: Request, response: Response) -> None:
             try:
                 await sessions.delete(session_id)
             except Exception:
-                continue
-        await AcceptedRequest.filter(owner_id=owner).delete()
-        await WorkspaceDraft.filter(owner_id=owner).delete()
-        await SavedJob.filter(owner_id=owner).delete()
-        await PersonalModel.filter(owner_id=owner).delete()
-        await DailyUsage.filter(owner_id=owner).delete()
-        await auth.revoke(user_id=owner)
-        await User.filter(user_id=owner).delete()
-        await run_in_threadpool(vacuum_sqlite, get_settings().database_url)
+                raise auth_error(503, "account_deletion_failed") from None
+        # Authenticate also holds session_lock while reading SQLite. Acquire it before
+        # the transaction so concurrent authentication cannot invert the lock order.
+        async with auth.session_lock:
+            async with in_transaction():
+                await AcceptedRequest.filter(owner_id=owner).delete()
+                await WorkspaceDraft.filter(owner_id=owner).delete()
+                await SavedJob.filter(owner_id=owner).delete()
+                await PersonalModel.filter(owner_id=owner).delete()
+                await DailyUsage.filter(owner_id=owner).delete()
+                hashes = await LoginSession.filter(owner_id=owner).values_list(
+                    "token_hash", flat=True
+                )
+                await LoginSession.filter(owner_id=owner).delete()
+                await User.filter(user_id=owner).delete()
+            auth.notify_revoked([str(hashed) for hashed in hashes])
+        sessions.testing_users.discard(owner)
+        sessions.creation_requests = {
+            key: value for key, value in sessions.creation_requests.items() if key[0] != owner
+        }
+        await run_in_threadpool(vacuum_sqlite, request.app.state.database_url)
 
     response.delete_cookie(
         cookie_name(auth),

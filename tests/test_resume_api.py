@@ -78,6 +78,7 @@ def test_parsed_resume_enters_profile_flow_without_contract_changes(
                 "request_id": "parsed-resume",
                 "description": "",
                 "resume": parsed.json(),
+                "resume_consent": True,
                 "target_directions": ["backend engineer"],
                 "preferences": {
                     "location": None,

@@ -16,6 +16,7 @@ from tortoise.backends.base.client import BaseDBAsyncClient
 from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
+from jobscout.config import get_settings
 from jobscout.models import AcceptedRequest, SearchSession, WorkspaceDraft
 from jobscout.schemas.conversation import ConversationMessage, SearchSummary
 from jobscout.schemas.errors import WorkflowError
@@ -143,7 +144,9 @@ class SessionService:
     ) -> None:
         self.model_settings = model_settings
         self.graph_factory = graph_factory
-        self.profile_cipher = profile_cipher or ProfileDocumentCipher("")
+        self.profile_cipher = profile_cipher or ProfileDocumentCipher(
+            get_settings().credentials_key.get_secret_value()
+        )
         self.testing_users: set[str] = set()
         self.graph = graph
         self.checkpointer = checkpointer

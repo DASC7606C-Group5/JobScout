@@ -33,6 +33,7 @@ export function useResumeUpload(onReadingChange: (reading: boolean) => void) {
       const resume = await readResume(file, controller.signal)
       if (id === readId.current) {
         setValue('resume', resume, { shouldDirty: true })
+        setValue('resume_consent', false, { shouldDirty: true })
         clearErrors('description')
       }
     } catch (cause) {
@@ -61,6 +62,8 @@ export function useResumeUpload(onReadingChange: (reading: boolean) => void) {
     onReadingChange(false)
     if (fileRef.current) fileRef.current.value = ''
     setValue('resume', null, { shouldDirty: true })
+    setValue('resume_consent', false, { shouldDirty: true })
+    clearErrors('resume_consent')
     clearErrors('root.resume')
     dismiss('resume-upload')
   }

@@ -2,7 +2,6 @@
 
 import asyncio
 import inspect
-import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -14,6 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 from jobscout.api.auth import router as auth_router
 from jobscout.api.resumes import router as resumes_router
@@ -22,15 +22,13 @@ from jobscout.api.sessions import router as sessions_router
 from jobscout.api.settings import router as settings_router
 from jobscout.api.workspace import router as workspace_router
 from jobscout.config import get_settings
-from jobscout.database import database_lifespan, sqlite_path
+from jobscout.database import database_lifespan, encrypt_existing_resume_data, sqlite_path
 from jobscout.services.auth_service import AuthService
 from jobscout.services.encryption import ProfileDocumentCipher
 from jobscout.services.model_settings_service import ModelSettingsService
 from jobscout.services.notice_service import public_error
 from jobscout.services.session_service import SessionService
 from jobscout.services.workspace_service import WorkspaceService
-
-logger = logging.getLogger(__name__)
 
 
 async def close_resource(resource: Any) -> None:
@@ -58,6 +56,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
         settings = get_settings()
+        profile_cipher = ProfileDocumentCipher(settings.credentials_key.get_secret_value())
         active_provider = provider
         active_search = search_service
         active_database_url = database_url or get_settings().database_url
@@ -82,21 +81,19 @@ def create_app(
                 active_database_url = (
                     f"sqlite://{(Path(workspace_directory) / 'workspace.sqlite3').as_posix()}"
                 )
+            await run_in_threadpool(
+                encrypt_existing_resume_data, active_database_url, profile_cipher
+            )
             await stack.enter_async_context(
                 database_lifespan(application, database_url=active_database_url)
             )
+            application.state.database_url = active_database_url
             application.state.auth = AuthService(settings)
             await application.state.auth.open()
             application.state.resume_slots = asyncio.Semaphore(2)
             application.state.model_settings = ModelSettingsService(settings)
-            profile_cipher = ProfileDocumentCipher(settings.credentials_key.get_secret_value())
-            if not profile_cipher.enabled:
-                logger.warning(
-                    "resume_encryption_unavailable", extra={"reason": "missing_credentials_key"}
-                )
             checkpointer: Any = getattr(graph, "checkpointer", None)
             if checkpointer is None:
-                from jobscout.graph.checkpoints import checkpoint_serializer
                 from jobscout.graph.encrypted_saver import EncryptedSqliteSaver
 
                 checkpointer = await stack.enter_async_context(
@@ -104,7 +101,6 @@ def create_app(
                         sqlite_path(active_database_url), profile_cipher
                     )
                 )
-                checkpointer.serde = checkpoint_serializer()
                 # A read initializes the official saver's tables without creating a checkpoint.
                 await checkpointer.aget_tuple({"configurable": {"thread_id": "__setup__"}})
             active_graph = graph

@@ -2,6 +2,53 @@ import { expect, test } from '@playwright/test'
 
 import type { ModelSettingsResponse } from '../../src/api/types.gen'
 
+test('account deletion requires confirmation, retries failure and clears authenticated access', async ({
+  page,
+  baseURL,
+}) => {
+  const username = `delete-${Date.now()}`
+  const response = await page.request.post('/api/v1/auth/register', {
+    headers: { Origin: baseURL! },
+    data: { username, password: 'synthetic-browser-password' },
+  })
+  expect(response.status()).toBe(201)
+  await page.goto('/new')
+  await page.getByLabel('About you', { exact: true }).fill('Synthetic private draft')
+  await page.getByRole('link', { name: 'Settings', exact: true }).click()
+  const card = page.getByRole('region', { name: 'Delete account', exact: true })
+  await card.getByRole('button', { name: 'Delete account', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Delete account?', exact: true })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Keep account' })).toBeFocused()
+  await dialog.getByRole('button', { name: 'Keep account' }).click()
+  await expect(dialog).not.toBeVisible()
+  expect((await page.request.get('/api/v1/auth/me')).status()).toBe(200)
+  let attempts = 0
+  await page.route('**/api/v1/auth/account', async (route) => {
+    attempts += 1
+    if (attempts === 1)
+      await route.fulfill({ status: 503, json: { detail: { code: 'account_deletion_failed' } } })
+    else await route.continue()
+  })
+  await card.getByRole('button', { name: 'Delete account', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Delete account', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toBeVisible()
+  expect((await page.request.get('/api/v1/auth/me')).status()).toBe(200)
+  await page.screenshot({ path: '.tools/review-delete-account.png', fullPage: true })
+  await dialog.getByRole('button', { name: 'Delete account', exact: true }).click()
+  await expect(page).toHaveURL(/\/login$/)
+  expect((await page.request.get('/api/v1/auth/me')).status()).toBe(401)
+  expect(
+    (
+      await page.request.post('/api/v1/auth/login', {
+        headers: { Origin: baseURL! },
+        data: { username, password: 'synthetic-browser-password' },
+      })
+    ).status(),
+  ).toBe(401)
+  expect(attempts).toBe(2)
+})
+
 test('drafts remain private and editable after switching accounts and signing back in', async ({
   page,
   baseURL,

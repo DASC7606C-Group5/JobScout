@@ -94,7 +94,13 @@ class SecurityMiddleware:
                     )
                 await send(message)
 
-            await self.app(scope, limited_receive, secure_send)
+            if identity and scope["method"] not in {"GET", "HEAD", "OPTIONS"}:
+                # A write authenticated before account deletion must not recreate private data.
+                async with auth.write_lock(identity.user.user_id):
+                    await auth.identity(request.cookies.get(cookie_name(auth), ""))
+                    await self.app(scope, limited_receive, secure_send)
+            else:
+                await self.app(scope, limited_receive, secure_send)
         except HTTPException as error:
             await JSONResponse(
                 {"detail": error.detail},

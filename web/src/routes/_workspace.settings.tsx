@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useState, useSyncExternalStore } from 'react'
+import { useRef, useState, useSyncExternalStore } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 
 import type { ModelInfo, ModelSettingsResponse } from '../api/types.gen'
@@ -243,6 +243,100 @@ function ModelForm({ role, info, settings }: ModelFormProps) {
   )
 }
 
+function DeleteAccountCard() {
+  const router = useRouter()
+  const dialog = useRef<HTMLDialogElement>(null)
+  const cancel = useRef<HTMLButtonElement>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [error, setError] = useState('')
+
+  async function confirmDelete() {
+    if (deleting) return
+    setDeleting(true)
+    setError('')
+    try {
+      await accountClient.deleteAccount()
+      dialog.current?.close()
+      changeAccount(null)
+      await router.navigate({ to: '/login' })
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Could not delete account.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <section
+      className="card border border-base-300 bg-base-100"
+      aria-labelledby="delete-account-heading"
+    >
+      <div className="card-body gap-5 p-5 sm:gap-6 sm:p-6">
+        <h3 id="delete-account-heading" className="card-title text-base">
+          Delete account
+        </h3>
+        <p className="text-sm text-base-content/70">
+          Permanently delete your account and saved data.
+        </p>
+        <div className="-mx-5 border-t border-base-300 px-5 pt-5 sm:-mx-6 sm:px-6 sm:pt-6">
+          <button
+            type="button"
+            className="btn btn-soft btn-error btn-sm"
+            onClick={() => {
+              setError('')
+              dialog.current?.showModal()
+              cancel.current?.focus()
+            }}
+          >
+            Delete account
+          </button>
+        </div>
+      </div>
+      <dialog
+        ref={dialog}
+        className="modal"
+        aria-labelledby="delete-account-title"
+        aria-describedby="delete-account-consequence"
+        onCancel={(event) => {
+          if (deleting) event.preventDefault()
+        }}
+      >
+        <div className="modal-box">
+          <h2 id="delete-account-title" className="text-base font-semibold">
+            Delete account?
+          </h2>
+          <p
+            id="delete-account-consequence"
+            className="mt-2 text-sm leading-6 text-base-content/70"
+          >
+            Your searches, resumes, saved jobs and model settings will be permanently deleted. This
+            cannot be undone.
+          </p>
+          {error && (
+            <div role="alert" className="mt-4 alert alert-soft alert-error">
+              {error}
+            </div>
+          )}
+          <form method="dialog" className="modal-action">
+            <button ref={cancel} type="submit" className="btn btn-ghost" disabled={deleting}>
+              Keep account
+            </button>
+            <button
+              type="button"
+              className="btn btn-error"
+              disabled={deleting}
+              aria-busy={deleting}
+              onClick={() => void confirmDelete()}
+            >
+              {deleting ? 'Deleting…' : 'Delete account'}
+            </button>
+          </form>
+        </div>
+      </dialog>
+    </section>
+  )
+}
+
 function PasswordForm() {
   const router = useRouter()
   const [error, setError] = useState('')
@@ -432,6 +526,7 @@ function SettingsPage() {
               Account security
             </h2>
             <PasswordForm />
+            <DeleteAccountCard />
           </section>
         </div>
       )}

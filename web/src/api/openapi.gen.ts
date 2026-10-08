@@ -132,7 +132,8 @@ export interface paths {
     /** Save Workspace Draft */
     put: operations['save_workspace_draft_api_v1_workspace_draft_put']
     post?: never
-    delete?: never
+    /** Delete Workspace Draft */
+    delete: operations['delete_workspace_draft_api_v1_workspace_draft_delete']
     options?: never
     head?: never
     patch?: never
@@ -254,6 +255,23 @@ export interface paths {
     /** Logout */
     post: operations['logout_api_v1_auth_logout_post']
     delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/auth/account': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Delete Account */
+    delete: operations['delete_account_api_v1_auth_account_delete']
     options?: never
     head?: never
     patch?: never
@@ -801,7 +819,7 @@ export interface components {
       thinking?: boolean
       /**
        * Thinking Level
-       * @default "high"
+       * @default high
        */
       thinking_level?: string
     }
@@ -1790,6 +1808,24 @@ export interface operations {
       }
     }
   }
+  delete_workspace_draft_api_v1_workspace_draft_delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
   get_session_draft_api_v1_sessions__session_id__drafts__revision___section__get: {
     parameters: {
       query?: never
@@ -2031,6 +2067,24 @@ export interface operations {
     }
   }
   logout_api_v1_auth_logout_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
+      }
+    }
+  }
+  delete_account_api_v1_auth_account_delete: {
     parameters: {
       query?: never
       header?: never
