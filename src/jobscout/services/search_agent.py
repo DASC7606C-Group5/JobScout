@@ -10,6 +10,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from jobscout.schemas.execution import SearchActivity
+from jobscout.schemas.feedback import ResultPreferences
 from jobscout.schemas.job import JobPosting
 from jobscout.schemas.job_status import JobStatus, ReviewIssue, issue_status
 from jobscout.schemas.model import ModelUsage
@@ -17,7 +18,7 @@ from jobscout.schemas.profile import LocationRef, UserProfile
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult
 from jobscout.schemas.search import SearchRequest
 from jobscout.services.job_assessment_service import MAX_CANDIDATES, AssessmentDiagnostic
-from jobscout.services.job_processing_service import process_jobs
+from jobscout.services.job_processing_service import job_identity, merge_postings, process_jobs
 from jobscout.services.job_retrieval.models import SearchResult, SourceOutcome
 from jobscout.services.job_retrieval.planning import select_sources
 from jobscout.services.llm_service import LLMProvider, ModelServiceError, ToolTurn
@@ -25,6 +26,7 @@ from jobscout.services.notice_service import finalize_recommendation, source_lab
 from jobscout.services.prompts import SEARCH_PROMPT
 from jobscout.services.ranking import recommendation_key
 from jobscout.services.recommendation_service import eligibility_exclusions, eligible_jobs
+from jobscout.services.result_feedback_service import ResultFeedbackService
 from jobscout.services.tool_registry import (
     CandidateSelection,
     FinishSearch,
@@ -91,6 +93,7 @@ class SearchAgent:
         self.unimproved_reviews = 0
         self.finished = False
         self.activity_entries: dict[str, SearchActivity] = {}
+        self.excluded_ids: set[str] = set()
 
     async def run(
         self,
@@ -102,8 +105,27 @@ class SearchAgent:
         run_id: str | None = None,
         stop_event: asyncio.Event | None = None,
         on_progress: ProgressCallback | None = None,
+        reference_job: JobPosting | None = None,
+        result_preferences: ResultPreferences | None = None,
+        history: RecommendationResult | None = None,
+        additional_result_count: int | None = None,
+        exclusion_matches: dict[str, Any] | None = None,
+        result_exclusion_conditions: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         self.profile = profile.model_copy(deep=True)
+        if additional_result_count is not None and not 1 <= additional_result_count <= 20:
+            raise ValueError("Additional result count must be between 1 and 20.")
+        self.result_preferences = result_preferences or ResultPreferences()
+        self.exclusion_matches = dict(exclusion_matches or {})
+        self.result_exclusion_conditions = dict(result_exclusion_conditions or {})
+        self.excluded_ids = set()
+        self.history_items = {
+            job_identity(item.job): item.model_copy(deep=True)
+            for item in ([*history.jobs, *history.pending_jobs] if history else [])
+        }
+        self.history_by_id = {item.job.job_id: item for item in self.history_items.values()}
+        self.history_updates: dict[str, RecommendationItem] = {}
+        self.feedback_service = ResultFeedbackService(self.provider)
         self.profile_documents = dict(profile_documents)
         self.session_id = session_id
         self.run_id = run_id or uuid4().hex
@@ -111,7 +133,7 @@ class SearchAgent:
         self.on_progress = on_progress
         self.started = asyncio.get_running_loop().time()
         self.deadline = min(deadline, self.started + MAX_SEARCH_SECONDS)
-        self.target = profile.search_options.result_count
+        self.target = additional_result_count or profile.search_options.result_count
         self.candidate_limit = MAX_CANDIDATES
         self.sources = sorted(
             getattr(
@@ -172,6 +194,15 @@ class SearchAgent:
                         "result_limit": self.target,
                         "maximum_candidates": self.candidate_limit,
                         "maximum_decisions": MAX_DECISIONS,
+                        "reference_job": reference_job.model_dump(
+                            mode="json", include={"title", "responsibilities", "required_skills"}
+                        )
+                        if reference_job
+                        else None,
+                        "result_preferences": self.result_preferences.model_dump(mode="json"),
+                        "historical_job_ids": [
+                            item.job.job_id for item in self.history_items.values()
+                        ],
                     },
                     ensure_ascii=False,
                 ),
@@ -304,6 +335,7 @@ class SearchAgent:
             "retrieval_round": self.retrieval_round,
             "model_usage": self.usage,
             "agent_error_code": error_code,
+            "exclusion_matches": self.exclusion_matches,
         }
 
     def check_budget(self) -> None:
@@ -553,6 +585,13 @@ class SearchAgent:
         self.warnings.extend(warnings)
         before = len(self.jobs)
         for job in normalized:
+            old = self.history_by_id.get(job.job_id) or self.history_items.get(job_identity(job))
+            if old is not None:
+                merged = merge_postings(old.job, job)
+                self.history_updates[old.job.job_id] = old.model_copy(
+                    update={"job": merged.model_copy(update={"job_id": old.job.job_id})}
+                )
+                continue
             if job.job_id in self.jobs:
                 original = self.jobs[job.job_id]
                 if job.job_id not in self.completed_details:
@@ -762,6 +801,7 @@ class SearchAgent:
         return sum(
             item.analysis_status != "unavailable"
             and item.recommendation_fit in {"recommended", "possible"}
+            and item.job.job_id not in self.excluded_ids
             for item in self.matched.values()
         )
 
@@ -849,10 +889,27 @@ class SearchAgent:
             RecommendationResult(
                 session_id=self.session_id,
                 generated_at=datetime.now(UTC),
-                jobs=displayed([item for item in selected if item.job.job_id in self.matched]),
+                jobs=[
+                    *displayed([item for item in selected if item.job.job_id in self.matched]),
+                    *(
+                        item
+                        for item in self.history_updates.values()
+                        if item.review_status == "reviewed"
+                    ),
+                ],
                 pending_jobs=displayed(
                     [item for item in selected if item.job.job_id in self.pending]
-                ),
+                )
+                + [
+                    item
+                    for item in self.history_updates.values()
+                    if item.review_status != "reviewed"
+                ]
+                + [
+                    item
+                    for item in [*self.matched.values(), *self.pending.values()]
+                    if item.job.job_id in self.excluded_ids
+                ],
                 introduction=self.finish_message(reason) if reason else "",
             )
         )
@@ -944,7 +1001,10 @@ class SearchAgent:
 
     def ranked(self, items: list[RecommendationItem]) -> list[RecommendationItem]:
         """Rank all batches together by overall fit, without direction quotas."""
-        return sorted(items, key=recommendation_key)[: self.target]
+        return sorted(
+            (item for item in items if item.job.job_id not in self.excluded_ids),
+            key=recommendation_key,
+        )[: self.target]
 
     def progress(self) -> dict[str, Any]:
         selected = self.ranked([*self.matched.values(), *self.pending.values()])
@@ -1030,6 +1090,13 @@ class SearchAgent:
         source: str | None = None,
         stop_reason: str | None = None,
     ) -> None:
+        self.excluded_ids, self.exclusion_matches = await self.feedback_service.classify(
+            [*self.jobs.values(), *(item.job for item in self.history_updates.values())],
+            self.result_preferences,
+            self.exclusion_matches,
+            deadline=self.deadline,
+            conditions=self.result_exclusion_conditions,
+        )
         self.progress_seq += 1
         self.events.append(
             {"sequence": self.progress_seq, "action": action, "message": message, "source": source}
@@ -1043,6 +1110,7 @@ class SearchAgent:
                     "recommendation": self.result(stop_reason, final=action == "search_finished"),
                     "source_outcomes": list(self.outcomes),
                     "stop_reason": stop_reason,
+                    "exclusion_matches": self.exclusion_matches,
                 }
             )
 
@@ -1054,7 +1122,11 @@ class SearchAgent:
             and item.recommendation_fit in {"recommended", "possible"}
             for item in selected
         )
-        counts = f"Found {count} {'job' if count == 1 else 'jobs'}."
+        counts = (
+            f"Found {count} {'new job' if count == 1 else 'new jobs'}."
+            if self.history_items
+            else f"Found {count} {'job' if count == 1 else 'jobs'}."
+        )
         if promising:
             counts += f" {promising} worth exploring based on the available information."
         detail = {

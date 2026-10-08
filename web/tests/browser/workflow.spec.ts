@@ -502,6 +502,7 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
           ...snapshot.conversation,
           {
             message_id: `user-${revision}`,
+            job_id: null,
             role: 'user',
             text: body.message || 'Answer updated.',
             responses: [],
@@ -1629,6 +1630,7 @@ test('conversation preserves supplied free text and structured answers', async (
     conversation: [
       {
         message_id: 'assistant-1',
+        job_id: null,
         role: 'assistant',
         text: 'What kind of roles are you looking for?',
         responses: [],
@@ -1637,6 +1639,7 @@ test('conversation preserves supplied free text and structured answers', async (
       },
       {
         message_id: 'free-text-user',
+        job_id: null,
         role: 'user',
         text: "测试\ntarget_directions: ['技术/研发', '产品/项目']\npreferences.location: 不限\npreferences.employment_type: full-time",
         responses: [],
@@ -1645,6 +1648,7 @@ test('conversation preserves supplied free text and structured answers', async (
       },
       {
         message_id: 'structured-user',
+        job_id: null,
         role: 'user',
         text: '我希望有导师指导。',
         question_ids: [],

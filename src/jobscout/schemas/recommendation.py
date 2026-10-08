@@ -56,7 +56,7 @@ class RecommendationResult(WireModel):
 
     session_id: str
     generated_at: datetime
-    jobs: list[RecommendationItem] = Field(default_factory=list, max_length=20)
-    pending_jobs: list[RecommendationItem] = Field(default_factory=list, max_length=20)
+    jobs: list[RecommendationItem] = Field(default_factory=list)
+    pending_jobs: list[RecommendationItem] = Field(default_factory=list)
     notices: list[ApplicantNotice] = Field(default_factory=list)
     introduction: str = ""

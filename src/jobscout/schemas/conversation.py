@@ -21,6 +21,7 @@ class ConversationMessage(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     message_id: str
+    job_id: str | None = None
     role: Literal["user", "assistant"]
     text: str
     responses: list[ConversationResponse] = Field(default_factory=list)

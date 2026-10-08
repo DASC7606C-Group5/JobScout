@@ -18,9 +18,16 @@ from tortoise.transactions import in_transaction
 
 from jobscout.config import get_settings
 from jobscout.models import AcceptedRequest, SearchSession, WorkspaceDraft
-from jobscout.schemas.conversation import ConversationMessage, SearchSummary
+from jobscout.schemas.conversation import ConversationMessage, ConversationResponse, SearchSummary
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.execution import SearchProgress
+from jobscout.schemas.feedback import (
+    FollowUpAnswerRequest,
+    JobFeedback,
+    ResultPreferences,
+    SessionFeedbackRequest,
+    SessionFollowUpRequest,
+)
 from jobscout.schemas.job import JobPosting, SourceDocument
 from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.profile import UserProfile
@@ -46,6 +53,7 @@ from jobscout.services.notice_service import (
     public_error,
     source_notices,
 )
+from jobscout.services.result_feedback_service import merge_results, refresh_hidden
 
 logger = logging.getLogger(__name__)
 _JSON_ADAPTER: TypeAdapter[Any] = TypeAdapter(Any)
@@ -97,6 +105,7 @@ def _restore_state(
         "recommendation": RecommendationResult,
         "search_summary": SearchSummary,
         "progress": SearchProgress,
+        "result_preferences": ResultPreferences,
     }
     sequences: dict[str, type[BaseModel]] = {
         "clarification_questions": ClarificationMessage,
@@ -107,14 +116,21 @@ def _restore_state(
         "source_outcomes": SourceOutcome,
         "profile_documents": SourceDocument,
         "normalized_jobs": JobPosting,
+        "job_feedback": JobFeedback,
     }
     restored = dict(state)
+    restored.setdefault("operation_kind", "initial_search")
+    restored.setdefault("job_feedback", [])
+    restored.setdefault("result_preferences", {})
+    restored.setdefault("result_order", [])
+    restored.setdefault("exclusion_matches", {})
     for key, model in models.items():
         if restored.get(key) is not None:
             restored[key] = model.model_validate(restored[key])
     for key, model in sequences.items():
         if key in restored:
             restored[key] = [model.model_validate(item) for item in restored[key]]
+    refresh_hidden(restored)
     if cipher is not None:
         documents = restored.get("profile_documents")
         if isinstance(documents, list) and documents:
@@ -231,14 +247,17 @@ class SessionService:
                 record.state.pop("accepted_resume", None)
             await self._persist(record)
         for accepted in await AcceptedRequest.filter(
-            Q(scope="create") | Q(scope__startswith="resume:")
+            Q(scope="create") | Q(scope__startswith="resume:") | Q(scope__startswith="stop:")
         ):
             if accepted.scope == "create" and accepted.session_id:
                 self.creation_requests[(accepted.owner_id, accepted.request_id)] = (
                     accepted.fingerprint,
                     accepted.session_id,
                 )
-            elif accepted.scope.startswith("resume:") and accepted.session_id in self.sessions:
+            elif (
+                accepted.scope.startswith(("resume:", "stop:"))
+                and accepted.session_id in self.sessions
+            ):
                 self.sessions[accepted.session_id].requests[accepted.request_id] = (
                     accepted.fingerprint
                 )
@@ -421,6 +440,12 @@ class SessionService:
                 raise SessionOperationError(
                     409, "This search cannot be retried.", code="search_not_retryable"
                 )
+            if payload.action == "retry" and record.state.get("operation_kind") == "follow_up":
+                return await self._accept_follow_up(record, data, fingerprint, retry=True)
+            if record.state.get("current_stage") == "follow_up_clarify":
+                raise SessionOperationError(
+                    409, "Answer the pending result questions.", code="follow_up_answer_required"
+                )
             self._validate_answers(record, payload)
             self.check_capacity(exclude_session=session_id if editing_run else None)
             models = await self.model_settings.prepare(owner_id()) if self.model_settings else None
@@ -434,6 +459,10 @@ class SessionService:
             if payload.action == "edit_conditions":
                 record.state.update(
                     recommendation=None,
+                    operation_kind="initial_search",
+                    exclusion_matches={},
+                    accepted_follow_up=None,
+                    pending_follow_up=None,
                     search_summary=None,
                     run_id=None,
                     progress=SearchProgress(),
@@ -449,7 +478,6 @@ class SessionService:
                     "command": data,
                     "errors": [],
                     "current_stage": payload.action,
-                    "recommendation": None,
                 }
             else:
                 next_input = Command(resume=data)
@@ -490,6 +518,268 @@ class SessionService:
             self._start(record, next_input, previous_task=previous_task, models=models)
             self._notify(record)
             return self._response(record)
+
+    @staticmethod
+    def _result_request(record: _Session, data: dict[str, Any], operation: str) -> tuple[str, bool]:
+        fingerprint = _fingerprint({"operation": operation, "payload": data})
+        previous = record.requests.get(data["request_id"])
+        if previous is not None:
+            if previous != fingerprint:
+                raise SessionOperationError(
+                    409, "Request ID already used.", code="request_conflict"
+                )
+            return fingerprint, True
+        if record.revision != data["expected_revision"]:
+            raise SessionOperationError(409, "Search has changed.", code="search_changed")
+        if record.outcome == "running":
+            raise SessionOperationError(409, "Operation is running.", code="operation_in_progress")
+        return fingerprint, False
+
+    @staticmethod
+    def _require_result(record: _Session, job_id: str | None = None) -> None:
+        if record.state.get("current_stage") == "follow_up_clarify":
+            raise SessionOperationError(
+                409, "Answer the pending questions.", code="follow_up_answer_required"
+            )
+        if record.outcome != "completed" or record.state.get("recommendation") is None:
+            raise SessionOperationError(
+                409, "Complete or retry the search first.", code="follow_up_unavailable"
+            )
+        if job_id is not None:
+            result = record.state["recommendation"]
+            if not any(item.job.job_id == job_id for item in [*result.jobs, *result.pending_jobs]):
+                raise SessionOperationError(
+                    404, "Job is not in this search.", code="job_not_in_session"
+                )
+
+    async def feedback(self, session_id: str, payload: SessionFeedbackRequest) -> SessionResponse:
+        data = payload.model_dump(mode="json")
+        async with self.lock:
+            record = self._get(session_id)
+            fingerprint, repeated = self._result_request(record, data, "feedback")
+            if repeated:
+                return self._response(record)
+            self._require_result(record, payload.job_id)
+            previous_state, previous_updated = record.state, record.updated_at
+            record.state = dict(record.state)
+            feedback = [
+                item
+                for item in record.state.get("job_feedback", [])
+                if item.job_id != payload.job_id
+            ]
+            if payload.reaction is not None:
+                previous_feedback = next(
+                    (
+                        item
+                        for item in record.state.get("job_feedback", [])
+                        if item.job_id == payload.job_id and item.reaction == payload.reaction
+                    ),
+                    None,
+                )
+                feedback.append(
+                    JobFeedback(
+                        job_id=payload.job_id,
+                        reaction=payload.reaction,
+                        reason=previous_feedback.reason if previous_feedback else None,
+                        updated_at=datetime.now(UTC),
+                    )
+                )
+            record.revision += 1
+            record.state.update(job_feedback=feedback, revision=record.revision)
+            refresh_hidden(record.state)
+            record.updated_at = datetime.now(UTC)
+            try:
+                async with in_transaction() as connection:
+                    await self._persist(record, connection=connection)
+                    await AcceptedRequest.create(
+                        owner_id=record.owner_id,
+                        scope=f"resume:{session_id}",
+                        request_id=payload.request_id,
+                        fingerprint=fingerprint,
+                        session_id=session_id,
+                        using_db=connection,
+                    )
+            except BaseException:
+                record.revision -= 1
+                record.state, record.updated_at = previous_state, previous_updated
+                raise
+            record.requests[payload.request_id] = fingerprint
+            self._notify(record)
+            return self._response(record)
+
+    async def follow_up(self, session_id: str, payload: SessionFollowUpRequest) -> SessionResponse:
+        data = payload.model_dump(mode="json")
+        async with self.lock:
+            record = self._get(session_id)
+            fingerprint, repeated = self._result_request(record, data, "follow_up")
+            if repeated:
+                return self._response(record)
+            if isinstance(payload, FollowUpAnswerRequest):
+                pending = {
+                    q.question_id: q
+                    for q in record.state.get("clarification_questions", [])
+                    if q.status == "pending"
+                }
+                submitted = [
+                    *(answer.question_id for answer in payload.answers),
+                    *payload.skipped_question_ids,
+                ]
+                if (
+                    record.outcome != "paused"
+                    or record.state.get("current_stage") != "follow_up_clarify"
+                ):
+                    raise SessionOperationError(
+                        409, "No result question is waiting.", code="follow_up_unavailable"
+                    )
+                if (
+                    not submitted
+                    or len(submitted) != len(set(submitted))
+                    or set(submitted) != set(pending)
+                ):
+                    raise SessionOperationError(
+                        422,
+                        "Answer or skip each current question once.",
+                        code="invalid_follow_up_input",
+                    )
+                for answer in payload.answers:
+                    question = pending[answer.question_id]
+                    values = answer.value if isinstance(answer.value, list) else [answer.value]
+                    options = {option.id for option in question.options}
+                    if (
+                        not values
+                        or any(not value.strip() for value in values)
+                        or len(values) != len(set(values))
+                        or (question.control_type == "multiple_choice")
+                        != isinstance(answer.value, list)
+                        or (question.control_type != "text" and not set(values) <= options)
+                    ):
+                        raise SessionOperationError(
+                            422, "Invalid result answer.", code="invalid_follow_up_input"
+                        )
+            else:
+                self._require_result(record, payload.job_id)
+                if payload.action == "message" and not payload.message.strip():
+                    raise SessionOperationError(
+                        422, "Enter a message.", code="invalid_follow_up_input"
+                    )
+            return await self._accept_follow_up(record, data, fingerprint)
+
+    async def _accept_follow_up(
+        self, record: _Session, data: dict[str, Any], fingerprint: str, *, retry: bool = False
+    ) -> SessionResponse:
+        self.check_capacity()
+        models = await self.model_settings.prepare(owner_id()) if self.model_settings else None
+        previous_state, previous_outcome = record.state, record.outcome
+        previous_thread, previous_threads = record.thread_id, list(record.thread_ids)
+        previous_updated = record.updated_at
+        record.state = dict(record.state)
+        record.revision += 1
+        original = record.state.get("accepted_follow_up") if retry else data
+        if not original:
+            record.revision -= 1
+            record.state = previous_state
+            await self._close_models(models)
+            raise SessionOperationError(
+                409, "No accepted result request.", code="follow_up_unavailable"
+            )
+        answering = original.get("action") == "answer"
+        if not retry:
+            if not answering:
+                result = record.state.get("recommendation")
+                record.state["follow_up_baseline_job_ids"] = (
+                    [item.job.job_id for item in [*result.jobs, *result.pending_jobs]]
+                    if result
+                    else []
+                )
+            record.state["accepted_follow_up"] = data
+            record.state["follow_up_search_ready"] = False
+            record.state["feedback_reason_updates"] = {}
+            record.state["conversation"] = [
+                *record.state.get("conversation", []),
+                ConversationMessage(
+                    message_id=f"message:{data['request_id']}",
+                    role="user",
+                    text=data.get(
+                        "message",
+                        "Find more similar jobs."
+                        if data["action"] == "find_similar"
+                        else "Answers submitted.",
+                    ),
+                    job_id=data.get("job_id"),
+                    responses=[
+                        ConversationResponse(
+                            label=next(
+                                q.question
+                                for q in record.state.get("clarification_questions", [])
+                                if q.question_id == answer["question_id"]
+                            ),
+                            value=answer["value"],
+                        )
+                        for answer in data.get("answers", [])
+                    ]
+                    + [
+                        ConversationResponse(
+                            label=next(
+                                q.question
+                                for q in record.state.get("clarification_questions", [])
+                                if q.question_id == question_id
+                            ),
+                            value="Skipped",
+                            status="skipped",
+                        )
+                        for question_id in data.get("skipped_question_ids", [])
+                    ],
+                ),
+            ]
+        record.outcome = "running"
+        record.state.update(
+            revision=record.revision,
+            operation_kind="follow_up",
+            current_stage="follow_up_interpret",
+            errors=[],
+            retryable=False,
+        )
+        record.updated_at = datetime.now(UTC)
+        resume_wait = answering and not retry
+        if not resume_wait:
+            record.thread_id = f"{record.session_id}:{record.revision}"
+            record.thread_ids.append(record.thread_id)
+        graph_input: Any = (
+            Command(
+                resume={
+                    "kind": "follow_up",
+                    "payload": original,
+                    "revision": record.revision,
+                    "conversation": record.state.get("conversation", []),
+                }
+            )
+            if resume_wait
+            else {**record.state, "command": {"kind": "follow_up", "payload": original}}
+        )
+        try:
+            async with in_transaction() as connection:
+                await self._persist(record, connection=connection)
+                if models and models.uses_server:
+                    await self.model_settings.charge(owner_id(), connection)
+                await AcceptedRequest.create(
+                    owner_id=record.owner_id,
+                    scope=f"resume:{record.session_id}",
+                    request_id=data["request_id"],
+                    fingerprint=fingerprint,
+                    session_id=record.session_id,
+                    using_db=connection,
+                )
+        except BaseException:
+            record.revision -= 1
+            record.state, record.outcome = previous_state, previous_outcome
+            record.thread_id, record.thread_ids = previous_thread, previous_threads
+            record.updated_at = previous_updated
+            await self._close_models(models)
+            raise
+        record.requests[data["request_id"]] = fingerprint
+        self._start(record, graph_input, models=models)
+        self._notify(record)
+        return self._response(record)
 
     @staticmethod
     def _validate_answers(record: _Session, payload: SessionResumeRequest) -> None:
@@ -576,21 +866,19 @@ class SessionService:
         fingerprint = _fingerprint(payload.model_dump(mode="json"))
         async with self.lock:
             record = self._get(session_id)
-            if record.state.get("run_id") != payload.run_id:
-                raise SessionOperationError(
-                    409, "The search run has changed.", code="search_changed"
-                )
-            previous = await AcceptedRequest.get_or_none(
-                owner_id=owner_id(), scope=f"stop:{session_id}", request_id=payload.request_id
-            )
+            previous = record.requests.get(payload.request_id)
             if previous:
-                if previous.fingerprint != fingerprint:
+                if previous != fingerprint:
                     raise SessionOperationError(
                         409,
                         "The request ID was used for different content.",
                         code="request_conflict",
                     )
                 return self._response(record)
+            if record.state.get("run_id") != payload.run_id:
+                raise SessionOperationError(
+                    409, "The search run has changed.", code="search_changed"
+                )
             if record.outcome in {"completed", "failed"}:
                 return self._response(record)
             if record.revision != payload.expected_revision:
@@ -626,6 +914,7 @@ class SessionService:
                 record.updated_at = previous_updated_at
                 raise
             record.stop_event.set()
+            record.requests[payload.request_id] = fingerprint
             self._notify(record)
             response = self._response(record)
         return response
@@ -634,6 +923,9 @@ class SessionService:
     def _merge_snapshot(record: _Session, values: dict[str, Any]) -> None:
         """A graph checkpoint may lag finer-grained, durably saved tool progress."""
         incoming = dict(values)
+        incoming.pop("job_feedback", None)
+        for key in ("hidden_job_ids", "hidden_job_reasons"):
+            incoming.pop(key, None)
         if record.state.get("progress_seq", 0) > incoming.get("progress_seq", 0) or (
             record.state.get("run_id") is not None
             and record.state.get("run_id") != incoming.get("run_id")
@@ -645,6 +937,7 @@ class SessionService:
                 "run_id",
                 "stop_reason",
                 "source_outcomes",
+                "exclusion_matches",
             ):
                 incoming.pop(key, None)
             if incoming.get("current_stage") not in {"completed", "failed"}:
@@ -657,7 +950,38 @@ class SessionService:
                 ).model_copy(update={"retrieval_stopped": True})
             if incoming.get("current_stage") not in {"completed", "failed", "review"}:
                 incoming.pop("current_stage", None)
+        if (
+            incoming.get("recommendation") is not None
+            and record.state.get("operation_kind") == "follow_up"
+        ):
+            incoming["recommendation"], incoming["result_order"] = merge_results(
+                record.state.get("recommendation"),
+                RecommendationResult.model_validate(incoming["recommendation"]),
+                record.state.get("result_order", []),
+            )
+        elif (
+            record.state.get("recommendation") is not None
+            and record.state.get("operation_kind") == "follow_up"
+        ):
+            incoming.pop("recommendation", None)
+        if record.state.get("operation_kind") == "follow_up" and "source_outcomes" in incoming:
+            self_outcomes = {
+                _fingerprint(item.model_dump(mode="json")): item
+                for item in [*record.state.get("source_outcomes", []), *incoming["source_outcomes"]]
+            }
+            incoming["source_outcomes"] = list(self_outcomes.values())
+        reason_updates = incoming.pop("feedback_reason_updates", {})
+        if reason_updates:
+            record.state["job_feedback"] = [
+                item.model_copy(
+                    update={"reason": reason_updates[item.job_id], "updated_at": datetime.now(UTC)}
+                )
+                if item.job_id in reason_updates and item.reason != reason_updates[item.job_id]
+                else item
+                for item in record.state.get("job_feedback", [])
+            ]
         record.state.update(incoming)
+        refresh_hidden(record.state)
 
     async def _progress(
         self, record: _Session, run_id: str, revision: int, update: dict[str, Any]
@@ -684,9 +1008,17 @@ class SessionService:
             previous = dict(record.state)
             record.state.update(run_id=run_id, progress=progress, progress_seq=sequence)
             if update.get("recommendation") is not None:
-                record.state["recommendation"] = RecommendationResult.model_validate(
-                    update["recommendation"]
-                ).model_copy(deep=True)
+                result = RecommendationResult.model_validate(update["recommendation"]).model_copy(
+                    deep=True
+                )
+                if record.state.get("operation_kind") == "follow_up":
+                    record.state["recommendation"], record.state["result_order"] = merge_results(
+                        record.state.get("recommendation"),
+                        result,
+                        record.state.get("result_order", []),
+                    )
+                else:
+                    record.state["recommendation"] = result
                 recommendation = finalize_recommendation(record.state["recommendation"])
                 published = (
                     dict(record.state.get("published_jobs", {}))
@@ -700,11 +1032,37 @@ class SessionService:
                     }
                 )
                 record.state.update(published_jobs=published, published_run_id=run_id)
+            if "exclusion_matches" in update:
+                record.state["exclusion_matches"] = update["exclusion_matches"]
+            for key in ("profile", "result_preferences", "follow_up_search_ready"):
+                if key in update:
+                    record.state[key] = update[key]
+            reason_updates = update.get("feedback_reason_updates", {})
+            if reason_updates:
+                record.state["job_feedback"] = [
+                    item.model_copy(
+                        update={
+                            "reason": reason_updates[item.job_id],
+                            "updated_at": datetime.now(UTC),
+                        }
+                    )
+                    if item.job_id in reason_updates and item.reason != reason_updates[item.job_id]
+                    else item
+                    for item in record.state.get("job_feedback", [])
+                ]
+            refresh_hidden(record.state)
             if "source_outcomes" in update:
-                record.state["source_outcomes"] = [
+                outcomes = [
                     SourceOutcome.model_validate(value).model_copy(deep=True)
                     for value in update["source_outcomes"]
                 ]
+                if record.state.get("operation_kind") == "follow_up":
+                    combined = {
+                        _fingerprint(item.model_dump(mode="json")): item
+                        for item in [*record.state.get("source_outcomes", []), *outcomes]
+                    }
+                    outcomes = list(combined.values())
+                record.state["source_outcomes"] = outcomes
             for key in ("stop_reason", "current_stage"):
                 if key in update:
                     if key == "stop_reason" and record.stop_event.is_set() and update[key] is None:
@@ -1053,6 +1411,12 @@ class SessionService:
         return SessionResponse.model_validate(
             {
                 "session_id": record.session_id,
+                "operation_kind": state.get("operation_kind", "initial_search"),
+                "job_feedback": state.get("job_feedback", []),
+                "hidden_job_ids": state.get("hidden_job_ids", []),
+                "hidden_job_reasons": state.get("hidden_job_reasons", []),
+                "result_preferences": state.get("result_preferences", {}),
+                "result_order": state.get("result_order", []),
                 "outcome": record.outcome,
                 "current_stage": state.get("current_stage", "ingest"),
                 "revision": record.revision,
