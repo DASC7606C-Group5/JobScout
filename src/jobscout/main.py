@@ -13,7 +13,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from jobscout.api.auth import router as auth_router
 from jobscout.api.resumes import router as resumes_router
@@ -23,7 +22,6 @@ from jobscout.api.settings import router as settings_router
 from jobscout.api.workspace import router as workspace_router
 from jobscout.config import get_settings
 from jobscout.database import database_lifespan, sqlite_path
-from jobscout.graph.checkpoints import checkpoint_serializer
 from jobscout.services.auth_service import AuthService
 from jobscout.services.model_settings_service import ModelSettingsService
 from jobscout.services.notice_service import public_error
@@ -89,6 +87,10 @@ def create_app(
             application.state.model_settings = ModelSettingsService(settings)
             checkpointer: Any = getattr(graph, "checkpointer", None)
             if checkpointer is None:
+                from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+                from jobscout.graph.checkpoints import checkpoint_serializer
+
                 checkpointer = await stack.enter_async_context(
                     AsyncSqliteSaver.from_conn_string(sqlite_path(active_database_url))
                 )

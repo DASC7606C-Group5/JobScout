@@ -16,6 +16,7 @@
 **/test-results
 **/playwright-report
 tests
-replay
 *.pdf
 *.docx
+**/*-tmp
+**/*_cache

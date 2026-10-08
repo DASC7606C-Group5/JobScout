@@ -31,6 +31,7 @@ dev = [
     "mypy>=1.19,<2",
     "pre-commit>=4,<5",
     "pytest>=9,<10",
+    "pytest-xdist>=3.8,<5",
     "ruff>=0.15,<0.16",
 ]
 
@@ -52,14 +53,18 @@ select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
 
 [tool.mypy]
 python_version = "3.14"
-files = ["src", "tests", "scripts", "replay"]
+files = ["src", "tests", "scripts"]
 strict = true
 warn_unreachable = true
 show_error_codes = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "replay"]
 cache_dir = ".tools/pytest-cache"
 strict = true
-addopts = ["--import-mode=importlib", "-ra"]
+addopts = [
+    "--basetemp=./pytest-tmp",
+    "-n",
+    "4",
+    "--dist=loadscope",
+]

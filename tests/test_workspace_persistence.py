@@ -9,12 +9,12 @@ from urllib.parse import quote
 
 import pytest
 from pydantic import BaseModel
-from replay.app import create_replay_app
-from replay.dataset import load_dataset
-from replay.provider import ReplayProvider
 from tortoise.backends.base.client import BaseDBAsyncClient
 
 from jobscout.main import create_app
+from jobscout.replay.app import create_replay_app
+from jobscout.replay.dataset import load_dataset
+from jobscout.replay.provider import ReplayProvider
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult
 from jobscout.services.session_service import _Session
 from tests.auth_client import AuthenticatedClient as TestClient

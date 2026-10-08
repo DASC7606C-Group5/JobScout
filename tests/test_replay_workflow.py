@@ -8,11 +8,11 @@ from typing import Any
 
 import pytest
 from pydantic import BaseModel, ValidationError
-from replay.app import create_replay_app
-from replay.dataset import DEFAULT_DATASET, load_dataset
-from replay.provider import ReplayProvider
 
 from jobscout.main import create_app
+from jobscout.replay.app import create_replay_app
+from jobscout.replay.dataset import DEFAULT_DATASET, load_dataset
+from jobscout.replay.provider import ReplayProvider
 from jobscout.services.llm_service import ToolTurn
 from tests.auth_client import AuthenticatedClient as TestClient
 from tests.test_web_scaffold import settled
@@ -259,8 +259,7 @@ def test_edit_interrupts_active_run_and_requires_reconfirmation(stage: str) -> N
 
 
 def test_failed_profile_retry_uses_clean_checkpoint_and_retains_materials() -> None:
-    from replay.provider import ReplayProvider
-
+    from jobscout.replay.provider import ReplayProvider
     from jobscout.services.llm_service import ModelServiceError
 
     class FailOnce(ReplayProvider):

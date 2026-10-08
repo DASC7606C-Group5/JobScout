@@ -1,8 +1,8 @@
 """Offline retrieval over explicitly supplied synthetic vacancies."""
 
+from jobscout.replay.dataset import ReplayDataset
 from jobscout.schemas.search import SearchRequest
 from jobscout.services.job_retrieval.models import RawJob, SearchResult, SourceOutcome
-from replay.dataset import ReplayDataset
 
 
 class ReplaySearchService:

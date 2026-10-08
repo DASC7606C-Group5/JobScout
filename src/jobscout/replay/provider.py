@@ -7,10 +7,10 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from jobscout.replay.dataset import ReplayDataset
+from jobscout.replay.locations import replay_catalog, replay_preferences
 from jobscout.services.llm_service import ToolCall, ToolTurn
 from jobscout.services.location_service import LocationCatalog
-from replay.dataset import ReplayDataset
-from replay.locations import replay_catalog, replay_preferences
 
 
 def _payload(messages: list[dict[str, str]]) -> dict[str, Any]:

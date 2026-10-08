@@ -8,9 +8,9 @@ from typing import Any
 
 import pytest
 from pydantic import BaseModel
-from replay.locations import replay_catalog
-from replay.provider import SyntheticProvider
 
+from jobscout.replay.locations import replay_catalog
+from jobscout.replay.provider import SyntheticProvider
 from jobscout.schemas.job import JobPosting
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult

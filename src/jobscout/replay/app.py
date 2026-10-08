@@ -1,4 +1,4 @@
-"""Assemble an offline application: uvicorn replay.app:app."""
+"""Assemble an offline application: uvicorn jobscout.replay.app:app."""
 
 from pathlib import Path
 from typing import Any
@@ -6,9 +6,9 @@ from typing import Any
 from fastapi import FastAPI
 
 from jobscout.main import create_app
-from replay.dataset import DEFAULT_DATASET, load_dataset
-from replay.provider import ReplayProvider
-from replay.search import ReplaySearchService
+from jobscout.replay.dataset import DEFAULT_DATASET, load_dataset
+from jobscout.replay.provider import ReplayProvider
+from jobscout.replay.search import ReplaySearchService
 
 
 def create_replay_app(

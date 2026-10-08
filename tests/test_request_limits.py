@@ -6,10 +6,10 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from replay.app import create_replay_app
 
 from jobscout.api.security import MAX_API_BODY_BYTES, MAX_AUTH_BODY_BYTES, MAX_UPLOAD_BODY_BYTES
 from jobscout.config import get_settings
+from jobscout.replay.app import create_replay_app
 from tests.test_account_security import register
 
 

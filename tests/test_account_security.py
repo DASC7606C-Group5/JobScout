@@ -11,12 +11,12 @@ import pytest
 from cryptography.fernet import Fernet
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from replay.app import create_replay_app
 from tortoise import Tortoise
 
 from jobscout.config import Settings, get_settings
 from jobscout.database import tortoise_config
 from jobscout.manage import backup_database
+from jobscout.replay.app import create_replay_app
 from jobscout.services.auth_service import PASSWORD_HASHER, token_hash
 from jobscout.services.identity import current_user_id
 from jobscout.services.llm_service import LangChainModelProvider
@@ -73,7 +73,12 @@ def test_private_routes_require_login_and_writes_require_origin_and_csrf() -> No
         assert response.json()["detail"]["code"] == "invalid_csrf_token"
 
 
-def test_registration_hashes_password_and_normalizes_username(tmp_path: Path) -> None:
+def test_registration_hashes_password_and_normalizes_username(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # This is the one security test that must exercise the production-strength hasher.
+    monkeypatch.setattr("jobscout.services.auth_service.PASSWORD_HASHER", PASSWORD_HASHER)
+    monkeypatch.setattr("jobscout.api.auth.PASSWORD_HASHER", PASSWORD_HASHER)
     database = tmp_path / "accounts.sqlite3"
     with TestClient(create_replay_app(database_url=f"sqlite://{database.as_posix()}")) as client:
         account = register(client, "Student")

@@ -8,9 +8,9 @@ import pytest
 from cachetools import TTLCache
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from replay.app import create_replay_app
 
 from jobscout.config import get_settings
+from jobscout.replay.app import create_replay_app
 from jobscout.services.auth_service import AuthService, Identity, token_hash
 from tests.test_account_security import register
 

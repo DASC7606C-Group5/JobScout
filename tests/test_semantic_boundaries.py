@@ -4,8 +4,8 @@ import asyncio
 from typing import Any
 
 import pytest
-from replay.provider import SyntheticProvider
 
+from jobscout.replay.provider import SyntheticProvider
 from jobscout.schemas.conversation import MatchingReason
 from jobscout.schemas.profile import WorkArrangement
 from jobscout.services.condition_service import ConditionService

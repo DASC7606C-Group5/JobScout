@@ -5,7 +5,8 @@ from typing import NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict
 
-DEFAULT_DATASET = Path(__file__).parent / "data" / "scenarios.json"
+# Replay samples live in the repository data directory, not in the installed package.
+DEFAULT_DATASET = Path(__file__).resolve().parents[3] / "data" / "replay" / "scenarios.json"
 
 
 class Resume(TypedDict):

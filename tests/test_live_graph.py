@@ -10,10 +10,10 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 from pydantic import BaseModel
-from replay.provider import SyntheticProvider
 
 from jobscout.graph.live import build_live_graph
 from jobscout.graph.state import AgentState
+from jobscout.replay.provider import SyntheticProvider
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.job import JobPosting
 from jobscout.schemas.profile import UserProfile

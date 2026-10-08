@@ -52,8 +52,12 @@ class AuthService:
         self.dummy_hash: str = ""
 
     async def open(self) -> None:
-        self.dummy_hash = await self.hash_password(secrets.token_urlsafe(32))
         await LoginSession.filter(expires_at__lte=datetime.now(UTC)).delete()
+
+    async def dummy_password_hash(self) -> str:
+        if not self.dummy_hash:
+            self.dummy_hash = await self.hash_password(secrets.token_urlsafe(32))
+        return self.dummy_hash
 
     async def hash_password(self, password: str) -> str:
         async with self.hash_slots:

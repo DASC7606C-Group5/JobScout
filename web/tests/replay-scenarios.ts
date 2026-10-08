@@ -8,7 +8,7 @@ type ReplayInput = Pick<
 >
 
 const dataset = JSON.parse(
-  readFileSync(new URL('../../replay/data/scenarios.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../../data/replay/scenarios.json', import.meta.url), 'utf8'),
 ) as { profiles: { case_id: string; input: ReplayInput }[] }
 
 export function replayInput(caseId: string): ReplayInput {

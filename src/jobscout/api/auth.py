@@ -7,7 +7,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from tortoise.exceptions import IntegrityError
 
 from jobscout.models import LoginSession, User
-from jobscout.services.auth_service import PASSWORD_HASHER, AuthService, Identity, auth_error
+from jobscout.services.auth_service import (
+    PASSWORD_HASHER as PASSWORD_HASHER,
+)
+from jobscout.services.auth_service import (
+    AuthService,
+    Identity,
+    auth_error,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -83,7 +90,7 @@ async def login(request: Request, response: Response, payload: Credentials) -> d
     attempt = auth.reserve_attempt(limits)
     user = await User.get_or_none(username=payload.username)
     if user is None:
-        await auth.verify(auth.dummy_hash, payload.password)
+        await auth.verify(await auth.dummy_password_hash(), payload.password)
         raise auth_error(401, "invalid_credentials")
     async with auth.user_lock(user.user_id):
         await user.refresh_from_db()

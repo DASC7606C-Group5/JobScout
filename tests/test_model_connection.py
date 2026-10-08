@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi.testclient import TestClient
-from replay.app import create_replay_app
 
 from jobscout.api.settings import ConnectionResult
+from jobscout.replay.app import create_replay_app
 from jobscout.services.llm_service import LangChainModelProvider, ToolCall, ToolTurn
 from jobscout.services.model_settings_service import OperationModels
 from tests.test_account_security import register
