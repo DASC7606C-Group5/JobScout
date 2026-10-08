@@ -1494,6 +1494,7 @@ test('resume-only input is valid; required text control accepts free text', asyn
     mimeType: 'text/plain',
     buffer: Buffer.from('Synthetic React project, no real personal data.'),
   })
+  await page.getByRole('checkbox', { name: /I understand my resume text/ }).check()
   await page.getByRole('button', { name: 'Analyze and continue' }).click()
   await page.getByLabel('text question', { exact: true }).fill('香港')
   await page.getByRole('button', { name: 'Send and continue' }).click()
@@ -2418,6 +2419,7 @@ test('deletion requires confirmation and a failed deletion preserves the search,
     mimeType: 'text/plain',
     buffer: Buffer.from('Original resume contents'),
   })
+  await page.getByRole('checkbox', { name: /I understand my resume text/ }).check()
   await page.getByRole('button', { name: 'Analyze and continue' }).click()
   await page.getByRole('button', { name: 'Save job: React Engineer', exact: true }).click()
   await openHistory(page)
@@ -2506,6 +2508,7 @@ test('resume upload failures preserve typed input, hide diagnostics and allow a 
   await expect(
     page.getByRole('button', { name: 'Remove resume: resume.pdf', exact: true }),
   ).toBeVisible()
+  await page.getByRole('checkbox', { name: /I understand my resume text/ }).check()
   await page.getByRole('button', { name: 'Analyze and continue', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Confirm and search', exact: true })).toBeEnabled()
   expect(state.createBodies[0]).toMatchObject({
@@ -2986,6 +2989,7 @@ test('a failed resume replacement retains the original file and introduction for
     page.getByRole('button', { name: 'Remove resume: original.txt', exact: true }),
   ).toBeVisible()
   await expect(page.getByLabel('About you', { exact: true })).toHaveValue(introduction)
+  await page.getByRole('checkbox', { name: /I understand my resume text/ }).check()
   await page.getByRole('button', { name: 'Analyze and continue' }).click()
   await expect(page.getByRole('button', { name: 'Confirm and search' })).toBeEnabled()
   expect(state.createBodies[0]).toMatchObject({

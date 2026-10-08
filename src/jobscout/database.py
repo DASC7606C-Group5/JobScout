@@ -1,5 +1,6 @@
 """Database lifecycle and Tortoise ORM configuration."""
 
+import logging
 import sqlite3
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -11,11 +12,29 @@ from tortoise.backends.base.config_generator import expand_db_url
 
 from jobscout.config import get_settings
 
+logger = logging.getLogger(__name__)
+
 
 def sqlite_path(database_url: str) -> str:
     if not database_url.startswith("sqlite://"):
         raise ValueError("The shared workspace requires a SQLite database URL.")
     return str(expand_db_url(database_url)["credentials"]["file_path"])
+
+
+def vacuum_sqlite(database_url: str) -> None:
+    """Rebuild the SQLite file so deleted rows are not recoverable from free pages."""
+    path = sqlite_path(database_url)
+    if path == ":memory:" or not Path(path).is_file():
+        return
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("PRAGMA secure_delete=ON")
+        connection.execute("VACUUM")
+        connection.commit()
+    except sqlite3.Error:
+        logger.warning("database_vacuum_failed", exc_info=True)
+    finally:
+        connection.close()
 
 
 def tortoise_config(database_url: str | None = None) -> dict[str, object]:

@@ -12,6 +12,7 @@ export function createProfileDraft(): ProfileFormValues {
   return {
     description: '',
     resume: null,
+    resume_consent: false,
     directions: '',
     search_options: { result_count: 10 },
     preferences: {

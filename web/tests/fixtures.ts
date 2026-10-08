@@ -37,6 +37,7 @@ export function createProfileFixture(): ProfileFormValues {
   return {
     description: 'React development experience',
     resume: null,
+    resume_consent: false,
     directions: 'Frontend development\nData analysis',
     search_options: { result_count: 10 },
     preferences: {

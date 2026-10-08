@@ -4,9 +4,21 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 from tortoise.exceptions import IntegrityError
 
-from jobscout.models import LoginSession, User
+from jobscout.config import get_settings
+from jobscout.database import vacuum_sqlite
+from jobscout.models import (
+    AcceptedRequest,
+    DailyUsage,
+    LoginSession,
+    PersonalModel,
+    SavedJob,
+    SearchSession,
+    User,
+    WorkspaceDraft,
+)
 from jobscout.services.auth_service import (
     PASSWORD_HASHER as PASSWORD_HASHER,
 )
@@ -115,6 +127,42 @@ async def logout(request: Request, response: Response) -> None:
     auth = service(request)
     identity: Identity = request.state.identity
     await auth.revoke(token=identity.session.token_hash)
+    response.delete_cookie(
+        cookie_name(auth),
+        path="/",
+        secure=auth.settings.cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+@router.delete("/account", status_code=204)
+async def delete_account(request: Request, response: Response) -> None:
+    auth = service(request)
+    identity: Identity = request.state.identity
+    sessions = request.app.state.sessions
+    owner = identity.user.user_id
+
+    async with auth.user_lock(owner):
+        if not await LoginSession.filter(token_hash=identity.session.token_hash).exists():
+            raise auth_error(401, "authentication_required")
+        session_ids = await SearchSession.filter(owner_id=owner).values_list(
+            "session_id", flat=True
+        )
+        for session_id in session_ids:
+            try:
+                await sessions.delete(session_id)
+            except Exception:
+                continue
+        await AcceptedRequest.filter(owner_id=owner).delete()
+        await WorkspaceDraft.filter(owner_id=owner).delete()
+        await SavedJob.filter(owner_id=owner).delete()
+        await PersonalModel.filter(owner_id=owner).delete()
+        await DailyUsage.filter(owner_id=owner).delete()
+        await auth.revoke(user_id=owner)
+        await User.filter(user_id=owner).delete()
+        await run_in_threadpool(vacuum_sqlite, get_settings().database_url)
+
     response.delete_cookie(
         cookie_name(auth),
         path="/",

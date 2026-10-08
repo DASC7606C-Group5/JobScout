@@ -41,6 +41,10 @@ const errors = {
     message: 'Check your information and try again.',
     action: 'edit_conditions',
   },
+  resume_consent_required: {
+    message: 'Confirm that you consent to sending your resume to the configured AI model.',
+    action: 'edit_conditions',
+  },
   request_too_large: {
     message: 'The request is too large. Shorten the text or upload a smaller file.',
     action: 'edit_conditions',

@@ -313,6 +313,7 @@ def build_live_graph(
             return {
                 "profile": profile,
                 "profile_documents": documents,
+                "input_data": {**inputs, "resume": None},
                 "conversation": history,
                 "revision": state.get("revision", 0),
                 "current_stage": "validate",

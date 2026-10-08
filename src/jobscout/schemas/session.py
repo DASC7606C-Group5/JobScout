@@ -27,6 +27,7 @@ class SessionCreateRequest(WireModel):
     request_id: str = Field(min_length=1, max_length=128)
     description: str = ""
     resume: ResumeInput | None = None
+    resume_consent: bool = False
     target_directions: list[str] = Field(default_factory=list)
     preferences: RawProfilePreferences = Field(default_factory=RawProfilePreferences)
     search_options: SearchOptions = Field(default_factory=SearchOptions)

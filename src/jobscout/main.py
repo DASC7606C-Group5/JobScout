@@ -2,6 +2,7 @@
 
 import asyncio
 import inspect
+import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -23,10 +24,13 @@ from jobscout.api.workspace import router as workspace_router
 from jobscout.config import get_settings
 from jobscout.database import database_lifespan, sqlite_path
 from jobscout.services.auth_service import AuthService
+from jobscout.services.encryption import ProfileDocumentCipher
 from jobscout.services.model_settings_service import ModelSettingsService
 from jobscout.services.notice_service import public_error
 from jobscout.services.session_service import SessionService
 from jobscout.services.workspace_service import WorkspaceService
+
+logger = logging.getLogger(__name__)
 
 
 async def close_resource(resource: Any) -> None:
@@ -85,14 +89,20 @@ def create_app(
             await application.state.auth.open()
             application.state.resume_slots = asyncio.Semaphore(2)
             application.state.model_settings = ModelSettingsService(settings)
+            profile_cipher = ProfileDocumentCipher(settings.credentials_key.get_secret_value())
+            if not profile_cipher.enabled:
+                logger.warning(
+                    "resume_encryption_unavailable", extra={"reason": "missing_credentials_key"}
+                )
             checkpointer: Any = getattr(graph, "checkpointer", None)
             if checkpointer is None:
-                from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-
                 from jobscout.graph.checkpoints import checkpoint_serializer
+                from jobscout.graph.encrypted_saver import EncryptedSqliteSaver
 
                 checkpointer = await stack.enter_async_context(
-                    AsyncSqliteSaver.from_conn_string(sqlite_path(active_database_url))
+                    EncryptedSqliteSaver.connect_encrypted(
+                        sqlite_path(active_database_url), profile_cipher
+                    )
                 )
                 checkpointer.serde = checkpoint_serializer()
                 # A read initializes the official saver's tables without creating a checkpoint.
@@ -118,6 +128,7 @@ def create_app(
                 model_settings=application.state.model_settings
                 if active_mode == "live" and graph is None and provider is None
                 else None,
+                profile_cipher=profile_cipher,
                 graph_factory=(
                     lambda model: build_live_graph(
                         checkpointer=checkpointer, provider=model, search_service=active_search
@@ -128,7 +139,9 @@ def create_app(
             )
             stack.push_async_callback(application.state.sessions.close)
             await application.state.sessions.open()
-            application.state.workspace = WorkspaceService(application.state.sessions)
+            application.state.workspace = WorkspaceService(
+                application.state.sessions, profile_cipher=profile_cipher
+            )
             yield
 
     settings = get_settings()

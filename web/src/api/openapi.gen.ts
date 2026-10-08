@@ -1176,6 +1176,11 @@ export interface components {
        */
       description?: string
       resume?: components['schemas']['ResumeInput'] | null
+      /**
+       * Resume Consent
+       * @default false
+       */
+      resume_consent?: boolean
       /** Target Directions */
       target_directions?: string[]
       preferences?: components['schemas']['RawProfilePreferences']

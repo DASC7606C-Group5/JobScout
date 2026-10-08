@@ -35,6 +35,12 @@ async def save_workspace_draft(request: Request, payload: DraftWriteRequest) -> 
         raise HTTPException(error.status, public_error(error.code).model_dump()) from error
 
 
+@router.delete("/workspace/draft", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_workspace_draft(request: Request) -> Response:
+    await _service(request).delete_draft()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/sessions/{session_id}/drafts/{revision}/{section}", response_model=DraftResponse)
 async def get_session_draft(
     request: Request,
