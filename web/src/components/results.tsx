@@ -21,6 +21,11 @@ export function Results({
   notices = [],
   reviewActive = false,
   footerActions,
+  onFeedback,
+  feedbackPending = false,
+  hiddenJobIds = [],
+  resultOrder = [],
+  feedbackByJob = {},
 }: {
   result: RecommendationResult | null
   saved: RecommendationItem[]
@@ -30,18 +35,28 @@ export function Results({
   notices?: ApplicantNotice[]
   reviewActive?: boolean
   footerActions?: ReactNode
+  onFeedback?: (jobId: string, reaction: 'interested' | 'not_interested') => unknown
+  feedbackPending?: boolean
+  hiddenJobIds?: string[]
+  resultOrder?: string[]
+  feedbackByJob?: Record<string, 'interested' | 'not_interested'>
 }) {
-  const jobs = useMemo(
-    () =>
-      savedOnly
-        ? saved
-        : [...(result?.jobs ?? []), ...(result?.pending_jobs ?? [])].sort(
-            (left, right) =>
-              Number(left.review_status !== 'reviewed') -
-              Number(right.review_status !== 'reviewed'),
-          ),
-    [result, savedOnly, saved],
-  )
+  const jobs = useMemo(() => {
+    const hidden = new Set(hiddenJobIds)
+    const order = new Map(resultOrder.map((id, index) => [id, index]))
+    const source = savedOnly ? saved : [...(result?.jobs ?? []), ...(result?.pending_jobs ?? [])]
+    return source
+      .filter(({ job }) => savedOnly || !hidden.has(job.job_id))
+      .sort((left, right) => {
+        const leftOrder = order.get(left.job.job_id)
+        const rightOrder = order.get(right.job.job_id)
+        if (leftOrder !== undefined || rightOrder !== undefined)
+          return (leftOrder ?? Number.MAX_SAFE_INTEGER) - (rightOrder ?? Number.MAX_SAFE_INTEGER)
+        return (
+          Number(left.review_status !== 'reviewed') - Number(right.review_status !== 'reviewed')
+        )
+      })
+  }, [hiddenJobIds, result, resultOrder, savedOnly, saved])
   const selection = useResultSelection(jobs, savedOnly, onToggle)
   const jobNotices = uniqueNotices(
     [...(result ? result.notices : []), ...notices].filter((notice) => notice.scope === 'job'),
@@ -60,6 +75,9 @@ export function Results({
         onEdit={onEdit}
         notices={jobNotices}
         reviewActive={reviewActive}
+        {...(onFeedback ? { onFeedback } : {})}
+        {...(feedbackPending ? { feedbackPending } : {})}
+        feedbackByJob={feedbackByJob}
       />
       {((!savedOnly && result) || footerActions) && (
         <footer className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-1 pt-2">
@@ -106,6 +124,9 @@ function ResultItems({
   onEdit,
   notices,
   reviewActive,
+  onFeedback,
+  feedbackPending,
+  feedbackByJob,
 }: {
   hasJobs: boolean
   savedOnly: boolean
@@ -114,6 +135,9 @@ function ResultItems({
   onEdit: () => unknown
   notices: ApplicantNotice[]
   reviewActive: boolean
+  onFeedback?: (jobId: string, reaction: 'interested' | 'not_interested') => unknown
+  feedbackPending?: boolean
+  feedbackByJob: Record<string, 'interested' | 'not_interested'>
 }) {
   const {
     selected,
@@ -147,6 +171,9 @@ function ResultItems({
             key={item.job.job_id}
             item={item}
             reviewActive={reviewActive}
+            {...(feedbackByJob[item.job.job_id]
+              ? { feedback: feedbackByJob[item.job.job_id] }
+              : {})}
             selected={selected.job.job_id === item.job.job_id}
             saved={saved.some((entry) => entry.job.job_id === item.job.job_id)}
             onSelect={() => selectJob(item.job.job_id)}
@@ -176,6 +203,16 @@ function ResultItems({
           saved={saved.some((entry) => entry.job.job_id === selected.job.job_id)}
           onToggle={() => toggle(selected)}
           onBack={back}
+          {...(onFeedback
+            ? {
+                feedback: (reaction: 'interested' | 'not_interested') =>
+                  onFeedback(selected.job.job_id, reaction),
+              }
+            : {})}
+          {...(feedbackPending ? { feedbackPending } : {})}
+          {...(feedbackByJob[selected.job.job_id]
+            ? { reaction: feedbackByJob[selected.job.job_id] }
+            : {})}
         />
       </div>
     </div>

@@ -21,7 +21,13 @@ export function useResultSelection(
   const current = filtered.find(({ job }) => job.job_id === search.job)
   const [opened, setOpened] = useState<RecommendationItem | null>(null)
   if (current && current !== opened) setOpened(current)
-  const retained = !savedOnly && search.job && opened?.job.job_id === search.job ? opened : null
+  const retained =
+    !savedOnly &&
+    search.job &&
+    opened?.job.job_id === search.job &&
+    jobs.some(({ job }) => job.job_id === search.job)
+      ? opened
+      : null
   const selected = current ?? retained ?? filtered[0]
   const detailOpen = Boolean(search.job && selected?.job.job_id === search.job)
   const buttons = useRef(new Map<string, HTMLButtonElement>())
@@ -50,11 +56,11 @@ export function useResultSelection(
     if (invalidSelection)
       void navigate({
         to: '.',
-        search: { ...search, job: undefined },
+        search: { ...search, job: filtered[0]?.job.job_id },
         replace: true,
         resetScroll: false,
       })
-  }, [invalidSelection, navigate, savedOnly, search])
+  }, [filtered, invalidSelection, navigate, savedOnly, search])
 
   useEffect(() => {
     if (!window.matchMedia('(min-width: 1100px)').matches) {

@@ -13,11 +13,11 @@ export function DiscoveryContent() {
 }
 
 function SessionContent() {
-  const { session, retry, edit, stop, stopping } = useScoutSession()
+  const { session, retry, edit, stop, stopping, feedback } = useScoutSession()
   const saved = useScout((state) => state.saved)
   const toggleSaved = useScout((state) => state.toggleSaved)
   if (!session) return <ProfileForm />
-  const sessionKey = `${session.session_id}:${session.run_id ?? 'profile'}`
+  const sessionKey = session.session_id
   const searchExperience = (
     <SearchExperience
       key={sessionKey}
@@ -28,6 +28,7 @@ function SessionContent() {
       onToggle={toggleSaved}
       onEdit={edit}
       onRetry={retry}
+      onFeedback={feedback}
     />
   )
   switch (session.outcome) {

@@ -10,7 +10,65 @@ import type {
   SearchOptionsOutput,
   SessionHistoryResponse,
   RecommendationItem,
+  ConversationMessage,
+  QuestionAnswer,
 } from '../api/types.gen'
+
+export type ResultReaction = 'interested' | 'not_interested'
+export type JobFeedback = {
+  job_id: string
+  reaction: ResultReaction
+  reason: string | null
+  updated_at: string
+}
+export type ResultExclusion = {
+  exclusion_id: string
+  description: string
+  user_message_id: string
+}
+export type ResultPreferences = {
+  preferred_features: string[]
+  exclusions: ResultExclusion[]
+}
+export type HiddenJobReason = {
+  job_id: string
+  kind: 'not_interested' | 'excluded'
+  exclusion_id: string | null
+}
+export type ResultOperationKind = 'initial_search' | 'follow_up'
+export type FeedbackRequest = {
+  request_id: string
+  expected_revision: number
+  job_id: string
+  reaction: ResultReaction | null
+}
+export type FollowUpRequest =
+  | {
+      request_id: string
+      expected_revision: number
+      action: 'message'
+      job_id?: string | null
+      message: string
+    }
+  | {
+      request_id: string
+      expected_revision: number
+      action: 'find_similar'
+      job_id: string
+      message?: string
+    }
+  | {
+      request_id: string
+      expected_revision: number
+      action: 'answer'
+      answers: QuestionAnswer[]
+      skipped_question_ids?: string[]
+    }
+export type ResultConversationMessage = ConversationMessage & { job_id: string | null }
+export type FollowUpSubmission =
+  | Omit<Extract<FollowUpRequest, { action: 'message' }>, 'request_id' | 'expected_revision'>
+  | Omit<Extract<FollowUpRequest, { action: 'find_similar' }>, 'request_id' | 'expected_revision'>
+  | Omit<Extract<FollowUpRequest, { action: 'answer' }>, 'request_id' | 'expected_revision'>
 
 export type {
   WorkArrangement,
@@ -55,6 +113,7 @@ export type ResumeSessionRequest = Required<
 }
 export type ResumeSubmission = Omit<ResumeSessionRequest, 'request_id' | 'expected_revision'>
 export type ScoutSession = SessionResponse
+export type ResultSession = SessionResponse
 export type SessionHistory = SessionHistoryResponse
 export type DraftResponse<T = Record<string, unknown>> = Omit<ApiDraftResponse, 'data'> & {
   data: T
@@ -83,6 +142,16 @@ export interface SessionClient {
   stop: (
     sessionId: string,
     request: StopSessionRequest,
+    signal?: AbortSignal,
+  ) => Promise<ScoutSession>
+  feedback: (
+    sessionId: string,
+    request: FeedbackRequest,
+    signal?: AbortSignal,
+  ) => Promise<ScoutSession>
+  followUp: (
+    sessionId: string,
+    request: FollowUpRequest,
     signal?: AbortSignal,
   ) => Promise<ScoutSession>
 }

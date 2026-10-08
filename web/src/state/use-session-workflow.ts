@@ -9,6 +9,9 @@ import type {
   ScoutInput,
   ScoutSession,
   SessionClient,
+  FeedbackRequest,
+  FollowUpRequest,
+  FollowUpSubmission,
   StopSessionRequest,
 } from '../lib/contracts'
 import { latestSessionSnapshot, sessionKey, sessionQueryOptions } from '../lib/session-query'
@@ -21,6 +24,8 @@ type Command = (
   | { kind: 'answer'; sessionId: string; request: ResumeSessionRequest }
   | { kind: 'stop'; sessionId: string; request: StopSessionRequest }
   | { kind: 'delete'; sessionId: string }
+  | { kind: 'feedback'; sessionId: string; request: FeedbackRequest }
+  | { kind: 'follow_up'; sessionId: string; request: FollowUpRequest }
 ) & { origin: object }
 
 const commandScope = (command: Command) => (command.kind === 'start' ? 'new' : command.sessionId)
@@ -66,6 +71,10 @@ async function submitCommand(client: SessionClient, command: Command) {
       return client.answer(command.sessionId, command.request)
     case 'stop':
       return client.stop(command.sessionId, command.request)
+    case 'feedback':
+      return client.feedback(command.sessionId, command.request)
+    case 'follow_up':
+      return client.followUp(command.sessionId, command.request)
     case 'delete':
       await client.delete(command.sessionId)
       return null
@@ -189,6 +198,35 @@ export function useSessionWorkflow(
     })
   }
 
+  async function feedback(jobId: string, reaction: FeedbackRequest['reaction']) {
+    if (!session || busy || session.outcome !== 'completed') return false
+    return execute({
+      kind: 'feedback',
+      origin,
+      sessionId: session.session_id,
+      request: {
+        request_id: crypto.randomUUID(),
+        expected_revision: session.revision,
+        job_id: jobId,
+        reaction,
+      },
+    })
+  }
+
+  async function followUp(request: FollowUpSubmission) {
+    if (!session || busy) return false
+    return prepare({
+      kind: 'follow_up',
+      origin,
+      sessionId: session.session_id,
+      request: {
+        ...structuredClone(request),
+        request_id: crypto.randomUUID(),
+        expected_revision: session.revision,
+      } as FollowUpRequest,
+    })
+  }
+
   async function answer(submission: Partial<ResumeSubmission>) {
     if (!session || (submission.action === 'edit_conditions' ? !canEdit : busy)) return
     return prepare({
@@ -253,6 +291,8 @@ export function useSessionWorkflow(
     start,
     answer,
     stop,
+    feedback,
+    followUp,
     stopping: command.pending && mutation.variables?.kind === 'stop',
     retry,
     refresh,

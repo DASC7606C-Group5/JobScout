@@ -20,6 +20,9 @@ export function JobDetail({
   scrollRef,
   onScroll,
   reviewActive = false,
+  feedback,
+  feedbackPending = false,
+  reaction,
 }: {
   item: RecommendationItem
   saved: boolean
@@ -30,6 +33,9 @@ export function JobDetail({
   scrollRef?: Ref<HTMLElement>
   onScroll?: UIEventHandler<HTMLElement>
   reviewActive?: boolean
+  feedback?: (reaction: 'interested' | 'not_interested') => unknown
+  feedbackPending?: boolean
+  reaction?: 'interested' | 'not_interested'
 }) {
   const { job } = item
   const links = [...new Set([job.source_url, ...job.source_links])].flatMap((value) => {
@@ -89,6 +95,28 @@ export function JobDetail({
           <Icon name="bookmark" size={17} className={saved ? 'fill-secondary' : ''} />
           {saved ? 'Saved' : 'Save job'}
         </AsyncButton>
+        {feedback && (
+          <div className="join ml-auto" aria-label="Job feedback">
+            <button
+              type="button"
+              className={`btn join-item btn-sm ${reaction === 'interested' ? 'btn-secondary' : ''}`}
+              aria-pressed={reaction === 'interested'}
+              disabled={feedbackPending}
+              onClick={() => feedback('interested')}
+            >
+              Interested
+            </button>
+            <button
+              type="button"
+              className={`btn join-item btn-sm ${reaction === 'not_interested' ? 'btn-secondary' : ''}`}
+              aria-pressed={reaction === 'not_interested'}
+              disabled={feedbackPending}
+              onClick={() => feedback('not_interested')}
+            >
+              Not for me
+            </button>
+          </div>
+        )}
       </div>
       <section
         ref={scrollRef}
