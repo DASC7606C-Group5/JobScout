@@ -53,6 +53,7 @@ export const vConversationResponse = v.strictObject({
 
 export const vConversationMessage = v.strictObject({
   message_id: v.string(),
+  job_id: v.nullable(v.string()),
   role: v.picklist(['user', 'assistant']),
   text: v.string(),
   responses: v.array(vConversationResponse),
@@ -343,8 +344,8 @@ export const vRecommendationItem: v.GenericSchema<RecommendationItem> = v.strict
 export const vRecommendationResult = v.strictObject({
   session_id: v.string(),
   generated_at: v.pipe(v.string(), v.isoTimestamp()),
-  jobs: v.pipe(v.array(vRecommendationItem), v.maxLength(20)),
-  pending_jobs: v.pipe(v.array(vRecommendationItem), v.maxLength(20)),
+  jobs: v.array(vRecommendationItem),
+  pending_jobs: v.array(vRecommendationItem),
   notices: v.array(vApplicantNotice),
   introduction: v.string(),
 })
@@ -399,6 +400,30 @@ export const vSearchSummary = v.strictObject({
   search_limitations: v.string(),
 })
 
+export const vJobFeedback = v.strictObject({
+  job_id: v.string(),
+  reaction: v.picklist(['interested', 'not_interested']),
+  reason: v.nullable(v.string()),
+  updated_at: v.pipe(v.string(), v.isoTimestamp()),
+})
+
+export const vResultPreferences = v.strictObject({
+  preferred_features: v.array(v.string()),
+  exclusions: v.array(
+    v.strictObject({
+      exclusion_id: v.string(),
+      description: v.string(),
+      user_message_id: v.string(),
+    }),
+  ),
+})
+
+export const vHiddenJobReason = v.strictObject({
+  job_id: v.string(),
+  kind: v.picklist(['not_interested', 'excluded']),
+  exclusion_id: v.nullable(v.string()),
+})
+
 export const vSessionResponse: v.GenericSchema<SessionResponse> = v.strictObject({
   snapshot_version: v.pipe(v.number(), v.integer(), v.minValue(0)),
   operation_id: v.nullable(v.string()),
@@ -407,6 +432,12 @@ export const vSessionResponse: v.GenericSchema<SessionResponse> = v.strictObject
   expires_at: v.nullable(v.pipe(v.string(), v.isoTimestamp())),
   session_id: v.string(),
   outcome: v.picklist(['queued', 'running', 'paused', 'completed', 'failed', 'cancelled']),
+  operation_kind: v.picklist(['initial_search', 'follow_up']),
+  job_feedback: v.array(vJobFeedback),
+  hidden_job_ids: v.array(v.string()),
+  hidden_job_reasons: v.array(vHiddenJobReason),
+  result_preferences: vResultPreferences,
+  result_order: v.array(v.string()),
   current_stage: v.string(),
   revision: v.pipe(v.number(), v.integer(), v.minValue(0)),
   profile: v.nullable(vUserProfile),

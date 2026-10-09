@@ -13,6 +13,7 @@ export function useResultSelection(
   jobs: RecommendationItem[],
   savedOnly: boolean,
   onToggle: (item: RecommendationItem) => boolean | Promise<boolean> | void,
+  hiddenJobIds: string[] = [],
 ) {
   const navigate = useNavigate()
   const router = useRouter()
@@ -21,7 +22,13 @@ export function useResultSelection(
   const current = filtered.find(({ job }) => job.job_id === search.job)
   const [opened, setOpened] = useState<RecommendationItem | null>(null)
   if (current && current !== opened) setOpened(current)
-  const retained = !savedOnly && search.job && opened?.job.job_id === search.job ? opened : null
+  const retained =
+    !savedOnly &&
+    search.job &&
+    opened?.job.job_id === search.job &&
+    !hiddenJobIds.includes(search.job)
+      ? opened
+      : null
   const selected = current ?? retained ?? filtered[0]
   const detailOpen = Boolean(search.job && selected?.job.job_id === search.job)
   const buttons = useRef(new Map<string, HTMLButtonElement>())
@@ -42,19 +49,29 @@ export function useResultSelection(
   const listScroll = useRef(0)
   const openedFromList = useRef(false)
   const invalidSelection = Boolean(search.job && !current && !retained)
+  const previousFiltered = useRef(filtered)
 
   function changeSearch(next: ResultSearch, replace = true) {
     void navigate({ to: '.', search: next, replace, resetScroll: false })
   }
   useEffect(() => {
-    if (invalidSelection)
+    if (invalidSelection) {
+      const wasVisible = previousFiltered.current.some(({ job }) => job.job_id === search.job)
       void navigate({
         to: '.',
-        search: { ...search, job: undefined },
+        search: {
+          ...search,
+          job:
+            wasVisible || window.matchMedia('(min-width: 1100px)').matches
+              ? selectionAfterFilter(previousFiltered.current, search.job, filtered)
+              : undefined,
+        },
         replace: true,
         resetScroll: false,
       })
-  }, [invalidSelection, navigate, savedOnly, search])
+    }
+    previousFiltered.current = filtered
+  }, [filtered, invalidSelection, navigate, savedOnly, search])
 
   useEffect(() => {
     if (!window.matchMedia('(min-width: 1100px)').matches) {

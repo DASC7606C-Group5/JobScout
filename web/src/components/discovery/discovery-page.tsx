@@ -41,9 +41,11 @@ function transitionStep(session: ScoutSession | null) {
 function discoveryTitle(session: ScoutSession | null) {
   if (!session) return headings.initial
   if (session.outcome === 'completed') {
-    const count =
-      (session.recommendation?.jobs.length ?? 0) +
-      (session.recommendation?.pending_jobs.length ?? 0)
+    const hidden = new Set(session.hidden_job_ids)
+    const count = [
+      ...(session.recommendation?.jobs ?? []),
+      ...(session.recommendation?.pending_jobs ?? []),
+    ].filter(({ job }) => !hidden.has(job.job_id)).length
     return `${count} ${count === 1 ? 'job' : 'jobs'}`
   }
   if (session.outcome === 'running') return searchPresentation(session).heading

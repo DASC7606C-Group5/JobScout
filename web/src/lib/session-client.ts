@@ -47,6 +47,20 @@ export function createSessionClient(
         { ...options(signal), path: { session_id: id }, body },
         vSessionResponse,
       ),
+    feedback: (id, body, signal) =>
+      client.request(
+        'post',
+        '/api/v1/sessions/{session_id}/feedback',
+        { ...options(signal), path: { session_id: id }, body },
+        vSessionResponse,
+      ),
+    followUp: (id, body, signal) =>
+      client.request(
+        'post',
+        '/api/v1/sessions/{session_id}/follow-up',
+        { ...options(signal), path: { session_id: id }, body },
+        vSessionResponse,
+      ),
     delete: async (id, signal) => {
       await client.request('delete', '/api/v1/sessions/{session_id}', {
         ...options(signal),

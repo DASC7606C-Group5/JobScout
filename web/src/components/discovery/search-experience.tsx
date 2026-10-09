@@ -5,6 +5,7 @@ import type { RecommendationItem, ScoutSession } from '../../lib/contracts'
 import { searchPresentation } from '../../lib/search-presentation'
 import { AsyncButton } from '../async-button'
 import { Icon } from '../icon'
+import { ResultFollowUp } from '../result-follow-up'
 import { Results } from '../results'
 import { SearchActivity } from './search-activity'
 import { SearchRecord } from './search-record'
@@ -16,7 +17,12 @@ function initialView(session: ScoutSession, selectedJob: unknown): SearchView {
   const hasSelectedJob = [...(result?.jobs ?? []), ...(result?.pending_jobs ?? [])].some(
     (item) => item.job.job_id === selectedJob,
   )
-  return hasSelectedJob || (session.outcome === 'failed' && result) ? 'results' : 'activity'
+  return hasSelectedJob ||
+    (session.outcome === 'completed' && result) ||
+    (session.operation_kind === 'follow_up' && result) ||
+    (session.outcome === 'failed' && result)
+    ? 'results'
+    : 'activity'
 }
 
 export function SearchExperience({
@@ -27,6 +33,8 @@ export function SearchExperience({
   onToggle,
   onEdit,
   onRetry,
+  onFeedback,
+  feedbackDisabled = false,
 }: {
   session: ScoutSession
   onStop: () => unknown
@@ -35,10 +43,11 @@ export function SearchExperience({
   onToggle: (item: RecommendationItem) => boolean | Promise<boolean> | void
   onEdit: () => unknown
   onRetry: () => unknown
+  onFeedback?: (jobId: string, reaction: 'interested' | 'not_interested' | null) => unknown
+  feedbackDisabled?: boolean
 }) {
   const search = useSearch({ strict: false })
   const [view, setView] = useState<SearchView>(() => initialView(session, search.job))
-  const [snapshot, setSnapshot] = useState(session.recommendation)
   const completed = session.outcome === 'completed'
   const settled = session.outcome !== 'running'
   const showResults = view === 'results' || (completed && view !== 'history')
@@ -47,7 +56,6 @@ export function SearchExperience({
     session.recommendation?.jobs.length || session.recommendation?.pending_jobs.length,
   )
   function showMatches() {
-    setSnapshot(session.recommendation)
     setView('results')
   }
   return (
@@ -67,16 +75,23 @@ export function SearchExperience({
         />
       )}
       {showResults && (
-        <div className="results-layout search-results-enter">
+        <div className="results-layout">
           <SearchMatches
             session={session}
-            result={settled ? session.recommendation : snapshot}
+            result={session.recommendation}
             saved={saved}
             onToggle={onToggle}
             onEdit={onEdit}
             hasResults={hasResults}
             onViewActivity={() => setView('history')}
+            {...(onFeedback ? { onFeedback } : {})}
+            hiddenJobIds={session.hidden_job_ids}
+            resultOrder={session.result_order}
+            feedbackDisabled={feedbackDisabled}
           />
+          {(settled || session.operation_kind === 'follow_up') && (
+            <ResultFollowUp jobId={search.job ?? null} />
+          )}
         </div>
       )}
       {settled && (!showResults || !hasResults) && (
@@ -92,11 +107,17 @@ function SearchMatches({
   session,
   hasResults,
   onViewActivity,
+  onFeedback,
+  feedbackDisabled,
   ...props
 }: {
   session: ScoutSession
   hasResults: boolean
   onViewActivity: () => void
+  onFeedback?: (jobId: string, reaction: 'interested' | 'not_interested' | null) => unknown
+  feedbackDisabled: boolean
+  hiddenJobIds?: string[]
+  resultOrder?: string[]
 } & Pick<Parameters<typeof Results>[0], 'result' | 'saved' | 'onToggle' | 'onEdit'>) {
   const settled = session.outcome !== 'running'
   return (
@@ -104,6 +125,15 @@ function SearchMatches({
       {...props}
       notices={session.notices}
       reviewActive={!settled}
+      feedbackDisabled={feedbackDisabled}
+      {...(onFeedback ? { onFeedback } : {})}
+      hiddenJobIds={session.hidden_job_ids}
+      resultOrder={session.result_order}
+      hiddenJobReasons={session.hidden_job_reasons}
+      exclusions={session.result_preferences.exclusions}
+      feedbackByJob={Object.fromEntries(
+        session.job_feedback.map(({ job_id, reaction }) => [job_id, reaction]),
+      )}
       footerActions={
         settled ? (
           <SearchResultActions

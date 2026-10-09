@@ -154,6 +154,40 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/api/v1/sessions/{session_id}/feedback': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Save Feedback */
+    post: operations['save_feedback_api_v1_sessions__session_id__feedback_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/sessions/{session_id}/follow-up': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Follow Up */
+    post: operations['follow_up_api_v1_sessions__session_id__follow_up_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/v1/workspace/draft': {
     parameters: {
       query?: never
@@ -500,6 +534,8 @@ export interface components {
     ConversationMessage: {
       /** Message Id */
       message_id: string
+      /** Job Id */
+      job_id: string | null
       /**
        * Role
        * @enum {string}
@@ -603,6 +639,62 @@ export interface components {
        */
       unrestricted: boolean
     }
+    /** FindSimilarRequest */
+    FindSimilarRequest: {
+      /** Request Id */
+      request_id: string
+      /** Expected Revision */
+      expected_revision: number
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      action: 'find_similar'
+      /** Job Id */
+      job_id: string
+      /**
+       * Message
+       * @default
+       */
+      message?: string
+    }
+    /** FollowUpAnswerRequest */
+    FollowUpAnswerRequest: {
+      /** Request Id */
+      request_id: string
+      /** Expected Revision */
+      expected_revision: number
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      action: 'answer'
+      /** Answers */
+      answers?: components['schemas']['QuestionAnswer'][]
+      /** Skipped Question Ids */
+      skipped_question_ids?: string[]
+      /**
+       * Message
+       * @default
+       */
+      message?: string
+    }
+    /** FollowUpMessageRequest */
+    FollowUpMessageRequest: {
+      /** Request Id */
+      request_id: string
+      /** Expected Revision */
+      expected_revision: number
+      /**
+       * @description discriminator enum property added by openapi-typescript
+       * @enum {string}
+       */
+      action: 'message'
+      /** Job Id */
+      job_id?: string | null
+      /** Message */
+      message: string
+    }
     /**
      * FreshnessStatus
      * @enum {string}
@@ -612,6 +704,35 @@ export interface components {
     HTTPValidationError: {
       /** Detail */
       detail?: components['schemas']['ValidationError'][]
+    }
+    /** HiddenJobReason */
+    HiddenJobReason: {
+      /** Job Id */
+      job_id: string
+      /**
+       * Kind
+       * @enum {string}
+       */
+      kind: 'not_interested' | 'excluded'
+      /** Exclusion Id */
+      exclusion_id: string | null
+    }
+    /** JobFeedback */
+    JobFeedback: {
+      /** Job Id */
+      job_id: string
+      /**
+       * Reaction
+       * @enum {string}
+       */
+      reaction: 'interested' | 'not_interested'
+      /** Reason */
+      reason: string | null
+      /**
+       * Updated At
+       * Format: date-time
+       */
+      updated_at: string
     }
     /** JobPosting */
     JobPosting: {
@@ -1037,6 +1158,22 @@ export interface components {
        */
       introduction: string
     }
+    /** ResultExclusion */
+    ResultExclusion: {
+      /** Exclusion Id */
+      exclusion_id: string
+      /** Description */
+      description: string
+      /** User Message Id */
+      user_message_id: string
+    }
+    /** ResultPreferences */
+    ResultPreferences: {
+      /** Preferred Features */
+      preferred_features: string[]
+      /** Exclusions */
+      exclusions: components['schemas']['ResultExclusion'][]
+    }
     /** ResumeInput */
     ResumeInput: {
       /** Name */
@@ -1253,6 +1390,17 @@ export interface components {
       preferences?: components['schemas']['RawProfilePreferences']
       search_options?: components['schemas']['SearchOptions-Input']
     }
+    /** SessionFeedbackRequest */
+    SessionFeedbackRequest: {
+      /** Request Id */
+      request_id: string
+      /** Expected Revision */
+      expected_revision: number
+      /** Job Id */
+      job_id: string
+      /** Reaction */
+      reaction: ('interested' | 'not_interested') | null
+    }
     /** SessionHistoryItem */
     SessionHistoryItem: {
       /** Session Id */
@@ -1314,6 +1462,21 @@ export interface components {
       enqueued_at: string | null
       /** Expires At */
       expires_at: string | null
+      /**
+       * Operation Kind
+       * @default initial_search
+       * @enum {string}
+       */
+      operation_kind: 'initial_search' | 'follow_up'
+      /** Job Feedback */
+      job_feedback: components['schemas']['JobFeedback'][]
+      /** Hidden Job Ids */
+      hidden_job_ids: string[]
+      /** Hidden Job Reasons */
+      hidden_job_reasons: components['schemas']['HiddenJobReason'][]
+      result_preferences: components['schemas']['ResultPreferences']
+      /** Result Order */
+      result_order: string[]
       /**
        * Current Stage
        * @default ingest
@@ -1845,6 +2008,79 @@ export interface operations {
     responses: {
       /** @description Successful Response */
       200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SessionResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  save_feedback_api_v1_sessions__session_id__feedback_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        session_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SessionFeedbackRequest']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SessionResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  follow_up_api_v1_sessions__session_id__follow_up_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        session_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json':
+          | components['schemas']['FollowUpMessageRequest']
+          | components['schemas']['FindSimilarRequest']
+          | components['schemas']['FollowUpAnswerRequest']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      202: {
         headers: {
           [name: string]: unknown
         }

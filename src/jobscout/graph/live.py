@@ -2,6 +2,7 @@
 
 import asyncio
 import inspect
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -17,11 +18,13 @@ from langgraph.types import Overwrite, interrupt
 from jobscout.graph.state import AgentState
 from jobscout.schemas.conversation import ConversationMessage, ConversationResponse, SearchSummary
 from jobscout.schemas.errors import WorkflowError
+from jobscout.schemas.feedback import ResultExclusion, ResultPreferences
 from jobscout.schemas.job import JobPosting, SourceDocument
-from jobscout.schemas.profile import UserProfile
+from jobscout.schemas.profile import ProfilePreferences, UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
-from jobscout.schemas.search import ClarificationStatus
+from jobscout.schemas.search import ClarificationMessage, ClarificationStatus
 from jobscout.schemas.session import SessionResumeRequest
+from jobscout.services.condition_service import ConditionService
 from jobscout.services.conversation_service import (
     BACKGROUND_FIELDS,
     EDITABLE_FIELDS,
@@ -39,6 +42,12 @@ from jobscout.services.notice_service import (
     source_notices,
 )
 from jobscout.services.profile_service import dedupe
+from jobscout.services.result_conversation_service import ResultConversationService
+from jobscout.services.result_feedback_service import (
+    SUPPLEMENTARY_RESULT_LIMIT,
+    ResultFeedbackService,
+    merge_results,
+)
 from jobscout.services.search_agent import SearchAgent, SearchService
 
 OPERATION_SECONDS = 300.0
@@ -193,6 +202,8 @@ def build_live_graph(
     assessment_factory: Callable[[LLMProvider], AssessmentService] | None = None,
 ) -> CompiledStateGraph[AgentState, None, AgentState, AgentState]:
     conversation = ConversationService(provider)
+    result_conversation = ResultConversationService(provider)
+    result_feedback = ResultFeedbackService(provider)
     search = search_service if search_service is not None else JobSearchService()
     factory = assessment_factory or JobAssessmentService
     assessment_services: dict[str, AssessmentService] = {}
@@ -227,6 +238,22 @@ def build_live_graph(
         return service
 
     def entry(state: AgentState) -> dict[str, Any]:
+        command = state.get("command")
+        if command and command.get("kind") == "follow_up":
+            return {
+                "errors": Overwrite([]),
+                "source_errors": Overwrite([]),
+                "outcome": "running",
+                "retryable": False,
+                "command": None,
+                "operation_kind": "follow_up",
+                "current_stage": "follow_up_interpret",
+                "operation_deadline": asyncio.get_running_loop().time() + OPERATION_SECONDS,
+                "run_id": None,
+                "progress_seq": 0,
+                "progress": {},
+                "stop_reason": None,
+            }
         reset: dict[str, Any] = {
             "errors": Overwrite([]),
             "source_errors": Overwrite([]),
@@ -291,6 +318,8 @@ def build_live_graph(
             return reset | failure | {"command": None}
 
     def entry_route(state: AgentState) -> str:
+        if state.get("current_stage") == "follow_up_interpret":
+            return "follow_up_interpret"
         if state.get("current_stage") == "failed":
             return "failed"
         return "apply" if state.get("current_stage") == "edit_conditions" else "extract"
@@ -708,6 +737,74 @@ def build_live_graph(
         )
         runtime = config.get("configurable", {})
         agent = SearchAgent(provider, search, service)
+        follow_up = state.get("operation_kind") == "follow_up"
+        history = state.get("recommendation") if follow_up else None
+        pending = state.get("pending_follow_up") or {}
+        request = pending.get("request") or state.get("accepted_follow_up") or {}
+        reference = (
+            next(
+                (
+                    item.job
+                    for item in [*history.jobs, *history.pending_jobs]
+                    if item.job.job_id == request.get("job_id")
+                ),
+                None,
+            )
+            if history
+            else None
+        )
+        extra_inputs: dict[str, Any] = {
+            "result_preferences": state.get("result_preferences", ResultPreferences()),
+            "exclusion_matches": state.get("exclusion_matches", {}),
+            "result_exclusion_conditions": state.get("result_exclusion_conditions", {}),
+        }
+        if follow_up:
+            existing_ids = (
+                {item.job.job_id for item in [*history.jobs, *history.pending_jobs]}
+                if history
+                else set()
+            )
+            additional_count = max(
+                0,
+                SUPPLEMENTARY_RESULT_LIMIT
+                - len(existing_ids - set(state.get("follow_up_baseline_job_ids", []))),
+            )
+            if additional_count == 0:
+                return {
+                    "current_stage": "completed",
+                    "outcome": "completed",
+                    "accepted_follow_up": None,
+                    "pending_follow_up": None,
+                    "follow_up_search_ready": False,
+                    "conversation": [
+                        *state.get("conversation", []),
+                        _message(
+                            "assistant",
+                            "This request has already added five jobs. The saved results are available.",
+                        ),
+                    ],
+                }
+            extra_inputs.update(
+                {
+                    "reference_job": reference,
+                    "history": history,
+                    "additional_result_count": additional_count,
+                }
+            )
+
+        async def publish(update: dict[str, Any]) -> None:
+            callback = runtime.get("on_progress")
+            if callback is not None:
+                if follow_up:
+                    update.update(
+                        current_stage="follow_up_search",
+                        result_preferences=state.get("result_preferences", ResultPreferences()),
+                        profile=profile,
+                        feedback_reason_updates=state.get("feedback_reason_updates", {}),
+                        follow_up_search_ready=True,
+                    )
+                await callback(update)
+
         update = await agent.run(
             profile,
             {
@@ -718,7 +815,8 @@ def build_live_graph(
             deadline=state["operation_deadline"],
             run_id=runtime.get("run_id"),
             stop_event=runtime.get("stop_event"),
-            on_progress=runtime.get("on_progress"),
+            on_progress=publish,
+            **extra_inputs,
         )
         result = finalize_recommendation(
             update["recommendation"],
@@ -736,6 +834,23 @@ def build_live_graph(
                 "retryable": update["stop_reason"] == "error",
             }
         )
+        if state.get("operation_kind") == "follow_up":
+            update["recommendation"], update["result_order"] = merge_results(
+                state.get("recommendation"),
+                result,
+                state.get("result_order", []),
+                baseline_job_ids=state.get("follow_up_baseline_job_ids"),
+            )
+            if update["stop_reason"] == "error":
+                update.update(
+                    _failure(
+                        update.get("agent_error_code") or "search_unavailable", "follow_up_search"
+                    )
+                )
+            else:
+                update.update(
+                    accepted_follow_up=None, pending_follow_up=None, follow_up_search_ready=False
+                )
         if update["stop_reason"] == "error" and not result.jobs and not result.pending_jobs:
             update.update(
                 _failure(update.get("agent_error_code") or "search_unavailable", "search")
@@ -747,6 +862,240 @@ def build_live_graph(
                 "workflow_cache_export_failed", extra={"error_code": "checkpoint_cache_unavailable"}
             )
         return update
+
+    async def follow_up_interpret(state: AgentState) -> dict[str, Any]:
+        if state.get("follow_up_search_ready"):
+            return {"current_stage": "follow_up_search"}
+        accepted = state.get("accepted_follow_up")
+        assert accepted is not None
+        answering = accepted["action"] == "answer"
+        pending = state.get("pending_follow_up") or {}
+        request = pending.get("request", accepted) if answering else accepted
+        questions = state.get("clarification_questions", [])
+        if answering and set(accepted.get("skipped_question_ids", [])) & set(
+            pending.get("required_question_ids", pending.get("question_ids", []))
+        ):
+            return {
+                "current_stage": "completed",
+                "outcome": "completed",
+                "accepted_follow_up": None,
+                "pending_follow_up": None,
+                "clarification_questions": [],
+                "conversation": [
+                    *state.get("conversation", []),
+                    _message(
+                        "assistant",
+                        "This request has ended because the needed details were skipped. No uncertain changes or search were applied.",
+                    ),
+                ],
+            }
+        recommendation = state.get("recommendation")
+        items = [*recommendation.jobs, *recommendation.pending_jobs] if recommendation else []
+        reference = next((item for item in items if item.job.job_id == request.get("job_id")), None)
+        preferences = ResultPreferences.model_validate(state.get("result_preferences", {}))
+        profile = state.get("profile")
+        assert profile is not None
+        interpretation = await result_conversation.interpret(
+            {
+                "task": "result_conversation",
+                "request": request,
+                "answer_message": accepted.get("message", "") if answering else "",
+                "answers": [
+                    {
+                        **answer,
+                        "question": next(
+                            q.question for q in questions if q.question_id == answer["question_id"]
+                        ),
+                        "selected_option_labels": [
+                            option.label
+                            for question in questions
+                            if question.question_id == answer["question_id"]
+                            for option in question.options
+                            if option.id
+                            in (
+                                answer["value"]
+                                if isinstance(answer["value"], list)
+                                else [answer["value"]]
+                            )
+                        ],
+                    }
+                    for answer in accepted.get("answers", [])
+                ]
+                if answering
+                else [],
+                "reference_job": reference.model_dump(mode="json") if reference else None,
+                "feedback": next(
+                    (
+                        item.model_dump(mode="json")
+                        for item in state.get("job_feedback", [])
+                        if item.job_id == request.get("job_id")
+                    ),
+                    None,
+                ),
+                "profile": profile.model_dump(mode="json"),
+                "result_preferences": preferences.model_dump(mode="json"),
+                "result_count": len(items),
+            },
+            deadline=state["operation_deadline"],
+        )
+        if interpretation.questions:
+            drafts = [
+                ClarificationMessage(
+                    question_id=f"follow-up:{accepted['request_id']}:{index}",
+                    question=q.question,
+                    field=q.field,
+                    reason=q.reason,
+                    required=False,
+                    control_type=q.control_type,
+                    options=q.options,
+                )
+                for index, q in enumerate(interpretation.questions)
+            ]
+            return {
+                "current_stage": "follow_up_clarify",
+                "outcome": "paused",
+                "pending_follow_up": {
+                    "request": request,
+                    "user_message_id": pending.get(
+                        "user_message_id", f"message:{request['request_id']}"
+                    ),
+                    "question_ids": [q.question_id for q in drafts],
+                    "required_question_ids": [
+                        q.question_id
+                        for q, draft in zip(drafts, interpretation.questions, strict=True)
+                        if draft.required_for_action
+                    ],
+                },
+                "clarification_questions": drafts,
+                "conversation": [
+                    *state.get("conversation", []),
+                    _message("assistant", interpretation.reply, [q.question_id for q in drafts]),
+                ],
+            }
+        next_profile = await ConditionService(provider).resolve(
+            apply_changes(profile, interpretation.profile_changes),
+            deadline=state["operation_deadline"],
+        )
+        if missing_fields(next_profile) or next_profile.conflicts:
+            raise ModelServiceError("model_output")
+        rules = [
+            rule
+            for rule in preferences.exclusions
+            if rule.exclusion_id not in interpretation.remove_exclusion_ids
+        ]
+        conditions = dict(state.get("result_exclusion_conditions", {}))
+        for index, draft in enumerate(interpretation.exclusions):
+            description = draft.description
+            if not any(rule.description == description for rule in rules):
+                rule = ResultExclusion(
+                    exclusion_id=f"exclusion:{accepted['request_id']}:{index}",
+                    description=description,
+                    user_message_id=f"message:{accepted['request_id']}",
+                )
+                rules.append(rule)
+                if draft.condition_field != "semantic":
+                    raw_preferences = ProfilePreferences.model_validate(
+                        {draft.condition_field: description}
+                    )
+                    parsed_profile = await ConditionService(provider).resolve(
+                        UserProfile(
+                            profile_id=profile.profile_id,
+                            target_directions=profile.target_directions,
+                            preferences=raw_preferences,
+                        ),
+                        deadline=state["operation_deadline"],
+                    )
+                    conditions[rule.exclusion_id] = parsed_profile.preferences.model_dump(
+                        mode="json"
+                    )
+        next_preferences = preferences.model_copy(
+            update={
+                "exclusions": rules,
+                "preferred_features": dedupe(
+                    [
+                        *preferences.preferred_features,
+                        *(feature.feature for feature in interpretation.preferred_features),
+                    ]
+                ),
+            }
+        )
+        search_requested = request["action"] == "find_similar" or interpretation.search_requested
+        cache = {
+            key: value
+            for key, value in state.get("exclusion_matches", {}).items()
+            if json.loads(key)[1] not in interpretation.remove_exclusion_ids
+        }
+        return {
+            "profile": next_profile,
+            "confirmed_profile": next_profile,
+            "result_preferences": next_preferences,
+            "result_exclusion_conditions": {
+                key: value
+                for key, value in conditions.items()
+                if key not in interpretation.remove_exclusion_ids
+            },
+            "exclusion_matches": cache,
+            "feedback_reason_updates": {request["job_id"]: interpretation.feedback_reason}
+            if interpretation.feedback_reason is not None
+            else {},
+            "clarification_questions": [],
+            "follow_up_search_ready": search_requested,
+            "follow_up_reply": interpretation.reply,
+            "current_stage": "follow_up_interpret",
+        }
+
+    async def follow_up_filter(state: AgentState) -> dict[str, Any]:
+        recommendation = state.get("recommendation")
+        jobs = (
+            [item.job for item in [*recommendation.jobs, *recommendation.pending_jobs]]
+            if recommendation
+            else []
+        )
+        _, cache = await result_feedback.classify(
+            jobs,
+            ResultPreferences.model_validate(state.get("result_preferences", {})),
+            state.get("exclusion_matches", {}),
+            deadline=state["operation_deadline"],
+            conditions=state.get("result_exclusion_conditions", {}),
+        )
+        if state.get("follow_up_search_ready"):
+            return {
+                "exclusion_matches": cache,
+                "current_stage": "follow_up_search",
+                "confirmed_profile": state.get("profile"),
+            }
+        return {
+            "exclusion_matches": cache,
+            "current_stage": "completed",
+            "outcome": "completed",
+            "accepted_follow_up": None,
+            "pending_follow_up": None,
+            "conversation": [
+                *state.get("conversation", []),
+                _message(
+                    "assistant",
+                    state.get("follow_up_reply", "Your result preferences have been updated."),
+                ),
+            ],
+        }
+
+    async def await_follow_up(state: AgentState) -> dict[str, Any]:
+        payload = interrupt(
+            {
+                "kind": "follow_up",
+                "questions": [
+                    q.model_dump(mode="json") for q in state.get("clarification_questions", [])
+                ],
+            }
+        )
+        return {
+            "accepted_follow_up": payload["payload"],
+            "revision": payload["revision"],
+            "conversation": payload["conversation"],
+            "current_stage": "follow_up_interpret",
+            "outcome": "running",
+            "operation_deadline": asyncio.get_running_loop().time() + OPERATION_SECONDS,
+        }
 
     def failed(state: AgentState) -> dict[str, Any]:
         return {"current_stage": "failed", "outcome": "failed"}
@@ -797,6 +1146,12 @@ def build_live_graph(
             except asyncio.CancelledError:
                 status = "cancelled"
                 raise
+            except ModelServiceError as error:
+                if stage not in {"follow_up_interpret", "follow_up_filter"}:
+                    raise
+                error_codes = [error.code]
+                update = _failure(error.code, stage)
+                return update
             except Exception:
                 error_codes = ["unhandled_stage_error"]
                 raise
@@ -831,6 +1186,9 @@ def build_live_graph(
 
     graph = StateGraph(AgentState)
     nodes = {
+        "follow_up_interpret": follow_up_interpret,
+        "follow_up_filter": follow_up_filter,
+        "await_follow_up": await_follow_up,
         "entry": entry,
         "extract": extract,
         "validate": validate,
@@ -848,12 +1206,39 @@ def build_live_graph(
             cast(
                 Any,
                 node
-                if name in {"await_answers", "await_confirmation"}
+                if name in {"await_answers", "await_confirmation", "await_follow_up"}
                 else timed(name, cast(Any, node)),
             ),
         )
     graph.add_edge(START, "entry")
-    graph.add_conditional_edges("entry", cast(Any, entry_route), ["failed", "apply", "extract"])
+    graph.add_conditional_edges(
+        "entry", cast(Any, entry_route), ["failed", "apply", "extract", "follow_up_interpret"]
+    )
+    graph.add_conditional_edges(
+        "follow_up_interpret",
+        lambda state: (
+            "await_follow_up"
+            if state.get("current_stage") == "follow_up_clarify"
+            else "failed"
+            if state.get("current_stage") == "failed"
+            else END
+            if state.get("current_stage") == "completed"
+            else "follow_up_filter"
+        ),
+        ["await_follow_up", "follow_up_filter", "failed", END],
+    )
+    graph.add_edge("await_follow_up", "follow_up_interpret")
+    graph.add_conditional_edges(
+        "follow_up_filter",
+        lambda state: (
+            "search_agent"
+            if state.get("current_stage") == "follow_up_search"
+            else "failed"
+            if state.get("current_stage") == "failed"
+            else END
+        ),
+        ["search_agent", "failed", END],
+    )
     graph.add_conditional_edges(
         "extract",
         lambda state: (

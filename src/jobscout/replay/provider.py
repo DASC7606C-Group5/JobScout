@@ -90,8 +90,85 @@ class SyntheticProvider:
             raise TimeoutError("Replay deadline exhausted")
         payload = _payload(messages)
         name = schema.__name__
-        if name == "ProfileExtraction":
-            output: dict[str, Any] = self.profile_background(payload)
+        if name == "ResultInterpretation":
+            request = payload["request"]
+            message = request.get("message", "")
+            answers = payload.get("answers", [])
+            text = " ".join([message, *(str(answer["value"]) for answer in answers)])
+            output: dict[str, Any] = {
+                "reply": "The supplied job details do not establish any additional information.",
+                "search_requested": request["action"] == "find_similar"
+                or any(
+                    word in text.casefold()
+                    for word in ("find more", "search more", "补搜", "更多岗位")
+                ),
+            }
+            if (
+                message.casefold()
+                in {"这种不喜欢", "i don't like this kind", "this kind is not for me"}
+                and not answers
+            ):
+                output["questions"] = [
+                    {
+                        "field": "result_preference",
+                        "question": "Which responsibilities or working conditions do you want to exclude?",
+                        "reason": "A single reaction does not identify a category.",
+                    }
+                ]
+                output["reply"] = "Please clarify what you want to exclude."
+            elif any(word in text.casefold() for word in ("sales", "销售")):
+                rule = next(
+                    (
+                        rule
+                        for rule in payload["result_preferences"]["exclusions"]
+                        if any(word in rule["description"].casefold() for word in ("sales", "销售"))
+                    ),
+                    None,
+                )
+                if (
+                    any(word in text.casefold() for word in ("allow sales", "cancel", "取消"))
+                    and rule
+                ):
+                    output["remove_exclusion_ids"] = [rule["exclusion_id"]]
+                elif any(
+                    word in text.casefold()
+                    for word in ("exclude", "don't want", "不想", "排除", "不喜欢")
+                ):
+                    output["exclusions"] = [
+                        {"description": str(answers[-1]["value"]) if answers else message}
+                    ]
+                    if payload.get("feedback"):
+                        output["feedback_reason"] = (
+                            str(answers[-1]["value"]) if answers else message
+                        )
+                    output["reply"] = (
+                        "Sales roles will be hidden when their listed duties establish a match."
+                    )
+            for feature in ("Python", "remote"):
+                if feature.casefold() in text.casefold() and any(
+                    word in text.casefold() for word in ("like", "prefer", "喜欢")
+                ):
+                    output.setdefault("preferred_features", []).append(
+                        {"feature": feature, "source_text": message}
+                    )
+        elif name == "ExclusionMatches":
+            output = {"matches": []}
+            jobs = {job["job_id"]: job["content"] for job in payload["jobs"]}
+            rules = {rule["exclusion_id"]: rule["description"] for rule in payload["exclusions"]}
+            for pair in payload["pairs"]:
+                content = jobs[pair["job_id"]]
+                description = rules[pair["exclusion_id"]]
+                quote = next((word for word in ("Sales", "sales", "销售") if word in content), None)
+                known_rule = any(word in description.casefold() for word in ("sales", "销售"))
+                output["matches"].append(
+                    {
+                        **pair,
+                        "decision": "matches" if quote and known_rule else "unknown",
+                        "quotes": [quote] if quote and known_rule else [],
+                    }
+                )
+        elif name == "ProfileExtraction":
+            output = self.profile_background(payload)
         elif name == "PreferenceMeaning":
             output = replay_preferences(payload)
         elif payload.get("task") == "jd_analysis":

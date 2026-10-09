@@ -5,6 +5,7 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from jobscout.schemas.conversation import ConversationMessage, SearchSummary
 from jobscout.schemas.errors import WorkflowError
 from jobscout.schemas.execution import SearchEvent, SearchProgress
+from jobscout.schemas.feedback import JobFeedback, ResultExclusion, ResultPreferences
 from jobscout.schemas.job import FreshnessStatus, JobPosting, SourceDocument
 from jobscout.schemas.matching import MatchDimension, MatchScore
 from jobscout.schemas.notices import ApplicantNotice
@@ -33,5 +34,8 @@ def checkpoint_serializer() -> JsonPlusSerializer:
             SourceOutcome,
             SearchProgress,
             SearchEvent,
+            JobFeedback,
+            ResultExclusion,
+            ResultPreferences,
         )
     )

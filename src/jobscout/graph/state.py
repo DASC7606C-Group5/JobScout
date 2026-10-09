@@ -3,6 +3,7 @@ from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from jobscout.schemas.conversation import ConversationMessage, SearchSummary
 from jobscout.schemas.errors import WorkflowError
+from jobscout.schemas.feedback import JobFeedback, ResultPreferences
 from jobscout.schemas.job import JobPosting, SourceDocument
 from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.profile import UserProfile
@@ -21,11 +22,26 @@ WorkflowStage = Literal[
     "review",
     "completed",
     "failed",
+    "follow_up_interpret",
+    "follow_up_clarify",
+    "follow_up_search",
 ]
 
 
 class AgentState(TypedDict):
     session_id: str
+    operation_kind: NotRequired[Literal["initial_search", "follow_up"]]
+    job_feedback: NotRequired[list[JobFeedback]]
+    result_preferences: NotRequired[ResultPreferences]
+    result_order: NotRequired[list[str]]
+    exclusion_matches: NotRequired[dict[str, Any]]
+    result_exclusion_conditions: NotRequired[dict[str, dict[str, Any]]]
+    accepted_follow_up: NotRequired[dict[str, Any] | None]
+    pending_follow_up: NotRequired[dict[str, Any] | None]
+    feedback_reason_updates: NotRequired[dict[str, str]]
+    follow_up_search_ready: NotRequired[bool]
+    follow_up_reply: NotRequired[str]
+    follow_up_baseline_job_ids: NotRequired[list[str]]
     input_data: NotRequired[dict[str, object]]
     profile: NotRequired[UserProfile | None]
     clarification_questions: NotRequired[list[ClarificationMessage]]
