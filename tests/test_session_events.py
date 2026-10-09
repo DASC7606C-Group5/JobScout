@@ -228,7 +228,13 @@ def test_sse_http_returns_terminal_snapshot_and_public_missing_error(outcome: st
     manager.sessions["existing"] = _Session(
         "existing", {"progress": SearchProgress(sequence=7)}, outcome=outcome
     )
-    app = FastAPI()
+    from jobscout.database import database_lifespan
+
+    app = FastAPI(
+        lifespan=lambda application: database_lifespan(
+            application, database_url="sqlite://:memory:"
+        )
+    )
     app.state.sessions = manager
     app.include_router(router)
     with TestClient(app) as client:

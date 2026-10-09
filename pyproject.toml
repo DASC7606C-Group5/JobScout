@@ -31,7 +31,6 @@ dev = [
     "mypy>=1.19,<2",
     "pre-commit>=4,<5",
     "pytest>=9,<10",
-    "pytest-xdist>=3.8,<5",
     "ruff>=0.15,<0.16",
 ]
 
@@ -64,7 +63,4 @@ cache_dir = ".tools/pytest-cache"
 strict = true
 addopts = [
     "--basetemp=./pytest-tmp",
-    "-n",
-    "4",
-    "--dist=loadscope",
 ]

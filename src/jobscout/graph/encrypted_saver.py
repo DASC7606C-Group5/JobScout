@@ -7,6 +7,7 @@ import aiosqlite
 from langgraph.checkpoint.serde.encrypted import EncryptedSerializer
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from jobscout.config import get_settings
 from jobscout.graph.checkpoints import checkpoint_serializer
 from jobscout.services.encryption import ProfileDocumentCipher
 
@@ -36,4 +37,5 @@ class EncryptedSqliteSaver(AsyncSqliteSaver):
         cls, conn_string: str, cipher: ProfileDocumentCipher
     ) -> AsyncIterator[EncryptedSqliteSaver]:
         async with aiosqlite.connect(conn_string) as conn:
+            await conn.execute(f"PRAGMA busy_timeout={get_settings().sqlite_busy_timeout_ms}")
             yield cls(conn, cipher)

@@ -7,26 +7,8 @@ export const sessionKey = (sessionId: string | null) => ['sessions', sessionId] 
 
 export function latestSessionSnapshot(confirmed: ScoutSession | undefined, incoming: ScoutSession) {
   if (!confirmed) return incoming
-  if (confirmed.revision > incoming.revision) return confirmed
-  if (
-    confirmed.revision === incoming.revision &&
-    confirmed.run_id === incoming.run_id &&
-    confirmed.progress.retrieval_stopped &&
-    !incoming.progress.retrieval_stopped
-  )
-    return confirmed
-  if (
-    confirmed.revision === incoming.revision &&
-    confirmed.run_id === incoming.run_id &&
-    confirmed.progress.sequence > incoming.progress.sequence
-  )
-    return confirmed
-  if (
-    confirmed.revision === incoming.revision &&
-    confirmed.outcome !== 'running' &&
-    incoming.outcome === 'running'
-  )
-    return confirmed
+  if (confirmed.snapshot_version > incoming.snapshot_version) return confirmed
+
   return incoming
 }
 

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from jobscout.schemas.session import (
+    SessionCancelRequest,
     SessionCreateRequest,
     SessionResponse,
     SessionResumeRequest,
@@ -110,7 +111,7 @@ async def session_events(request: Request, session_id: str) -> AsyncIterator[Ser
             if snapshot is None:
                 return
             yield ServerSentEvent(event="snapshot", data=snapshot)
-            if snapshot.outcome != "running":
+            if snapshot.outcome not in {"queued", "running"}:
                 return
     finally:
         if revoked is not None:
@@ -141,6 +142,16 @@ async def stop_session(
 ) -> SessionResponse:
     try:
         return await _service(request).stop(session_id, payload)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
+
+
+@router.post("/sessions/{session_id}/cancel", response_model=SessionResponse)
+async def cancel_session(
+    request: Request, session_id: str, payload: SessionCancelRequest
+) -> SessionResponse:
+    try:
+        return await _service(request).cancel(session_id, payload)
     except SessionOperationError as error:
         raise HTTPException(error.status, public_error(error.code).model_dump()) from error
 

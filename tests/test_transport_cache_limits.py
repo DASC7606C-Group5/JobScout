@@ -161,7 +161,7 @@ def test_expired_memory_response_does_not_hide_source_failure(
     asyncio.run(scenario())
 
 
-def test_web_cache_separates_request_headers() -> None:
+def test_private_responses_are_not_shared_or_cached() -> None:
     requested_tokens: list[str] = []
 
     async def respond(request: httpx.Request) -> httpx.Response:
@@ -175,9 +175,9 @@ def test_web_cache_separates_request_headers() -> None:
         first = await client.request_async(url, headers={"Authorization": "Bearer first"})
         second = await client.request_async(url, headers={"Authorization": "Bearer second"})
         cached = await client.request_async(url, headers={"authorization": "Bearer first"})
-        assert first.text == cached.text == "Bearer first" and cached.cached
+        assert first.text == cached.text == "Bearer first" and not cached.cached
         assert second.text == "Bearer second" and not second.cached
-        assert requested_tokens == ["Bearer first", "Bearer second"]
+        assert requested_tokens == ["Bearer first", "Bearer second", "Bearer first"]
 
     asyncio.run(scenario())
 

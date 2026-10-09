@@ -167,6 +167,16 @@ def finalize_recommendation(
 
 
 _ERRORS: dict[str, tuple[str, str | None]] = {
+    "queue_full": ("The waiting list is full. Try again shortly.", "retry"),
+    "queue_expired": (
+        "The waiting period ended. Your input is saved; join the queue again.",
+        "retry",
+    ),
+    "queue_cancelled": ("The queued operation was cancelled. Your input is saved.", "retry"),
+    "operation_already_started": (
+        "The operation has already started or finished. Reload for its status.",
+        "reload",
+    ),
     "model_unavailable": (
         "The model request failed. Your input is saved. Check Settings or retry.",
         "retry",

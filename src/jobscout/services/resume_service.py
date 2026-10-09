@@ -13,11 +13,9 @@ from docx.text.paragraph import Paragraph
 from pypdf import PdfReader, apply_configuration
 from pypdf.errors import LimitReachedError
 
+from jobscout.config import get_settings
 from jobscout.schemas.session import ResumeInput
 
-MAX_RESUME_BYTES = 10 * 1024 * 1024
-MAX_RESUME_TEXT_LENGTH = 100_000
-MAX_PDF_PAGES = 50
 MAX_PDF_UNCOMPRESSED_BYTES = 20 * 1024 * 1024
 MAX_DOCX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024
 SUPPORTED_EXTENSIONS = frozenset({".txt", ".pdf", ".docx"})
@@ -54,10 +52,10 @@ def _extract_pdf(content: bytes) -> str:
             "encrypted_file",
             "This PDF is password-protected. Remove the password and upload it again.",
         )
-    if len(reader.pages) > MAX_PDF_PAGES:
+    if len(reader.pages) > get_settings().resume_max_pdf_pages:
         raise ResumeParseError(
             "document_too_large",
-            "This PDF has too many pages. Upload a resume with no more than 50 pages.",
+            f"This PDF has too many pages. The limit is {get_settings().resume_max_pdf_pages} pages.",
         )
     parts: list[str] = []
     length = 0
@@ -72,10 +70,10 @@ def _extract_pdf(content: bytes) -> str:
                 )
         part = page.extract_text() or ""
         length += len(part)
-        if length > MAX_RESUME_TEXT_LENGTH:
+        if length > get_settings().resume_max_text_characters:
             raise ResumeParseError(
                 "text_too_long",
-                "The resume is too long. Shorten it to 100,000 characters or fewer.",
+                f"The resume exceeds the {get_settings().resume_max_text_characters:,} character limit.",
             )
         parts.append(part)
     text = "\n".join(parts)
@@ -140,10 +138,10 @@ def _extract_docx(content: bytes) -> str:
     for part_container in containers:
         for part in _word_blocks(part_container):
             length += len(part) + bool(parts)
-            if length > MAX_RESUME_TEXT_LENGTH:
+            if length > get_settings().resume_max_text_characters:
                 raise ResumeParseError(
                     "text_too_long",
-                    "The resume is too long. Shorten it to 100,000 characters or fewer.",
+                    f"The resume exceeds the {get_settings().resume_max_text_characters:,} character limit.",
                 )
             parts.append(part)
     return "\n".join(parts)
@@ -152,9 +150,9 @@ def _extract_docx(content: bytes) -> str:
 def parse_resume(filename: str | None, content: bytes) -> ResumeInput:
     """Parse without saving an original file or sending it to another service."""
     name, extension = validate_resume_name(filename)
-    if len(content) > MAX_RESUME_BYTES:
+    if len(content) > get_settings().resume_max_bytes:
         raise ResumeParseError(
-            "file_too_large", "The file is too large. Choose a resume under 10 MB.", 413
+            "file_too_large", "The file exceeds the configured upload size limit.", 413
         )
     if not content:
         raise ResumeParseError(
@@ -163,7 +161,7 @@ def parse_resume(filename: str | None, content: bytes) -> ResumeInput:
     try:
         if extension == ".pdf":
             with apply_configuration(
-                maximum_declared_stream_length=MAX_RESUME_BYTES,
+                maximum_declared_stream_length=get_settings().resume_max_bytes,
                 array_based_stream_maximum_output_length=MAX_PDF_UNCOMPRESSED_BYTES,
                 zlib_maximum_output_length=MAX_PDF_UNCOMPRESSED_BYTES,
                 lzw_maximum_output_length=MAX_PDF_UNCOMPRESSED_BYTES,
@@ -203,8 +201,9 @@ def parse_resume(filename: str | None, content: bytes) -> ResumeInput:
             "invalid_text",
             "The text could not be read correctly. Check the file encoding or export the document again.",
         )
-    if len(text) > MAX_RESUME_TEXT_LENGTH:
+    if len(text) > get_settings().resume_max_text_characters:
         raise ResumeParseError(
-            "text_too_long", "The resume is too long. Shorten it to 100,000 characters or fewer."
+            "text_too_long",
+            f"The resume exceeds the {get_settings().resume_max_text_characters:,} character limit.",
         )
     return ResumeInput(name=name, text=text)

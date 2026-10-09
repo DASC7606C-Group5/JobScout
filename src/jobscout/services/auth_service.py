@@ -42,7 +42,7 @@ class Identity:
 class AuthService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.hash_slots = asyncio.Semaphore(2)
+        self.hash_slots = asyncio.Semaphore(settings.password_hash_concurrency)
         self.failures: TTLCache[str, deque[float]] = TTLCache(
             maxsize=MAX_AUTH_RATE_KEYS, ttl=AUTH_RATE_WINDOW_SECONDS
         )
@@ -53,7 +53,12 @@ class AuthService:
         self.dummy_hash: str = ""
 
     async def open(self) -> None:
-        await LoginSession.filter(expires_at__lte=datetime.now(UTC)).delete()
+        expired = (
+            await LoginSession.filter(expires_at__lte=datetime.now(UTC))
+            .limit(self.settings.cleanup_batch_size)
+            .values_list("token_hash", flat=True)
+        )
+        await LoginSession.filter(token_hash__in=expired).delete()
 
     async def dummy_password_hash(self) -> str:
         if not self.dummy_hash:

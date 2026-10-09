@@ -3,6 +3,7 @@
 import asyncio
 import json
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -91,7 +92,7 @@ def test_resume_round_trip_restart_and_all_checkpoint_writes_are_encrypted(tmp_p
         waiting = settled(client, session_id)
         assert waiting["outcome"] == "paused"
         assert PRIVATE_TEXT in json.dumps(provider.calls[0][1])
-        with sqlite3.connect(database) as connection:
+        with closing(sqlite3.connect(database)) as connection:
             state = json.loads(
                 connection.execute("SELECT state FROM workspace_sessions").fetchone()[0]
             )
@@ -101,8 +102,12 @@ def test_resume_round_trip_restart_and_all_checkpoint_writes_are_encrypted(tmp_p
             assert any(channel == "input_data" for channel, _, _ in writes)
             assert all(kind.endswith("+fernet") for _, kind, _ in writes)
             assert all(PRIVATE_TEXT.encode() not in value for _, _, value in writes)
-        for file in tmp_path.glob("encrypted.sqlite3*"):
-            assert PRIVATE_TEXT.encode() not in file.read_bytes()
+        # Read data pages while the app is open; Windows locks the WAL index.
+        for file in (database, Path(f"{database}-wal")):
+            if file.exists():
+                assert PRIVATE_TEXT.encode() not in file.read_bytes()
+    for file in tmp_path.glob("encrypted.sqlite3*"):
+        assert PRIVATE_TEXT.encode() not in file.read_bytes()
     restored_provider = ExtractionProvider({})
     with TestClient(create_app(provider=restored_provider, database_url=url)) as client:
         login = client.post(

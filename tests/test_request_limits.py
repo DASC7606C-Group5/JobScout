@@ -7,7 +7,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from jobscout.api.security import MAX_API_BODY_BYTES, MAX_AUTH_BODY_BYTES, MAX_UPLOAD_BODY_BYTES
+from jobscout.api.security import MAX_API_BODY_BYTES, MAX_AUTH_BODY_BYTES, request_body_limit
 from jobscout.config import get_settings
 from jobscout.replay.app import create_replay_app
 from tests.test_account_security import register
@@ -18,7 +18,12 @@ from tests.test_account_security import register
     [
         ("/api/v1/auth/login", str(MAX_AUTH_BODY_BYTES + 1), 413, "request_too_large"),
         ("/api/v1/auth/register", "9" * 5000, 413, "request_too_large"),
-        ("/api/v1/resumes/parse", str(MAX_UPLOAD_BODY_BYTES + 1), 413, "request_too_large"),
+        (
+            "/api/v1/resumes/parse",
+            str(request_body_limit("/api/v1/resumes/parse") + 1),
+            413,
+            "request_too_large",
+        ),
         ("/api/v1/sessions", str(MAX_API_BODY_BYTES + 1), 413, "request_too_large"),
         ("/api/v1/auth/login", "-1", 400, "invalid_content_length"),
     ],
@@ -102,7 +107,7 @@ def test_streamed_multipart_is_bounded_and_closes_partial_files(
                     b'--resume\r\nContent-Disposition: form-data; name="file"; filename="resume.txt"'
                     b"\r\nContent-Type: text/plain\r\n\r\n"
                 )
-                for _ in range(MAX_UPLOAD_BODY_BYTES // 65536 + 1):
+                for _ in range(request_body_limit("/api/v1/resumes/parse") // 65536 + 1):
                     yield b"x" * 65536
                 raise AssertionError("The rejected upload must stop reading the body")
 

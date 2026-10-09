@@ -2,8 +2,8 @@
 
 import pytest
 
+from jobscout.config import get_settings
 from jobscout.main import create_app
-from jobscout.services.resume_service import MAX_RESUME_BYTES
 from tests.auth_client import AuthenticatedClient as TestClient
 from tests.test_resume_service import make_docx, make_pdf
 
@@ -36,7 +36,7 @@ def test_upload_returns_existing_resume_contract(
         ("resume.pdf", b"not a PDF", 422, "invalid_file"),
         ("resume.pdf", make_pdf(""), 422, "no_extractable_text"),
         ("resume.pdf", make_pdf("Python", encrypted=True), 422, "encrypted_file"),
-        ("resume.txt", b"x" * (MAX_RESUME_BYTES + 1), 413, "file_too_large"),
+        ("resume.txt", b"x" * (get_settings().resume_max_bytes + 1), 413, "file_too_large"),
     ],
     ids=lambda value: "file-bytes" if isinstance(value, bytes) else None,
 )

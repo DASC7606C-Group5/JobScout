@@ -569,7 +569,7 @@ def test_site_capacity_and_allowance_rejection_roll_back_acceptance() -> None:
             current_user_id.set("fourth")
             with pytest.raises(HTTPException) as capacity:
                 await manager.create(create_payload("same-request"))
-            assert cast(object, capacity.value.detail) == {"code": "operation_capacity"}
+            assert cast(object, capacity.value.detail) == {"code": "server_daily_limit"}
             assert (await models.usage("fourth"))["used"] == 0
             graph.release.set()
             tasks = []
@@ -585,7 +585,7 @@ def test_site_capacity_and_allowance_rejection_roll_back_acceptance() -> None:
             assert not await SearchSession.filter(owner_id="fourth").exists()
             assert (await models.usage("fourth"))["used"] == 0
             models.day = lambda: "2099-01-01"  # type: ignore[method-assign]
-            assert (await models.usage("fourth"))["remaining"] == 20
+            assert (await models.usage("fourth"))["remaining"] == settings.server_daily_user_limit
             fresh = await manager.create(create_payload("same-request"))
             task = manager.sessions[fresh.session_id].task
             assert task is not None

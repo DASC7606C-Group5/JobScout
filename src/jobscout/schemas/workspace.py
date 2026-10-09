@@ -14,7 +14,7 @@ class SessionHistoryItem(WireModel):
     session_id: str
     title: str
     location: str
-    outcome: Literal["running", "paused", "completed", "failed"]
+    outcome: Literal["queued", "running", "paused", "completed", "failed", "cancelled"]
     current_stage: str
     revision: int = Field(ge=0)
     created_at: datetime

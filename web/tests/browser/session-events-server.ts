@@ -8,7 +8,7 @@ export async function startSessionEvents(read: (id: string) => ScoutSession | un
   function send(response: ServerResponse, snapshot: ScoutSession) {
     if (response.writableEnded || response.destroyed) return
     response.write(`event: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`)
-    if (snapshot.outcome !== 'running') response.end()
+    if (snapshot.outcome !== 'running' && snapshot.outcome !== 'queued') response.end()
   }
   const server = createServer((request, response) => {
     const id = decodeURIComponent(request.url!.split('/')[4]!)

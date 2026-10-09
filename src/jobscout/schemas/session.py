@@ -1,8 +1,10 @@
 from collections.abc import ItemsView, ValuesView
+from datetime import datetime
 from typing import Literal
 
-from pydantic import ConfigDict, Field, field_serializer
+from pydantic import ConfigDict, Field, field_serializer, field_validator
 
+from jobscout.config import get_settings
 from jobscout.schemas.conversation import ConversationMessage, QuestionAnswer, SearchSummary
 from jobscout.schemas.errors import ApplicantError
 from jobscout.schemas.execution import SearchProgress, StopReason
@@ -19,6 +21,13 @@ class ResumeInput(WireModel):
 
     name: str
     text: str
+
+    @field_validator("text")
+    @classmethod
+    def bound_text(cls, value: str) -> str:
+        if len(value) > get_settings().resume_max_text_characters:
+            raise ValueError("Resume text exceeds the configured character limit.")
+        return value
 
 
 class SessionCreateRequest(WireModel):
@@ -94,11 +103,23 @@ class SessionStopRequest(WireModel):
     run_id: str = Field(min_length=1, max_length=128)
 
 
+class SessionCancelRequest(WireModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: str = Field(min_length=1, max_length=128)
+    expected_revision: int = Field(ge=0)
+    operation_id: str = Field(min_length=1, max_length=36)
+
+
 class SessionResponse(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str
-    outcome: Literal["running", "paused", "completed", "failed"]
+    outcome: Literal["queued", "running", "paused", "completed", "failed", "cancelled"]
+    snapshot_version: int = Field(ge=0)
+    operation_id: str | None
+    queue_position: int | None
+    enqueued_at: datetime | None
+    expires_at: datetime | None
     current_stage: str = "ingest"
     revision: int = Field(default=0, ge=0)
     profile: UserProfile | None = None

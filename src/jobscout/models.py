@@ -11,6 +11,7 @@ class SearchSession(Model):
     session_id = fields.CharField(max_length=36, primary_key=True)
     state: fields.JSONField[dict[str, Any]] = fields.JSONField()
     revision = fields.IntField(default=1)
+    snapshot_version = fields.IntField(default=0)
     outcome = fields.CharField(max_length=16, default="running")
     mode = fields.CharField(max_length=16)
     thread_id = fields.CharField(max_length=64)
@@ -97,6 +98,30 @@ class DailyUsage(Model):
     owner_id = fields.CharField(max_length=36)
     day = fields.CharField(max_length=10)
     operations = fields.IntField(default=0)
+    reserved = fields.IntField(default=0)
 
     class Meta:
         unique_together = (("owner_id", "day"),)
+
+
+class SessionOperation(Model):
+    id = fields.IntField(primary_key=True)
+    operation_id = fields.CharField(max_length=36, unique=True)
+    owner_id = fields.CharField(max_length=36, db_index=True)
+    session_id = fields.CharField(max_length=36, db_index=True)
+    request_id = fields.CharField(max_length=128)
+    revision = fields.IntField()
+    kind = fields.CharField(max_length=32)
+    status = fields.CharField(max_length=16, default="queued")
+    encrypted_input = fields.TextField(default="")
+    encrypted_models = fields.TextField(default="")
+    quota_day = fields.CharField(max_length=10, null=True)
+    quota_status = fields.CharField(max_length=16, default="none")
+    enqueued_at = fields.DatetimeField()
+    expires_at = fields.DatetimeField()
+    started_at = fields.DatetimeField(null=True)
+    finished_at = fields.DatetimeField(null=True)
+
+    class Meta:
+        table = "session_operations"
+        indexes = (("status", "id"), ("owner_id", "status"), ("status", "finished_at"))

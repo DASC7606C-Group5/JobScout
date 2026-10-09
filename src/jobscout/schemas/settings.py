@@ -43,6 +43,7 @@ class DailyUsage(WireModel):
     enabled: Literal[True]
     remaining: int = Field(ge=0)
     used: int = Field(ge=0)
+    reserved: int = Field(ge=0)
     limit: int = Field(ge=0)
     server_remaining: int = Field(ge=0)
     day: str

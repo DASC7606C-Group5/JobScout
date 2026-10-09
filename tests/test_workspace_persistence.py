@@ -369,14 +369,14 @@ def test_draft_conflicts_idempotency_shape_validation_and_scope_isolation() -> N
         assert lost_response_retry.status_code == 409
         assert lost_response_retry.json()["detail"]["code"] == "draft_conflict"
         assert client.get("/api/v1/workspace/draft").json() == second.json()
-        sessions = [
-            client.post(
+        sessions = []
+        for index in range(2):
+            response = client.post(
                 "/api/v1/sessions", json=CREATE | {"request_id": f"session-{index}"}
-            ).json()["session_id"]
-            for index in range(2)
-        ]
-        for session_id in sessions:
-            settled(client, session_id)
+            )
+            assert response.status_code == 202
+            sessions.append(response.json()["session_id"])
+            settled(client, sessions[-1])
         raw_answers = {
             "values": {"preferences.location": "  深圳，  "},
             "skipped": [],
@@ -400,12 +400,14 @@ def test_draft_conflicts_idempotency_shape_validation_and_scope_isolation() -> N
 
 def test_history_pagination_order_changes_only_after_accepted_user_operations() -> None:
     with TestClient(create_replay_app()) as client:
-        ids = [
-            client.post(
+        ids = []
+        for index in range(3):
+            response = client.post(
                 "/api/v1/sessions", json=CREATE | {"request_id": f"history-{index}"}
-            ).json()["session_id"]
-            for index in range(3)
-        ]
+            )
+            assert response.status_code == 202
+            ids.append(response.json()["session_id"])
+            settled(client, ids[-1])
         waiting = settled(client, ids[0])
         for session_id in ids[1:]:
             settled(client, session_id)

@@ -27,6 +27,7 @@ from jobscout.services.auth_service import AuthService
 from jobscout.services.encryption import ProfileDocumentCipher
 from jobscout.services.model_settings_service import ModelSettingsService
 from jobscout.services.notice_service import public_error
+from jobscout.services.runtime_resources import release_runtime_resources
 from jobscout.services.session_service import SessionService
 from jobscout.services.workspace_service import WorkspaceService
 
@@ -61,6 +62,7 @@ def create_app(
         active_search = search_service
         active_database_url = database_url or get_settings().database_url
         async with AsyncExitStack() as stack:
+            stack.callback(release_runtime_resources)
             resources: set[int] = set()
 
             def own_resource(resource: Any) -> None:
@@ -90,7 +92,8 @@ def create_app(
             application.state.database_url = active_database_url
             application.state.auth = AuthService(settings)
             await application.state.auth.open()
-            application.state.resume_slots = asyncio.Semaphore(2)
+            application.state.resume_slots = asyncio.Semaphore(settings.resume_parse_concurrency)
+            application.state.upload_slots = asyncio.Semaphore(settings.upload_concurrency)
             application.state.model_settings = ModelSettingsService(settings)
             checkpointer: Any = getattr(graph, "checkpointer", None)
             if checkpointer is None:

@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from tortoise import Tortoise
 
 from jobscout.database import tortoise_config
+from jobscout.models import AcceptedRequest
 from jobscout.schemas.conversation import QuestionOption
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.search import ClarificationMessage
@@ -83,7 +84,7 @@ def test_create_is_accepted_and_idempotent() -> None:
             await manager.create(SessionCreateRequest(request_id="create-1", description="changed"))
         assert error.value.status == 409
         graph.release.set()
-        await asyncio.sleep(0)
+        await asyncio.gather(*manager.tasks)
         assert (await manager.get(first.session_id)).outcome == "completed"
         await close_manager(manager)
 
@@ -315,7 +316,7 @@ def test_failed_edit_persistence_keeps_the_active_run(
             assert record.task is old_task
             assert old_task is not None and not old_task.done()
             assert record.thread_id == old_thread
-            assert payload.request_id not in record.requests
+            assert not await AcceptedRequest.filter(request_id=payload.request_id).exists()
         finally:
             await close_manager(manager)
 
@@ -331,7 +332,7 @@ def test_delete_cancels_and_never_restores_session() -> None:
         await graph.started.wait()
         await manager.delete(session.session_id)
         graph.release.set()
-        await asyncio.sleep(0)
+        await asyncio.gather(*manager.tasks)
         with pytest.raises(SessionOperationError) as error:
             await manager.get(session.session_id)
         assert error.value.status == 404
@@ -351,8 +352,9 @@ def test_sessions_are_isolated_and_completed_edit_is_idempotent() -> None:
         graph.release.set()
         manager = await manager_for(graph, Memory())
         first = await manager.create(create_payload())
+        await asyncio.gather(*manager.tasks)
         second = await manager.create(create_payload("create-2"))
-        await asyncio.sleep(0)
+        await asyncio.gather(*manager.tasks)
         payload = SessionResumeRequest(
             request_id="edit-1",
             expected_revision=1,
@@ -399,7 +401,7 @@ def test_question_controls_and_confirmation_are_validated_before_acceptance() ->
         session = await manager.create(create_payload())
         await graph.started.wait()
         graph.release.set()
-        await asyncio.sleep(0)
+        await asyncio.gather(*manager.tasks)
         record = manager.sessions[session.session_id]
         record.outcome = "paused"
         record.state["clarification_questions"] = [
@@ -465,7 +467,7 @@ def test_get_does_not_restore_a_previous_revision_while_editing() -> None:
         graph.release.set()
         manager = await manager_for(graph, Memory())
         session = await manager.create(create_payload())
-        await asyncio.sleep(0)
+        await asyncio.gather(*manager.tasks)
         record = manager.sessions[session.session_id]
         record.state["recommendation"] = None
         graph.states[session.session_id] = {
@@ -498,7 +500,7 @@ def test_unknown_question_and_privileged_field_rejected() -> None:
         graph.release.set()
         manager = await manager_for(graph, Memory())
         session = await manager.create(create_payload())
-        await asyncio.sleep(0)
+        await asyncio.gather(*manager.tasks)
         for changes in (
             {"skipped_question_ids": ["unknown"]},
             {"profile_updates": {"profile_id": "bad"}},

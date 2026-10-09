@@ -1,4 +1,5 @@
 import type {
+  SessionCancelRequest as CancelSessionRequest,
   SessionStopRequest as StopSessionRequest,
   SessionCreateRequest,
   SessionResumeRequest,
@@ -36,6 +37,7 @@ export type {
   SearchActivity,
   SearchProgress,
   SessionHistoryItem as SessionSummary,
+  SessionCancelRequest as CancelSessionRequest,
   SessionStopRequest as StopSessionRequest,
 } from '../api/types.gen'
 
@@ -77,6 +79,11 @@ export interface SessionClient {
   answer: (
     sessionId: string,
     request: ResumeSessionRequest,
+    signal?: AbortSignal,
+  ) => Promise<ScoutSession>
+  cancel: (
+    sessionId: string,
+    request: CancelSessionRequest,
     signal?: AbortSignal,
   ) => Promise<ScoutSession>
   delete: (sessionId: string, signal?: AbortSignal) => Promise<void>

@@ -20,6 +20,171 @@ import { startSessionEvents } from './session-events-server'
 
 const eventServers: Awaited<ReturnType<typeof startSessionEvents>>[] = []
 
+function queuedSession(): ScoutSession {
+  return createSessionFixture({
+    outcome: 'queued',
+    mode: 'live',
+    current_stage: 'ingest',
+    profile: null,
+    search_summary: null,
+    operation_id: 'operation-1',
+    snapshot_version: 3,
+    queue_position: 140,
+    enqueued_at: new Date(Date.now() - 120_000).toISOString(),
+    expires_at: new Date(Date.now() + 14_280_000).toISOString(),
+  })
+}
+
+test('queued requests survive refresh, reconnect and position updates, then cancel and rejoin', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  const queued = queuedSession()
+  const state = await mockSessions(page, queued)
+  state.seedSession(queued)
+  await page.goto('/searches/session-1')
+  await expect(page.getByRole('heading', { name: 'Queue position 140', exact: true })).toBeVisible()
+  await expect.poll(state.events.active).toBe(1)
+  const reads = state.getCount()
+  state.seedSession({ ...queued, queue_position: 2, snapshot_version: 4 })
+  await expect(page.getByRole('heading', { name: 'Queue position 2', exact: true })).toBeVisible()
+  expect(state.getCount()).toBe(reads)
+  const connections = state.events.connections.length
+  state.events.disconnect(queued.session_id)
+  await expect.poll(() => state.events.connections.length).toBeGreaterThan(connections)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Queue position 2', exact: true })).toBeVisible()
+  let cancelRequestId = ''
+  await page.route('**/api/v1/sessions/session-1/cancel', async (route) => {
+    const body = route.request().postDataJSON()
+    expect(body).toMatchObject({
+      expected_revision: queued.revision,
+      operation_id: queued.operation_id,
+    })
+    cancelRequestId = body.request_id
+    const cancelled = {
+      ...queued,
+      outcome: 'cancelled' as const,
+      retryable: true,
+      snapshot_version: 5,
+      queue_position: null,
+    }
+    state.seedSession(cancelled)
+    await route.fulfill({ json: cancelled })
+  })
+  await page.getByRole('button', { name: 'Cancel queued request', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Join queue again', exact: true })).toBeVisible()
+  await page.route('**/api/v1/sessions/session-1/resume', async (route) => {
+    const body = route.request().postDataJSON()
+    expect(body.action).toBe('retry')
+    expect(body.request_id).not.toBe(cancelRequestId)
+    const retried = {
+      ...queued,
+      operation_id: 'operation-2',
+      revision: 2,
+      snapshot_version: 6,
+      queue_position: 138,
+    }
+    state.seedSession(retried)
+    await route.fulfill({ status: 202, json: retried })
+  })
+  await page.getByRole('button', { name: 'Join queue again', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Queue position 138', exact: true })).toBeVisible()
+  await page.screenshot({ path: '.tools/review-queue.png', fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Queue position 138', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Open sidebar', exact: true })).toBeVisible()
+  await page.screenshot({ path: '.tools/review-queue-mobile.png', fullPage: true })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+})
+
+test('queued events advance to execution and a late queued snapshot cannot replace completion', async ({
+  page,
+}) => {
+  const queued = queuedSession()
+  const state = await mockSessions(page, queued)
+  state.seedSession(queued)
+  await page.goto('/searches/session-1')
+  await expect.poll(state.events.active).toBe(1)
+  state.seedSession({ ...queued, outcome: 'running', snapshot_version: 4, queue_position: null })
+  await expect(
+    page.getByRole('button', { name: 'Cancel queued request', exact: true }),
+  ).toHaveCount(0)
+  const complete = { ...resultSession(), snapshot_version: 5 }
+  state.seedSession(complete)
+  state.events.publish({ ...queued, snapshot_version: 3 })
+  await expect(
+    page.getByRole('button', { name: 'Save job: React Engineer', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Queued operation', exact: true })).toHaveCount(0)
+})
+
+test('an expired queued request can rejoin with a new operation after refresh', async ({
+  page,
+}) => {
+  const queued = queuedSession()
+  const state = await mockSessions(page, queued)
+  state.seedSession(queued)
+  await page.goto('/searches/session-1')
+  await expect.poll(state.events.active).toBe(1)
+  state.seedSession({
+    ...queued,
+    outcome: 'failed',
+    current_stage: 'failed',
+    snapshot_version: 4,
+    queue_position: null,
+    retryable: true,
+    errors: [{ code: 'queue_expired', message: 'The queued operation expired.', action: 'retry' }],
+  })
+  await expect(page.getByRole('region', { name: 'Queued operation', exact: true })).toHaveCount(0)
+  await page.reload()
+  await page.route('**/api/v1/sessions/session-1/resume', async (route) => {
+    expect(route.request().postDataJSON()).toMatchObject({
+      action: 'retry',
+      expected_revision: queued.revision,
+    })
+    const retried = {
+      ...queued,
+      operation_id: 'operation-after-expiry',
+      revision: 2,
+      snapshot_version: 5,
+      queue_position: 150,
+    }
+    state.seedSession(retried)
+    await route.fulfill({ status: 202, json: retried })
+  })
+  await page
+    .locator('#main-content')
+    .getByRole('button', { name: 'Try again', exact: true })
+    .click()
+  await expect(page.getByRole('heading', { name: 'Queue position 150', exact: true })).toBeVisible()
+})
+
+test('cancelling an already claimed queued request refreshes its running status', async ({
+  page,
+}) => {
+  const queued = queuedSession()
+  const state = await mockSessions(page, queued)
+  state.seedSession(queued)
+  await page.goto('/searches/session-1')
+  await expect(
+    page.getByRole('button', { name: 'Cancel queued request', exact: true }),
+  ).toBeVisible()
+  const reads = state.getCount()
+  await page.route('**/api/v1/sessions/session-1/cancel', async (route) => {
+    state.seedSession({ ...queued, outcome: 'running', snapshot_version: 4, queue_position: null })
+    await route.fulfill({ status: 409, json: { detail: { code: 'operation_already_started' } } })
+  })
+  await page.getByRole('button', { name: 'Cancel queued request', exact: true }).click()
+  await expect.poll(state.getCount).toBeGreaterThan(reads)
+  await expect(page.getByRole('region', { name: 'Queued operation', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Join queue again', exact: true })).toHaveCount(0)
+})
+
 test('resume consent blocks submission and resets when replacing or removing a resume', async ({
   page,
 }) => {
@@ -254,6 +419,10 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
   let completion: ReturnType<typeof setTimeout> | undefined
   page.on('close', () => clearTimeout(completion))
   function store(session: ScoutSession) {
+    session.snapshot_version = Math.max(
+      session.snapshot_version,
+      (sessions.get(session.session_id)?.snapshot_version ?? 0) + 1,
+    )
     sessions.set(session.session_id, structuredClone(session))
     const index = order.indexOf(session.session_id)
     if (index >= 0) order.splice(index, 1)
@@ -278,6 +447,12 @@ async function mockSessions(page: Page, initial = createSessionFixture()) {
     const method = route.request().method()
     const url = new URL(route.request().url())
     const path = url.pathname.replace('/api/v1', '')
+    if (path === '/resumes/limits') {
+      await route.fulfill({
+        json: { max_bytes: 3 * 1024 * 1024, max_pdf_pages: 10, max_text_characters: 30000 },
+      })
+      return
+    }
     if (path === '/auth/me') {
       await route.fulfill({
         json: {
@@ -2499,6 +2674,46 @@ test('deletion requires confirmation and a failed deletion preserves the search,
   await expect(
     page.getByRole('button', { name: 'View job: React Engineer', exact: true }),
   ).toBeVisible()
+})
+
+test('a busy resume upload retries automatically and keeps the selected file and introduction', async ({
+  page,
+}) => {
+  const state = await mockSessions(page)
+  let uploads = 0
+  await page.route('**/api/v1/resumes/parse', async (route) => {
+    uploads += 1
+    expect(route.request().postDataBuffer()?.toString()).toContain('Synthetic PDF input')
+    await route.fulfill(
+      uploads === 1
+        ? {
+            status: 429,
+            headers: { 'Retry-After': '0.05' },
+            json: { detail: { code: 'upload_capacity' } },
+          }
+        : { status: 200, json: { name: 'resume.pdf', text: 'Parsed resume experience' } },
+    )
+  })
+  await page.goto('/new')
+  await page.getByLabel('About you', { exact: true }).fill('Keep my introduction.')
+  await page.locator('input[type=file]').setInputFiles({
+    name: 'resume.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('Synthetic PDF input'),
+  })
+  await expect(
+    page.getByRole('button', { name: 'Remove resume: resume.pdf', exact: true }),
+  ).toBeVisible()
+  await expect(page.getByLabel('About you', { exact: true })).toHaveValue('Keep my introduction.')
+  await expect(page.getByRole('alert')).not.toBeVisible()
+  expect(uploads).toBe(2)
+  await page.getByRole('checkbox', { name: /I agree to send my resume/ }).check()
+  await page.getByRole('button', { name: 'Analyze and continue', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Confirm and search', exact: true })).toBeEnabled()
+  expect(state.createBodies[0]).toMatchObject({
+    description: 'Keep my introduction.',
+    resume: { name: 'resume.pdf', text: 'Parsed resume experience' },
+  })
 })
 
 test('resume upload failures preserve typed input, hide diagnostics and allow a successful retry', async ({

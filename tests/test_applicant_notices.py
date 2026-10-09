@@ -5,8 +5,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from pydantic import ValidationError
 
+from jobscout.database import database_lifespan
 from jobscout.main import create_app
 from jobscout.schemas.conversation import MatchingReason, SourceQuoteReference
 from jobscout.schemas.errors import WorkflowError
@@ -263,35 +265,37 @@ def test_incomplete_analysis_does_not_invent_unresolved_preferences(analysis_sta
 )
 def test_session_projection_keeps_diagnostics_private_and_honors_retryability(code: str) -> None:
     async def check() -> None:
-        manager = SessionService(object(), object())
-        error = WorkflowError(
-            code=code, message=PRIVATE, stage="private-stage", details={"secret": PRIVATE}
-        )
-        record = _Session(
-            "s",
-            {
-                "errors": [error],
-                "source_errors": [error],
-                "warnings": [PRIVATE],
-                "retryable": False,
-            },
-            outcome="failed",
-        )
-        manager.sessions["s"] = record
-        response = await manager.get("s")
-        assert [(item.code, item.action) for item in response.errors] == [
-            ("model_unavailable", "edit_conditions")
-        ]
-        assert response.retryable is False
-        assert "warnings" not in response.model_dump()
-        assert PRIVATE not in response.model_dump_json()
-        assert record.state["errors"] == [error]
-        with pytest.raises(SessionOperationError) as rejected:
-            await manager.resume(
-                "s", SessionResumeRequest(request_id="retry", expected_revision=1, action="retry")
+        async with database_lifespan(FastAPI(), database_url="sqlite://:memory:"):
+            manager = SessionService(object(), object())
+            error = WorkflowError(
+                code=code, message=PRIVATE, stage="private-stage", details={"secret": PRIVATE}
             )
-        assert rejected.value.code == "search_not_retryable"
-        assert record.revision == 1
+            record = _Session(
+                "s",
+                {
+                    "errors": [error],
+                    "source_errors": [error],
+                    "warnings": [PRIVATE],
+                    "retryable": False,
+                },
+                outcome="failed",
+            )
+            manager.sessions["s"] = record
+            response = await manager.get("s")
+            assert [(item.code, item.action) for item in response.errors] == [
+                ("model_unavailable", "edit_conditions")
+            ]
+            assert response.retryable is False
+            assert "warnings" not in response.model_dump()
+            assert PRIVATE not in response.model_dump_json()
+            assert record.state["errors"] == [error]
+            with pytest.raises(SessionOperationError) as rejected:
+                await manager.resume(
+                    "s",
+                    SessionResumeRequest(request_id="retry", expected_revision=1, action="retry"),
+                )
+            assert rejected.value.code == "search_not_retryable"
+            assert record.revision == 1
 
     asyncio.run(check())
 

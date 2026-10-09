@@ -206,20 +206,24 @@ class LangChainModelProvider:
 
     @asynccontextmanager
     async def _chat_model(self) -> AsyncIterator[BaseChatOpenAI]:
+        from jobscout.services.runtime_resources import runtime_resources
+
         self._validate_configuration()
-        if self._client is None:
-            async with _new_http_client() as client:
-                model = self._create_model(client)
+        # Waiting calls must not allocate SDK and HTTP clients before admission.
+        async with runtime_resources().models:
+            if self._client is None:
+                async with _new_http_client() as client:
+                    model = self._create_model(client)
+                    try:
+                        yield model
+                    finally:
+                        model.root_client.close()
+            else:
+                model = self._create_model(self._client)
                 try:
                     yield model
                 finally:
                     model.root_client.close()
-        else:
-            model = self._create_model(self._client)
-            try:
-                yield model
-            finally:
-                model.root_client.close()
 
     def _create_model(self, client: httpx.AsyncClient) -> BaseChatOpenAI:
         parameters: dict[str, Any] = {

@@ -82,7 +82,7 @@ async def login_response(auth: AuthService, response: Response, user: User) -> d
 async def register(request: Request, response: Response, payload: Credentials) -> dict[str, object]:
     auth = service(request)
     ip = request.client.host if request.client else "unknown"
-    limits = [(f"register:{ip}", 60)]
+    limits = [(f"register:{ip}", auth.settings.auth_register_ip_limit)]
     auth.reserve_attempt(limits)
     hashed = await auth.hash_password(payload.password)
     try:
@@ -98,7 +98,10 @@ async def register(request: Request, response: Response, payload: Credentials) -
 async def login(request: Request, response: Response, payload: Credentials) -> dict[str, object]:
     auth = service(request)
     ip = request.client.host if request.client else "unknown"
-    limits = [(f"username:{payload.username}", 10), (f"login:{ip}", 60)]
+    limits = [
+        (f"username:{payload.username}", auth.settings.auth_username_limit),
+        (f"login:{ip}", auth.settings.auth_login_ip_limit),
+    ]
     attempt = auth.reserve_attempt(limits)
     user = await User.get_or_none(username=payload.username)
     if user is None:
@@ -172,9 +175,6 @@ async def delete_account(request: Request, response: Response) -> None:
                 await User.filter(user_id=owner).delete()
             auth.notify_revoked([str(hashed) for hashed in hashes])
         sessions.testing_users.discard(owner)
-        sessions.creation_requests = {
-            key: value for key, value in sessions.creation_requests.items() if key[0] != owner
-        }
         await run_in_threadpool(vacuum_sqlite, request.app.state.database_url)
 
     response.delete_cookie(

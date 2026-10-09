@@ -129,7 +129,7 @@ def test_jobs_from_an_earlier_shortlist_remain_saveable_with_server_supplied_dat
                     "complete", payload.model_copy(update={"expected_revision": 0})
                 )
             assert stale.value.code == "search_changed"
-            manager._get(session.session_id).state["run_id"] = "new-run"
+            (await manager._get(session.session_id)).state["run_id"] = "new-run"
             with pytest.raises(SessionOperationError) as prior_run:
                 await workspace.save_job("unfinished", payload)
             assert prior_run.value.code == "saved_job_not_found"
