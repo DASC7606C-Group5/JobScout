@@ -51,7 +51,7 @@ Both members of each group jointly handle coding and testing. One member in each
 
 | Group | Members | Coding responsibilities |
 | --- | --- | --- |
-| 1: Frontend and Interaction | 龙良茂 (Long Liangmao), 张凯森 (Zhang Kaisen) | Develop the HTML input interface, resume upload, text input, clarification interaction, loading states, and Top 5 result display; call the backend interface. |
+| 1: Frontend and Interaction | 龙良茂 (Long Liangmao, Foah), 张凯森 (Zhang Kaisen) | Develop the HTML input interface, resume upload, text input, clarification interaction, loading states, and Top 5 result display; call the backend interface. |
 | 2: User Profile and Information Confirmation | 王寒正 (Wang Hanzheng), 赵钧翊 (Zhao Junyi) | Process resumes and descriptions, extract education, skills, internships, and projects, output `UserProfile`, check essential information, identify conflicts, and generate clarification content. |
 | 3: Overall Workflow | 施雨君 (Shi Yujun), 赫锦竹 (He Jinzhu) | Use LangGraph to manage the JobScout workflow, session state, and node order, pause/resume the process, and call and connect the modules developed by other groups. |
 | 4: Job Retrieval | 陈泉睿 (Chen Quanrui), 李浚萁 (Li Junqi) | Integrate job APIs/public sources, generate search conditions for different directions, search separately, and output raw job data. |
