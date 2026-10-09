@@ -3,24 +3,32 @@ import type { ApplicantRecovery } from './contracts'
 type ErrorDefinition = { message: string; action: ApplicantRecovery }
 
 const errors = {
-  queue_full: { message: 'The waiting list is full. Try again shortly.', action: 'retry' },
+  queue_full: {
+    message: 'JobScout is busy and can’t accept more requests right now. Try again shortly.',
+    action: 'retry',
+  },
   queue_expired: {
-    message: 'The waiting period ended. Your input is saved; join the queue again.',
+    message:
+      'Your request waited too long to start. Your information is saved. Try again when you’re ready.',
     action: 'retry',
   },
   queue_cancelled: {
-    message: 'The queued operation was cancelled. Your input is saved.',
+    message: 'You cancelled this request before it started. Your information is saved.',
     action: 'retry',
   },
   operation_already_started: {
-    message: 'The operation has already started or finished. Reload for its status.',
+    message:
+      'This request is no longer waiting, so it can’t be cancelled. Refresh to see its progress.',
     action: 'reload',
   },
   event_stream_capacity: {
-    message: 'Close another open search tab and reconnect.',
+    message: 'You have too many search tabs open. Close another tab, then try again.',
     action: 'retry',
   },
-  upload_capacity: { message: 'Uploads are busy. Try again shortly.', action: 'retry' },
+  upload_capacity: {
+    message: 'JobScout is handling other uploads. Please try uploading your resume again shortly.',
+    action: 'retry',
+  },
   upload_timeout: { message: 'The upload took too long. Try uploading again.', action: 'retry' },
   model_unavailable: {
     message: 'The model request failed. Your input is saved. Check Settings or retry.',
@@ -32,12 +40,13 @@ const errors = {
     action: 'retry',
   },
   operation_capacity: {
-    message: 'Another operation is running. Try again after it finishes.',
+    message:
+      'You already have a request waiting or running. Wait for it to finish before sending another.',
     action: 'retry',
   },
   server_daily_limit: {
     message:
-      'The server model daily allowance has been used. Configure personal models in Settings or try tomorrow.',
+      'Today’s AI request limit has been reached for your account or for all users. Check Settings, use your own models, or try after midnight (Hong Kong time).',
     action: 'retry',
   },
   search_unavailable: {
@@ -137,7 +146,7 @@ const errors = {
     action: 'edit_conditions',
   },
   file_too_large: {
-    message: 'Choose a resume within the displayed upload size limit.',
+    message: 'This file is too large. Compress it or choose a smaller resume.',
     action: 'edit_conditions',
   },
   encrypted_file: {
@@ -166,7 +175,8 @@ const errors = {
     action: 'edit_conditions',
   },
   text_too_long: {
-    message: 'Shorten your resume to allowed number of characters or fewer.',
+    message:
+      'Your resume contains too much text. Upload a shorter version with your most relevant experience.',
     action: 'edit_conditions',
   },
   invalid_file: {

@@ -46,17 +46,23 @@ test('queued requests survive refresh, reconnect and position updates, then canc
   const state = await mockSessions(page, queued)
   state.seedSession(queued)
   await page.goto('/searches/session-1')
-  await expect(page.getByRole('heading', { name: 'Queue position 140', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Your place in line: 140', exact: true }),
+  ).toBeVisible()
   await expect.poll(state.events.active).toBe(1)
   const reads = state.getCount()
   state.seedSession({ ...queued, queue_position: 2, snapshot_version: 4 })
-  await expect(page.getByRole('heading', { name: 'Queue position 2', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Your place in line: 2', exact: true }),
+  ).toBeVisible()
   expect(state.getCount()).toBe(reads)
   const connections = state.events.connections.length
   state.events.disconnect(queued.session_id)
   await expect.poll(() => state.events.connections.length).toBeGreaterThan(connections)
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Queue position 2', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Your place in line: 2', exact: true }),
+  ).toBeVisible()
   let cancelRequestId = ''
   await page.route('**/api/v1/sessions/session-1/cancel', async (route) => {
     const body = route.request().postDataJSON()
@@ -75,8 +81,8 @@ test('queued requests survive refresh, reconnect and position updates, then canc
     state.seedSession(cancelled)
     await route.fulfill({ json: cancelled })
   })
-  await page.getByRole('button', { name: 'Cancel queued request', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Join queue again', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Cancel request', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Try again', exact: true })).toBeVisible()
   await page.route('**/api/v1/sessions/session-1/resume', async (route) => {
     const body = route.request().postDataJSON()
     expect(body.action).toBe('retry')
@@ -91,12 +97,16 @@ test('queued requests survive refresh, reconnect and position updates, then canc
     state.seedSession(retried)
     await route.fulfill({ status: 202, json: retried })
   })
-  await page.getByRole('button', { name: 'Join queue again', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Queue position 138', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Try again', exact: true }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Your place in line: 138', exact: true }),
+  ).toBeVisible()
   await page.screenshot({ path: '.tools/review-queue.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Queue position 138', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Your place in line: 138', exact: true }),
+  ).toBeVisible()
   await expect(page.getByRole('button', { name: 'Open sidebar', exact: true })).toBeVisible()
   await page.screenshot({ path: '.tools/review-queue-mobile.png', fullPage: true })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
@@ -113,16 +123,14 @@ test('queued events advance to execution and a late queued snapshot cannot repla
   await page.goto('/searches/session-1')
   await expect.poll(state.events.active).toBe(1)
   state.seedSession({ ...queued, outcome: 'running', snapshot_version: 4, queue_position: null })
-  await expect(
-    page.getByRole('button', { name: 'Cancel queued request', exact: true }),
-  ).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Cancel request', exact: true })).toHaveCount(0)
   const complete = { ...resultSession(), snapshot_version: 5 }
   state.seedSession(complete)
   state.events.publish({ ...queued, snapshot_version: 3 })
   await expect(
     page.getByRole('button', { name: 'Save job: React Engineer', exact: true }),
   ).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Queued operation', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Waiting request', exact: true })).toHaveCount(0)
 })
 
 test('an expired queued request can rejoin with a new operation after refresh', async ({
@@ -142,7 +150,7 @@ test('an expired queued request can rejoin with a new operation after refresh', 
     retryable: true,
     errors: [{ code: 'queue_expired', message: 'The queued operation expired.', action: 'retry' }],
   })
-  await expect(page.getByRole('region', { name: 'Queued operation', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Waiting request', exact: true })).toHaveCount(0)
   await page.reload()
   await page.route('**/api/v1/sessions/session-1/resume', async (route) => {
     expect(route.request().postDataJSON()).toMatchObject({
@@ -163,7 +171,9 @@ test('an expired queued request can rejoin with a new operation after refresh', 
     .locator('#main-content')
     .getByRole('button', { name: 'Try again', exact: true })
     .click()
-  await expect(page.getByRole('heading', { name: 'Queue position 150', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Your place in line: 150', exact: true }),
+  ).toBeVisible()
 })
 
 test('cancelling an already claimed queued request refreshes its running status', async ({
@@ -173,18 +183,16 @@ test('cancelling an already claimed queued request refreshes its running status'
   const state = await mockSessions(page, queued)
   state.seedSession(queued)
   await page.goto('/searches/session-1')
-  await expect(
-    page.getByRole('button', { name: 'Cancel queued request', exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Cancel request', exact: true })).toBeVisible()
   const reads = state.getCount()
   await page.route('**/api/v1/sessions/session-1/cancel', async (route) => {
     state.seedSession({ ...queued, outcome: 'running', snapshot_version: 4, queue_position: null })
     await route.fulfill({ status: 409, json: { detail: { code: 'operation_already_started' } } })
   })
-  await page.getByRole('button', { name: 'Cancel queued request', exact: true }).click()
+  await page.getByRole('button', { name: 'Cancel request', exact: true }).click()
   await expect.poll(state.getCount).toBeGreaterThan(reads)
-  await expect(page.getByRole('region', { name: 'Queued operation', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Join queue again', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Waiting request', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0)
 })
 
 test('resume consent blocks submission and resets when replacing or removing a resume', async ({

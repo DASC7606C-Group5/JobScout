@@ -19,7 +19,7 @@ function searchTitle(search: HistorySearch) {
 }
 
 function searchStatus(search: HistorySearch) {
-  if (search.outcome === 'queued') return { label: 'Queued', tone: 'status-info' }
+  if (search.outcome === 'queued') return { label: 'Waiting', tone: 'status-info' }
   if (search.outcome === 'cancelled') return { label: 'Cancelled', tone: 'status-neutral' }
   if (search.outcome === 'running') return { label: 'Searching', tone: 'status-info' }
   if (search.outcome === 'completed') return { label: 'Complete', tone: 'status-success' }

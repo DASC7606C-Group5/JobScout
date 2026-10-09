@@ -12,8 +12,8 @@ import { WorkflowSteps } from './workflow-steps'
 
 const headings = {
   initial: 'Tell us about yourself',
-  queued: 'Your request is in the queue.',
-  cancelled: 'Your queued request was cancelled.',
+  queued: 'Waiting to start',
+  cancelled: 'Request cancelled',
   paused: 'Tell us a little more.',
   running: 'Finding your next role.',
   failed: 'Let’s get your search back on track.',

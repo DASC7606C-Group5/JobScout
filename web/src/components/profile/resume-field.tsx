@@ -46,7 +46,7 @@ export function ResumeField({
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium break-all">{resume.name}</p>
               <output className="mt-1 block text-xs text-base-content/65">
-                {reading ? 'Parsing resume…' : 'Resume added'}
+                {reading ? 'Adding your resume…' : 'Resume added'}
               </output>
             </div>
             <div className="flex gap-1">
@@ -136,12 +136,12 @@ export function ResumeField({
           )}
           <span className="min-w-0">
             <span className="block text-sm font-medium">
-              {reading ? 'Parsing resume…' : 'Add a resume or drop it here'}
+              {reading ? 'Adding your resume…' : 'Choose a resume or drop it here'}
             </span>
             <span className="mt-1 block text-xs text-base-content/65">
-              PDF / DOCX / TXT
+              PDF, DOCX or TXT
               {limits.data &&
-                ` · Up to ${limits.data.max_bytes / 1024 / 1024} MiB · PDF: ${limits.data.max_pdf_pages} pages · ${limits.data.max_text_characters.toLocaleString()} characters`}
+                ` · Up to ${(limits.data.max_bytes / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 1 })} MB`}
             </span>
           </span>
         </button>

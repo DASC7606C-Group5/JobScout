@@ -157,7 +157,7 @@ function ModelForm({ role, info, settings }: ModelFormProps) {
           <label className="flex flex-col gap-2">
             Model service
             <select className="select w-full" {...register('endpoint_id')}>
-              <option value="server">Use server configuration ({info.server_provider})</option>
+              <option value="server">Use JobScout’s models ({info.server_provider})</option>
               {settings.endpoints.map((item) => (
                 <option key={item.id} value={item.id} disabled={!settings.personal_available}>
                   {item.name}
@@ -167,10 +167,10 @@ function ModelForm({ role, info, settings }: ModelFormProps) {
           </label>
           {endpoint === 'server' ? (
             <dl className="grid min-w-0 grid-cols-[6rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
-              <dt className="text-base-content/70">Server model</dt>
+              <dt className="text-base-content/70">Model</dt>
               <dd className="break-all">{info.server_model}</dd>
               <dt className="text-base-content/70">Thinking</dt>
-              <dd>{info.server_thinking ? 'true' : 'false'}</dd>
+              <dd>{info.server_thinking ? 'On' : 'Off'}</dd>
               {info.server_provider !== 'openai_compatible' && info.server_thinking && (
                 <>
                   <dt className="text-base-content/70">Reasoning effort</dt>
@@ -452,16 +452,13 @@ function SettingsPage() {
         >
           <div className="card-body gap-5 p-5 sm:gap-6 sm:p-6">
             <h2 id="usage-heading" className="card-title text-base">
-              Daily server allowance
+              Daily AI requests
             </h2>
-            <p className="text-sm text-base-content/70">
-              {usage.data.used} used · {usage.data.reserved} reserved for queued operations
-            </p>
             <dl className="grid min-w-0 gap-5 sm:grid-cols-2">
               <div className="min-w-0 space-y-2">
                 <dt className="flex items-center gap-2 text-sm text-base-content/70">
                   <Icon name="sparkles" size={18} className="shrink-0" />
-                  Your remaining operations
+                  Your requests left today
                 </dt>
                 <dd className="text-3xl font-semibold tabular-nums">
                   {usage.data.remaining}
@@ -470,21 +467,25 @@ function SettingsPage() {
                     / {usage.data.limit}
                   </span>
                 </dd>
+                <dd className="text-xs text-base-content/70">
+                  {usage.data.used} used · {usage.data.reserved} waiting to start
+                </dd>
               </div>
               <div className="-mx-5 min-w-0 space-y-2 border-t border-base-300 px-5 pt-5 sm:mx-0 sm:border-t-0 sm:border-l sm:px-0 sm:pt-0 sm:pl-5">
                 <dt className="flex items-center gap-2 text-sm text-base-content/70">
                   <Icon name="server" size={18} className="shrink-0" />
-                  Site remaining operations
+                  Shared requests left today
                 </dt>
                 <dd className="text-3xl font-semibold tabular-nums">
                   {usage.data.server_remaining}
                 </dd>
+                <dd className="text-xs text-base-content/70">Available to all JobScout users.</dd>
               </div>
             </dl>
             <div className="-mx-5 border-t border-base-300 px-5 pt-5 text-xs text-base-content/70 sm:-mx-6 sm:px-6 sm:pt-6">
               <p className="flex items-center gap-2">
                 <Icon name="clock" size={16} className="shrink-0" />
-                New requests use the current Hong Kong day. Queued requests keep their reserved day.
+                Resets at midnight (Hong Kong time).
               </p>
             </div>
           </div>

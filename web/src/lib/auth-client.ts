@@ -105,8 +105,9 @@ export function accountErrorMessage(code: string): string {
     model_transport: 'Could not connect to the model service.',
     model_timeout: 'The model service timed out.',
     server_daily_limit:
-      'The server model daily allowance has been used. Set your own models or try tomorrow.',
-    operation_capacity: 'Another operation is running. Try again after it finishes.',
+      'Today’s AI request limit has been reached for your account or for all users. Check Settings, use your own models, or try after midnight (Hong Kong time).',
+    operation_capacity:
+      'JobScout is handling other requests. Try testing the connection again shortly.',
     account_deletion_failed: 'Could not delete all account data. Please try again.',
   }
   return messages[code] ?? 'Could not complete the request. Please try again.'

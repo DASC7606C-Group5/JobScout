@@ -42,10 +42,10 @@ function SessionContent() {
       return (
         <div className="card border border-base-300 bg-base-100">
           <div className="card-body">
-            <p>Your input is saved. Join the queue again or update your criteria.</p>
+            <p>Your information is saved.</p>
             <div className="card-actions">
               <AsyncButton type="button" className="btn btn-primary" onClick={retry}>
-                Join queue again
+                Try again
               </AsyncButton>
               <AsyncButton type="button" className="btn btn-ghost" onClick={edit}>
                 Edit criteria
