@@ -1,24 +1,40 @@
 import { AsyncButton } from '../async-button'
 import { Icon } from '../icon'
 
-export function ResultEmpty({ savedOnly, onEdit }: { savedOnly: boolean; onEdit: () => unknown }) {
+export function ResultEmpty({
+  savedOnly,
+  onEdit,
+  hiddenCount = 0,
+}: {
+  savedOnly: boolean
+  onEdit: () => unknown
+  hiddenCount?: number
+}) {
   return (
     <section className="card items-center border border-base-300 bg-base-100 px-6 py-16 text-center">
       <span className="mb-5 flex size-16 items-center justify-center rounded-full bg-secondary/35">
         <Icon name={savedOnly ? 'bookmark' : 'search'} size={28} />
       </span>
       <h2 className="text-xl font-semibold">
-        {savedOnly ? 'No saved jobs yet' : 'No matching jobs found yet'}
+        {savedOnly
+          ? 'No saved jobs yet'
+          : hiddenCount
+            ? 'All jobs are hidden'
+            : 'No matching jobs found yet'}
       </h2>
       <p className="mt-3 max-w-sm text-sm leading-7 text-base-content/60">
         {savedOnly
           ? 'Save jobs that interest you to compare them here.'
-          : 'Try another type of job or broaden your location preferences.'}
+          : hiddenCount
+            ? `${hiddenCount} ${hiddenCount === 1 ? 'job is' : 'jobs are'} still saved in this search. Open Hidden jobs above to undo Not for me or review your exclusion rules.`
+            : 'Try another type of job or broaden your location preferences.'}
       </p>
-      <AsyncButton type="button" className="btn mt-7 border-0 btn-primary" onClick={onEdit}>
-        {savedOnly ? 'Explore jobs' : 'Edit search criteria'}
-        <Icon name="arrow" size={17} />
-      </AsyncButton>
+      {!hiddenCount && (
+        <AsyncButton type="button" className="btn mt-7 border-0 btn-primary" onClick={onEdit}>
+          {savedOnly ? 'Explore jobs' : 'Edit search criteria'}
+          <Icon name="arrow" size={17} />
+        </AsyncButton>
+      )}
     </section>
   )
 }

@@ -167,6 +167,12 @@ export function createSessionFixture(overrides: Partial<ScoutSession> = {}): Sco
   const profile = createUserProfileFixture()
   return {
     session_id: 'session-1',
+    operation_kind: 'initial_search',
+    job_feedback: [],
+    hidden_job_ids: [],
+    hidden_job_reasons: [],
+    result_preferences: { preferred_features: [], exclusions: [] },
+    result_order: [],
     outcome: 'paused',
     current_stage: 'confirm',
     revision: 1,
@@ -188,6 +194,7 @@ export function createSessionFixture(overrides: Partial<ScoutSession> = {}): Sco
     conversation: [
       {
         message_id: 'm1',
+        job_id: null,
         role: 'assistant',
         text: 'Please confirm the following search criteria.',
         question_ids: [],

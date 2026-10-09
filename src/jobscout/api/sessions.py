@@ -8,6 +8,7 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
+from jobscout.schemas.feedback import SessionFeedbackRequest, SessionFollowUpRequest
 from jobscout.schemas.session import (
     SessionCreateRequest,
     SessionResponse,
@@ -141,6 +142,30 @@ async def stop_session(
 ) -> SessionResponse:
     try:
         return await _service(request).stop(session_id, payload)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
+
+
+@router.post("/sessions/{session_id}/feedback", response_model=SessionResponse)
+async def save_feedback(
+    request: Request, session_id: str, payload: SessionFeedbackRequest
+) -> SessionResponse:
+    try:
+        return await _service(request).feedback(session_id, payload)
+    except SessionOperationError as error:
+        raise HTTPException(error.status, public_error(error.code).model_dump()) from error
+
+
+@router.post(
+    "/sessions/{session_id}/follow-up",
+    response_model=SessionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def follow_up(
+    request: Request, session_id: str, payload: SessionFollowUpRequest
+) -> SessionResponse:
+    try:
+        return await _service(request).follow_up(session_id, payload)
     except SessionOperationError as error:
         raise HTTPException(error.status, public_error(error.code).model_dump()) from error
 

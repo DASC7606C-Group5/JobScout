@@ -153,6 +153,15 @@ def _normalize_status(value: object) -> FreshnessStatus | None:
         return None
 
 
+def job_identity(job: JobPosting) -> tuple[str, str, str]:
+    """Use the same identity for a single run and for accumulated session results."""
+    return (
+        _dedup_key_part(job.company),
+        _dedup_key_part(job.title),
+        _dedup_key_part(job.location) if job.location else job.source_url,
+    )
+
+
 def _classify_freshness(
     expiry_at: datetime | None,
     raw_statuses: list[FreshnessStatus],
@@ -452,6 +461,30 @@ def _source_documents(raw: dict[str, Any]) -> list[SourceDocument]:
             )
         )
     return documents
+
+
+def merge_postings(previous: JobPosting, incoming: JobPosting) -> JobPosting:
+    """Retain the session ID and source records when a posting is encountered again."""
+    normalized = process_jobs([incoming.model_dump(), previous.model_dump()]).jobs
+    merged = normalized[0]
+    documents = {
+        document.document_id: document for job in normalized for document in job.source_documents
+    }
+    return merged.model_copy(
+        update={
+            "job_id": previous.job_id,
+            "source_links": list(
+                dict.fromkeys(
+                    link
+                    for job in [previous, incoming]
+                    for link in [job.source_url, *job.source_links]
+                )
+            ),
+            "source_documents": sorted(
+                documents.values(), key=lambda document: document.document_id
+            ),
+        }
+    )
 
 
 def select_candidates(jobs: Sequence[JobPosting], limit: int = 20) -> list[JobPosting]:

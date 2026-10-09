@@ -187,6 +187,96 @@ def test_checkpoint_read_does_not_block_other_sessions_or_restore_deleted_sessio
     asyncio.run(scenario())
 
 
+def test_busy_checkpoint_returns_latest_published_session_without_waiting_for_writer() -> None:
+    class BlockedGraph(ControlledGraph):
+        def __init__(self) -> None:
+            super().__init__()
+            self.read_release = asyncio.Event()
+
+        async def aget_state(self, config: dict[str, Any]) -> Snapshot:
+            await self.read_release.wait()
+            return Snapshot({})
+
+    async def scenario() -> None:
+        graph = BlockedGraph()
+        manager = await manager_for(graph, Memory())
+        try:
+            created = await manager.create(create_payload())
+            await graph.started.wait()
+            record = manager.sessions[created.session_id]
+            record.state.update(
+                profile=UserProfile(profile_id="published", skills=["SQL"]),
+                progress_seq=7,
+                progress={"sequence": 7, "retrieval_stopped": True},
+            )
+            await manager._persist(record)
+            manager._notify(record)
+            snapshot = await asyncio.wait_for(manager.get(created.session_id), timeout=2)
+            assert snapshot.session_id == created.session_id
+            assert snapshot.outcome == "running" and snapshot.revision == created.revision
+            assert snapshot.profile is not None and snapshot.profile.skills == ["SQL"]
+            assert snapshot.progress.sequence == 7 and snapshot.progress.retrieval_stopped
+            assert record.task is not None and not record.task.done()
+        finally:
+            graph.read_release.set()
+            await close_manager(manager)
+
+    asyncio.run(scenario())
+
+
+def test_busy_workspace_write_returns_committed_snapshot_and_never_uncommitted_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def scenario() -> None:
+        graph = ControlledGraph()
+        manager = await manager_for(graph, Memory())
+        started = asyncio.Event()
+        release = asyncio.Event()
+        failure = OSError("Workspace write failed")
+        writer = None
+        try:
+            created = await manager.create(create_payload())
+            await graph.started.wait()
+            record = manager.sessions[created.session_id]
+
+            async def blocked_write(*args: Any, **kwargs: Any) -> None:
+                started.set()
+                await release.wait()
+                raise failure
+
+            with monkeypatch.context() as patch:
+                patch.setattr(manager, "_persist", blocked_write)
+                writer = asyncio.create_task(
+                    manager._progress(
+                        record,
+                        record.active_run_id or "",
+                        record.revision,
+                        {
+                            "run_id": record.active_run_id,
+                            "progress_seq": 7,
+                            "progress": {"sequence": 7, "retrieval_stopped": True},
+                        },
+                    )
+                )
+                await started.wait()
+                snapshot = await asyncio.wait_for(manager.get(created.session_id), timeout=2)
+                assert snapshot == created
+                assert snapshot.progress.sequence == 0
+                assert not snapshot.progress.retrieval_stopped
+                release.set()
+                with pytest.raises(OSError) as error:
+                    await writer
+                assert error.value is failure
+            assert await manager.get(created.session_id) == created
+        finally:
+            release.set()
+            if writer is not None:
+                await asyncio.gather(writer, return_exceptions=True)
+            await close_manager(manager)
+
+    asyncio.run(scenario())
+
+
 def test_polling_unchanged_checkpoints_does_not_rewrite_storage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

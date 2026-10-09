@@ -153,9 +153,14 @@ def create_app(
     @application.exception_handler(RequestValidationError)
     async def invalid_request(_request: Any, _error: RequestValidationError) -> JSONResponse:
         # Validation details can contain supplied input and private schema field names.
-        return JSONResponse(
-            status_code=422, content={"detail": public_error("invalid_input").model_dump()}
-        )
+        code = "invalid_input"
+        if _request.url.path.endswith("/follow-up") and any(
+            error["type"] in {"extra_forbidden", "union_tag_invalid", "union_tag_not_found"}
+            or (error["type"] == "missing" and error["loc"][-1] in {"message", "job_id", "action"})
+            for error in _error.errors()
+        ):
+            code = "invalid_follow_up_input"
+        return JSONResponse(status_code=422, content={"detail": public_error(code).model_dump()})
 
     @application.exception_handler(Exception)
     async def unavailable_service(_request: Any, _error: Exception) -> JSONResponse:

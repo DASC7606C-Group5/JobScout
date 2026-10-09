@@ -10,6 +10,7 @@ export function JobCard({
   onSelect,
   buttonRef,
   reviewActive = false,
+  feedback,
 }: {
   item: RecommendationItem
   selected: boolean
@@ -17,6 +18,7 @@ export function JobCard({
   onSelect: () => void
   buttonRef: (node: HTMLButtonElement | null) => void
   reviewActive?: boolean
+  feedback?: 'interested' | 'not_interested'
 }) {
   const { job } = item
   const reason =
@@ -51,6 +53,11 @@ export function JobCard({
           <span className="mt-2 line-clamp-2 text-sm leading-6 text-base-content/70">{reason}</span>
         )}
         <MatchScoreSummary score={item.match_score} />
+        {feedback && (
+          <span className="mt-2 inline-flex items-center gap-1.5 text-xs text-secondary">
+            {feedback === 'interested' ? 'Interested' : 'Not for me'}
+          </span>
+        )}
         {saved && (
           <span className="mt-2 inline-flex items-center gap-1.5 text-xs text-base-content/60">
             <Icon name="bookmark" size={14} /> Saved

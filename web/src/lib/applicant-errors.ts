@@ -81,6 +81,22 @@ const errors = {
     message: 'Search unavailable. Start a new search.',
     action: 'start_new_search',
   },
+  job_not_in_session: {
+    message: 'This job is not in the current search. Reload and choose a job again.',
+    action: 'reload',
+  },
+  follow_up_answer_required: {
+    message: 'Answer or skip the pending result questions.',
+    action: 'reload',
+  },
+  follow_up_unavailable: {
+    message: 'Complete or retry this search before continuing the conversation.',
+    action: 'retry',
+  },
+  invalid_follow_up_input: {
+    message: 'Check your result message or answers and try again.',
+    action: 'reload',
+  },
   search_not_retryable: {
     message: 'Reload to see search progress.',
     action: 'reload',

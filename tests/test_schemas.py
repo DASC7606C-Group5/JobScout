@@ -27,17 +27,14 @@ def make_job(job_id: str = "job-1") -> JobPosting:
 
 
 @pytest.mark.parametrize("group", ["jobs", "pending_jobs"])
-def test_recommendation_result_limits_each_group_to_twenty(group: str) -> None:
-    items = [RecommendationItem(job=make_job(f"job-{index}")) for index in range(21)]
-    with pytest.raises(ValidationError) as error:
-        RecommendationResult.model_validate(
-            {
-                "session_id": "session-1",
-                "generated_at": datetime(2026, 9, 30, tzinfo=UTC),
-                group: items,
-            }
-        )
-    assert error.value.errors()[0]["loc"] == (group,)
+def test_accumulated_recommendations_preserve_more_than_twenty_jobs(group: str) -> None:
+    items = [RecommendationItem(job=make_job(f"job-{index}")) for index in range(25)]
+    result = RecommendationResult.model_validate(
+        {"session_id": "session-1", "generated_at": datetime(2026, 9, 30, tzinfo=UTC), group: items}
+    )
+    assert [item.job.job_id for item in getattr(result, group)] == [
+        item.job.job_id for item in items
+    ]
 
 
 @pytest.mark.parametrize("count", [5, 10, 20])

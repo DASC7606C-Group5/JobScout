@@ -6,6 +6,7 @@ from pydantic import ConfigDict, Field, field_serializer
 from jobscout.schemas.conversation import ConversationMessage, QuestionAnswer, SearchSummary
 from jobscout.schemas.errors import ApplicantError
 from jobscout.schemas.execution import SearchProgress, StopReason
+from jobscout.schemas.feedback import HiddenJobReason, JobFeedback, ResultPreferences
 from jobscout.schemas.notices import ApplicantNotice
 from jobscout.schemas.profile import RawProfilePreferences, SearchOptions, UserProfile
 from jobscout.schemas.recommendation import RecommendationResult
@@ -98,6 +99,12 @@ class SessionResponse(WireModel):
     model_config = ConfigDict(extra="forbid")
 
     session_id: str
+    operation_kind: Literal["initial_search", "follow_up"] = "initial_search"
+    job_feedback: list[JobFeedback] = Field(default_factory=list)
+    hidden_job_ids: list[str] = Field(default_factory=list)
+    hidden_job_reasons: list[HiddenJobReason] = Field(default_factory=list)
+    result_preferences: ResultPreferences = Field(default_factory=ResultPreferences)
+    result_order: list[str] = Field(default_factory=list)
     outcome: Literal["running", "paused", "completed", "failed"]
     current_stage: str = "ingest"
     revision: int = Field(default=0, ge=0)

@@ -191,6 +191,16 @@ _ERRORS: dict[str, tuple[str, str | None]] = {
     ),
     "invalid_answer": ("Check your answer or update your search criteria.", "edit_conditions"),
     "search_changed": ("Your search has changed. Reload it before continuing.", "reload"),
+    "job_not_in_session": (
+        "This job is not in the current search. Reload and choose a job again.",
+        "reload",
+    ),
+    "follow_up_answer_required": ("Answer or skip the pending result questions.", "reload"),
+    "follow_up_unavailable": (
+        "Complete or retry this search before continuing the conversation.",
+        "retry",
+    ),
+    "invalid_follow_up_input": ("Check your result message or answers and try again.", "reload"),
     "draft_conflict": ("The shared draft has changed. Reload it before saving.", "reload"),
     "search_interrupted": (
         "Your search was interrupted. Your input is saved; retry when ready.",

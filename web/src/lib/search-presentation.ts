@@ -26,11 +26,13 @@ export function searchPresentation(session: ScoutSession) {
     ? 'Search interrupted'
     : completed
       ? 'Search complete'
-      : finishing
-        ? 'Finishing the remaining job reviews'
-        : comparing
-          ? 'Comparing jobs to improve your list'
-          : 'Checking jobs against your search criteria'
+      : phase === 'follow_up'
+        ? 'Understanding your question or preferences'
+        : finishing
+          ? 'Finishing the remaining job reviews'
+          : comparing
+            ? 'Comparing jobs to improve your list'
+            : 'Checking jobs against your search criteria'
   return {
     phase,
     interrupted,
@@ -38,17 +40,19 @@ export function searchPresentation(session: ScoutSession) {
     finishing,
     canFinish: Boolean(session.run_id) && session.outcome === 'running' && !finishing,
     heading:
-      phase === 'profile'
-        ? profileStages[session.current_stage] || 'Reviewing your profile'
-        : phase === 'preparing'
-          ? 'Preparing your search'
-          : completed
-            ? 'Search results'
-            : finishing
-              ? 'Finishing your search'
-              : comparing
-                ? 'Comparing opportunities'
-                : 'Finding jobs',
+      phase === 'follow_up'
+        ? 'Continuing with your results'
+        : phase === 'profile'
+          ? profileStages[session.current_stage] || 'Reviewing your profile'
+          : phase === 'preparing'
+            ? 'Preparing your search'
+            : completed
+              ? 'Search results'
+              : finishing
+                ? 'Finishing your search'
+                : comparing
+                  ? 'Comparing opportunities'
+                  : 'Finding jobs',
     activity,
   }
 }
