@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 
-import type { UserProfile } from '../../lib/contracts'
+import type { UserProfile, ResultPreferences } from '../../lib/contracts'
 import { summaryDraft, summaryFields } from '../../lib/search-summary'
 import { AsyncButton } from '../async-button'
 import { Icon } from '../icon'
@@ -10,10 +10,12 @@ export function SearchCriteria({
   profile,
   canEdit,
   onEdit,
+  resultPreferences,
 }: {
   profile: UserProfile
   canEdit: boolean
   onEdit: () => unknown
+  resultPreferences?: ResultPreferences
 }) {
   const id = useId().replace(/[^a-zA-Z0-9-]/g, '')
   const panelId = `search-criteria-${id}`
@@ -123,6 +125,35 @@ export function SearchCriteria({
           profile={profile}
           collapseLongValues={false}
         />
+        {resultPreferences &&
+          (resultPreferences.exclusions.length > 0 ||
+            resultPreferences.preferred_features.length > 0) && (
+            <div className="mt-4 space-y-3 border-t border-base-300 pt-4 text-sm">
+              {resultPreferences.preferred_features.length > 0 && (
+                <div>
+                  <h3 className="mb-1 text-xs font-medium text-base-content/65">Preferred</h3>
+                  <ul className="list-disc space-y-1 pl-4">
+                    {resultPreferences.preferred_features.map((feature) => (
+                      <li key={feature}>{feature}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {resultPreferences.exclusions.length > 0 && (
+                <div>
+                  <h3 className="mb-1 text-xs font-medium text-base-content/65">Excluded</h3>
+                  <ul className="list-disc space-y-1 pl-4">
+                    {resultPreferences.exclusions.map((rule) => (
+                      <li key={rule.exclusion_id}>{rule.description}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p className="text-xs text-base-content/60">
+                You can change these preferences in the conversation.
+              </p>
+            </div>
+          )}
       </section>
     </section>
   )

@@ -5,7 +5,6 @@ import type { RecommendationItem, ScoutSession } from '../../lib/contracts'
 import { searchPresentation } from '../../lib/search-presentation'
 import { AsyncButton } from '../async-button'
 import { Icon } from '../icon'
-import { ResultFollowUp } from '../result-follow-up'
 import { Results } from '../results'
 import { SearchActivity } from './search-activity'
 import { SearchRecord } from './search-record'
@@ -89,9 +88,6 @@ export function SearchExperience({
             resultOrder={session.result_order}
             feedbackDisabled={feedbackDisabled}
           />
-          {(settled || session.operation_kind === 'follow_up') && (
-            <ResultFollowUp jobId={search.job ?? null} />
-          )}
         </div>
       )}
       {settled && (!showResults || !hasResults) && (

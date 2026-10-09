@@ -40,9 +40,11 @@ function Responses({ responses }: { responses: ConversationResponse[] }) {
 export function ConversationHistory({
   session,
   collapsed = false,
+  embedded = false,
 }: {
   session: ScoutSession
   collapsed?: boolean
+  embedded?: boolean
 }) {
   const messages = session.conversation
   if (!messages.length) return null
@@ -61,8 +63,17 @@ export function ConversationHistory({
             {message.role === 'user' ? 'You' : 'JobScout assistant'}
           </div>
           <div
-            className={`chat-bubble max-w-[92%] space-y-3 p-4 text-base-content shadow-none sm:max-w-[85%] ${message.role === 'user' ? 'bg-primary/15' : 'bg-base-200/65'}`}
+            className={`chat-bubble max-w-[92%] space-y-3 p-4 text-base-content shadow-none sm:max-w-[85%] ${embedded ? 'rounded-2xl before:hidden' : ''} ${message.role === 'user' ? 'bg-primary/15' : 'bg-base-200/65'}`}
           >
+            {message.job_id && (
+              <p className="border-b border-base-content/10 pb-2 text-xs font-medium text-base-content/70">
+                About:{' '}
+                {[
+                  ...(session.recommendation?.jobs ?? []),
+                  ...(session.recommendation?.pending_jobs ?? []),
+                ].find(({ job }) => job.job_id === message.job_id)?.job.title ?? 'Referenced job'}
+              </p>
+            )}
             {message.text && (
               <p className="text-sm leading-7 break-words whitespace-pre-wrap">{message.text}</p>
             )}
@@ -72,7 +83,9 @@ export function ConversationHistory({
       ))}
     </div>
   )
-  return collapsed ? (
+  return embedded ? (
+    history
+  ) : collapsed ? (
     <details className="collapse-arrow collapse mb-5 border border-base-300 bg-base-100">
       <summary className="collapse-title text-sm font-semibold">View conversation history</summary>
       {history}

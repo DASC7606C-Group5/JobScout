@@ -8,7 +8,13 @@ import { QuestionControl } from './question-control'
 
 const emptyDraft: SessionDraftValues['clarification'] = { values: {}, skipped: [], message: '' }
 
-export function ClarificationForm({ questions }: { questions: ClarificationMessage[] }) {
+export function ClarificationForm({
+  questions,
+  compact = false,
+}: {
+  questions: ClarificationMessage[]
+  compact?: boolean
+}) {
   const { answer, busy, pending: submitting } = useScoutSession()
   const pending = pendingQuestions(questions)
   const draft = useSessionDraft('clarification', emptyDraft)
@@ -37,7 +43,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
     >
       <fieldset
         disabled={busy || draft.status === 'loading'}
-        className="min-w-0 space-y-5 p-5 sm:space-y-6 sm:p-6"
+        className={`min-w-0 space-y-5 ${compact ? 'p-4' : 'p-5 sm:space-y-6 sm:p-6'}`}
       >
         {pending.map((question) => (
           <QuestionControl
@@ -81,7 +87,7 @@ export function ClarificationForm({ questions }: { questions: ClarificationMessa
             {error}
           </p>
         )}
-        <div className="-mx-5 flex flex-wrap items-center justify-between gap-3 border-t border-base-300 px-5 pt-5 sm:-mx-6 sm:px-6 sm:pt-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-base-300 pt-4">
           <DraftStatus {...draft} />
           <button
             className="btn min-w-40 border-0 btn-primary"

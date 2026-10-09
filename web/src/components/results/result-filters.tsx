@@ -23,19 +23,44 @@ export function ResultFilters({
   search,
   onChange,
   filteredCount,
-}: FilterProps & { directions: string[]; filteredCount: number }) {
+  hiddenCount = 0,
+  visibleCount,
+}: FilterProps & {
+  directions: string[]
+  filteredCount: number
+  hiddenCount?: number
+  visibleCount: number
+}) {
   const id = useId().replace(/[^a-zA-Z0-9-]/g, '')
   const panelId = `job-filters-${id}`
   const anchorName = `--${panelId}`
   const activeFilterCount = [search.freshness, search.fit, search.employment].filter(Boolean).length
-  const hasFilters = Boolean(search.direction || activeFilterCount)
+  const hasFilters = Boolean(search.direction || activeFilterCount || search.visibility)
   return (
     <fieldset
       aria-label="Job filters and sorting"
       className="mb-4 flex min-w-0 shrink-0 items-center gap-2 sm:gap-3"
     >
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto py-1.5">
-        <DirectionFilters jobs={jobs} directions={directions} search={search} onChange={onChange} />
+        <DirectionFilters
+          jobs={jobs}
+          directions={directions}
+          search={search}
+          onChange={onChange}
+          visibleCount={visibleCount}
+        />
+        {(hiddenCount > 0 || search.visibility === 'hidden') && (
+          <button
+            type="button"
+            aria-label="Hidden jobs"
+            aria-pressed={search.visibility === 'hidden'}
+            className={`btn h-8 shrink-0 gap-2 border shadow-none btn-sm ${search.visibility === 'hidden' ? 'border-base-content bg-base-content text-base-100' : 'border-transparent bg-transparent font-normal text-base-content/65 hover:bg-base-200'}`}
+            onClick={() => onChange({ sort: search.sort, visibility: 'hidden' })}
+          >
+            <Icon name="hidden" size={14} /> Hidden{' '}
+            <span className="text-xs opacity-65">{hiddenCount}</span>
+          </button>
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <output
@@ -114,14 +139,18 @@ function DirectionFilters({
   directions,
   search,
   onChange,
-}: FilterProps & { directions: string[] }) {
+  visibleCount,
+}: FilterProps & { directions: string[]; visibleCount: number }) {
   const available = visibleJobs(jobs, { ...search, direction: undefined, sort: undefined })
   return (
     <fieldset className="flex shrink-0 gap-1.5" aria-label="Filter by type of job">
-      {directions.map((value) => {
+      {(search.visibility === 'hidden' ? ['All'] : directions).map((value) => {
         const direction = value === 'All' ? undefined : value
-        const selected = search.direction === direction
-        const count = visibleJobs(available, { direction }).length
+        const selected = search.visibility !== 'hidden' && search.direction === direction
+        const count =
+          search.visibility === 'hidden'
+            ? visibleCount
+            : visibleJobs(available, { direction }).length
         return (
           <button
             key={value}
@@ -130,7 +159,7 @@ function DirectionFilters({
             aria-pressed={selected}
             title={value}
             className={`btn h-8 shrink-0 gap-2 border shadow-none btn-sm ${selected ? 'border-base-content bg-base-content text-base-100' : 'border-transparent bg-transparent font-normal text-base-content/65 hover:border-base-300 hover:bg-base-200'}`}
-            onClick={() => onChange({ ...search, direction })}
+            onClick={() => onChange({ ...search, direction, visibility: undefined })}
           >
             <span className="max-w-52 truncate">{value === 'All' ? 'All jobs' : value}</span>
             <span className={`text-xs tabular-nums ${selected ? 'opacity-65' : 'opacity-60'}`}>

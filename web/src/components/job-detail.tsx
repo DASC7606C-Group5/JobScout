@@ -5,6 +5,7 @@ import type { ApplicantNotice, JobPosting, RecommendationItem } from '../lib/con
 import { dateLabel, safeSourceUrl, sourceLabel } from '../lib/job-display'
 import { AsyncButton } from './async-button'
 import { Icon } from './icon'
+import { JobFeedback, HiddenJobNotice } from './job-feedback'
 import { JobReviewStatus } from './job-review-status'
 import { MatchRadar, MatchScoreValue } from './match-score'
 import { MatchingSourceQuotes } from './matching-source-quotes'
@@ -24,6 +25,8 @@ export function JobDetail({
   feedbackPending = false,
   feedbackDisabled = false,
   reaction,
+  hidden = false,
+  exclusionDescriptions = [],
 }: {
   item: RecommendationItem
   saved: boolean
@@ -38,6 +41,8 @@ export function JobDetail({
   feedbackPending?: boolean
   feedbackDisabled?: boolean
   reaction?: 'interested' | 'not_interested'
+  hidden?: boolean
+  exclusionDescriptions?: string[]
 }) {
   const { job } = item
   const links = [...new Set([job.source_url, ...job.source_links])].flatMap((value) => {
@@ -98,26 +103,12 @@ export function JobDetail({
           {saved ? 'Saved' : 'Save job'}
         </AsyncButton>
         {feedback && (
-          <div className="join ml-auto" aria-label="Job feedback">
-            <button
-              type="button"
-              className={`btn join-item btn-sm ${reaction === 'interested' ? 'btn-secondary' : ''}`}
-              aria-pressed={reaction === 'interested'}
-              disabled={feedbackPending || feedbackDisabled}
-              onClick={() => feedback(reaction === 'interested' ? null : 'interested')}
-            >
-              Interested
-            </button>
-            <button
-              type="button"
-              className={`btn join-item btn-sm ${reaction === 'not_interested' ? 'btn-secondary' : ''}`}
-              aria-pressed={reaction === 'not_interested'}
-              disabled={feedbackPending || feedbackDisabled}
-              onClick={() => feedback('not_interested')}
-            >
-              Not for me
-            </button>
-          </div>
+          <JobFeedback
+            onChange={feedback}
+            reaction={reaction}
+            hidden={hidden}
+            disabled={feedbackPending || feedbackDisabled}
+          />
         )}
       </div>
       <section
@@ -129,6 +120,7 @@ export function JobDetail({
         className="min-h-0 min-[1100px]:flex-1 min-[1100px]:[scrollbar-gutter:stable] min-[1100px]:overflow-y-auto min-[1100px]:overscroll-y-contain"
       >
         <div className="space-y-5 p-5 text-sm leading-6 sm:space-y-6">
+          {hidden && <HiddenJobNotice reaction={reaction} exclusions={exclusionDescriptions} />}
           <JobMatch item={item} />
           <ResultWarnings
             notices={jobNotices}

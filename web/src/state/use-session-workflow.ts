@@ -17,6 +17,7 @@ import type {
 } from '../lib/contracts'
 import { latestSessionSnapshot, sessionKey, sessionQueryOptions } from '../lib/session-query'
 import { discardSessionDrafts, flushPendingDrafts } from './draft-navigation'
+import { useNotifications } from './notifications'
 import { useSessionStream } from './use-session-stream'
 import { historyKey } from './workspace-queries'
 
@@ -112,6 +113,8 @@ export function useSessionWorkflow(
   onSessionDeleted?: (id: string) => void,
 ) {
   const cache = useQueryClient()
+  const { notify, dismiss } = useNotifications()
+  useEffect(() => () => dismiss(`hidden-job:${sessionId}`), [dismiss, sessionId])
   const origin = useMemo(() => ({ viewKey }), [viewKey])
   const activeOrigin = useRef(origin)
   useLayoutEffect(() => {
@@ -225,19 +228,35 @@ export function useSessionWorkflow(
     })
   }
 
-  async function feedback(jobId: string, reaction: FeedbackRequest['reaction']) {
-    if (!session || busy || session.outcome !== 'completed') return false
+  async function writeFeedback(jobId: string, reaction: FeedbackRequest['reaction']) {
+    const current = cache.getQueryData<ScoutSession>(sessionKey(sessionId))
+    if (!current || current.outcome !== 'completed' || preparations.current.has(current.session_id))
+      return false
     return execute({
       kind: 'feedback',
       origin,
-      sessionId: session.session_id,
+      sessionId: current.session_id,
       request: {
         request_id: crypto.randomUUID(),
-        expected_revision: session.revision,
+        expected_revision: current.revision,
         job_id: jobId,
         reaction,
       },
     })
+  }
+
+  async function feedback(jobId: string, reaction: FeedbackRequest['reaction']) {
+    const submitted = await writeFeedback(jobId, reaction)
+    if (submitted && reaction === 'not_interested') {
+      notify({
+        id: `hidden-job:${sessionId}`,
+        tone: 'info',
+        message: 'Job hidden',
+        duration: 6000,
+        actions: [{ label: 'Undo', onClick: () => writeFeedback(jobId, null) }],
+      })
+    }
+    return submitted
   }
 
   async function followUp(request: FollowUpSubmission) {

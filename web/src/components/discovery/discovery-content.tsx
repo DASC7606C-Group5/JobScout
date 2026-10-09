@@ -61,6 +61,7 @@ function SessionContent() {
         <SearchLoading session={session} />
       )
     case 'paused':
+      if (session.current_stage === 'follow_up_clarify') return searchExperience
       return (
         <>
           {session.current_stage === 'confirm' && session.search_summary ? (

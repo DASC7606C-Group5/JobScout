@@ -31,7 +31,14 @@ export function JobCard({
     >
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
         <span className="text-xs text-base-content/75">{job.company}</span>
-        <JobReviewStatus item={item} active={reviewActive} />
+        <div className="flex flex-wrap items-center gap-2">
+          {feedback === 'interested' && (
+            <span className="badge border-0 bg-secondary/35 badge-sm text-secondary-content">
+              <Icon name="heart" size={12} /> Interested
+            </span>
+          )}
+          <JobReviewStatus item={item} active={reviewActive} />
+        </div>
       </div>
       <button
         ref={buttonRef}
@@ -53,11 +60,6 @@ export function JobCard({
           <span className="mt-2 line-clamp-2 text-sm leading-6 text-base-content/70">{reason}</span>
         )}
         <MatchScoreSummary score={item.match_score} />
-        {feedback && (
-          <span className="mt-2 inline-flex items-center gap-1.5 text-xs text-secondary">
-            {feedback === 'interested' ? 'Interested' : 'Not for me'}
-          </span>
-        )}
         {saved && (
           <span className="mt-2 inline-flex items-center gap-1.5 text-xs text-base-content/60">
             <Icon name="bookmark" size={14} /> Saved
