@@ -454,6 +454,9 @@ function SettingsPage() {
             <h2 id="usage-heading" className="card-title text-base">
               Daily server allowance
             </h2>
+            <p className="text-sm text-base-content/70">
+              {usage.data.used} used · {usage.data.reserved} reserved for queued operations
+            </p>
             <dl className="grid min-w-0 gap-5 sm:grid-cols-2">
               <div className="min-w-0 space-y-2">
                 <dt className="flex items-center gap-2 text-sm text-base-content/70">
@@ -481,7 +484,7 @@ function SettingsPage() {
             <div className="-mx-5 border-t border-base-300 px-5 pt-5 text-xs text-base-content/70 sm:-mx-6 sm:px-6 sm:pt-6">
               <p className="flex items-center gap-2">
                 <Icon name="clock" size={16} className="shrink-0" />
-                Resets at midnight in Hong Kong
+                New requests use the current Hong Kong day. Queued requests keep their reserved day.
               </p>
             </div>
           </div>

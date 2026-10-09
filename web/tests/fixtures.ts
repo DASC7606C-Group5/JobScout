@@ -167,6 +167,11 @@ export function createSessionFixture(overrides: Partial<ScoutSession> = {}): Sco
   const profile = createUserProfileFixture()
   return {
     session_id: 'session-1',
+    snapshot_version: 1,
+    operation_id: null,
+    queue_position: null,
+    enqueued_at: null,
+    expires_at: null,
     operation_kind: 'initial_search',
     job_feedback: [],
     hidden_job_ids: [],

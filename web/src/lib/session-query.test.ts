@@ -14,24 +14,29 @@ describe('session query lifecycle', () => {
   test('late progress cannot restart retrieval after an accepted stop while review updates continue', () => {
     const stopped = createSessionFixture({ outcome: 'running', run_id: 'run-1' })
     stopped.progress = { ...stopped.progress, sequence: 3, retrieval_stopped: true }
+    stopped.snapshot_version = 3
     const stale = structuredClone(stopped)
+    stale.snapshot_version = 2
     stale.progress.retrieval_stopped = false
     expect(latestSessionSnapshot(stopped, stale)).toBe(stopped)
     const reviewed = structuredClone(stopped)
+    reviewed.snapshot_version = 4
     reviewed.progress = { ...reviewed.progress, sequence: 4, analyzed_count: 2 }
     expect(latestSessionSnapshot(stopped, reviewed)).toBe(reviewed)
-    const finished = { ...reviewed, outcome: 'completed' as const }
+    const finished = { ...reviewed, outcome: 'completed' as const, snapshot_version: 5 }
     expect(latestSessionSnapshot(reviewed, finished)).toBe(finished)
   })
 
   test('late progress cannot replace more recent results from the same search run', () => {
     const newer = createSessionFixture({ outcome: 'running', run_id: 'run-1' })
     newer.progress = { ...newer.progress, sequence: 5, matched_count: 3 }
+    newer.snapshot_version = 5
     const older = structuredClone(newer)
+    older.snapshot_version = 2
     older.progress = { ...older.progress, sequence: 2, matched_count: 0 }
     expect(latestSessionSnapshot(newer, older)).toBe(newer)
     expect(latestSessionSnapshot(older, newer)).toBe(newer)
-    const nextRun = { ...older, run_id: 'run-2', revision: newer.revision + 1 }
+    const nextRun = { ...older, run_id: 'run-2', revision: newer.revision + 1, snapshot_version: 6 }
     expect(latestSessionSnapshot(newer, nextRun)).toBe(nextRun)
   })
   test('fresh mutation responses are shared with queries without a duplicate GET', async () => {
@@ -118,6 +123,7 @@ describe('session query lifecycle', () => {
       const confirmed = createSessionFixture({
         session_id: old.session_id,
         revision: 5,
+        snapshot_version: 6,
         outcome: 'completed',
       })
       cache.setQueryData(sessionKey(old.session_id), confirmed)

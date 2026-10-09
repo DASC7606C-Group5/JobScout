@@ -1,8 +1,9 @@
+import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Controller, useFormContext, useWatch } from 'react-hook-form'
 
 import type { ProfileFormValues } from '../../lib/profile-form'
-import { RESUME_FILE_ACCEPT } from '../../lib/resume-client'
+import { RESUME_FILE_ACCEPT, readResumeLimits } from '../../lib/resume-client'
 import { Icon } from '../icon'
 import { useResumeUpload } from './use-resume-upload'
 
@@ -19,6 +20,11 @@ export function ResumeField({
     formState: { errors },
   } = useFormContext<ProfileFormValues>()
   const resume = useWatch({ control, name: 'resume' })
+  const limits = useQuery({
+    queryKey: ['resume-limits'],
+    queryFn: ({ signal }) => readResumeLimits(signal),
+    staleTime: 60_000,
+  })
   const [dragging, setDragging] = useState(false)
   const { fileRef, attach, remove } = useResumeUpload(onReadingChange)
   return (
@@ -133,7 +139,9 @@ export function ResumeField({
               {reading ? 'Parsing resume…' : 'Add a resume or drop it here'}
             </span>
             <span className="mt-1 block text-xs text-base-content/65">
-              PDF / DOCX / TXT · Up to 10 MB
+              PDF / DOCX / TXT
+              {limits.data &&
+                ` · Up to ${limits.data.max_bytes / 1024 / 1024} MiB · PDF: ${limits.data.max_pdf_pages} pages · ${limits.data.max_text_characters.toLocaleString()} characters`}
             </span>
           </span>
         </button>

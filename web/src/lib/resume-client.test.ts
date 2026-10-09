@@ -1,10 +1,114 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, expect, spyOn, test } from 'bun:test'
 import { rejects } from 'node:assert/strict'
 
+import type { ApiFetcher } from './api-client'
 import { ApplicantRequestError } from './applicant-errors'
-import { createResumeReader, MAX_RESUME_BYTES, MAX_RESUME_TEXT_LENGTH } from './resume-client'
+import { identityEvents } from './auth-client'
+import { createResumeReader as createReader } from './resume-client'
+
+const MAX_RESUME_BYTES = 8192
+const MAX_RESUME_TEXT_LENGTH = 2048
+function createResumeReader(baseUrl: string, fetcher: ApiFetcher) {
+  return createReader(baseUrl, (url, init) =>
+    url.endsWith('/resumes/limits')
+      ? Promise.resolve(
+          Response.json({
+            max_bytes: MAX_RESUME_BYTES,
+            max_pdf_pages: 10,
+            max_text_characters: MAX_RESUME_TEXT_LENGTH,
+          }),
+        )
+      : fetcher(url, init),
+  )
+}
 
 describe('resume file input', () => {
+  test('retries busy uploads with the same file and respects the server delay', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0)
+    try {
+      const attempts: number[] = []
+      const file = new File(['Original resume'], 'resume.pdf')
+      const read = createResumeReader('/api/v1', async (_url, init) => {
+        attempts.push(Date.now())
+        const uploaded = (init.body as FormData).get('file') as File
+        expect(await uploaded.text()).toBe('Original resume')
+        return attempts.length === 1
+          ? Response.json(
+              { detail: { code: 'upload_capacity' } },
+              {
+                status: 429,
+                headers: { 'Retry-After': '0.05' },
+              },
+            )
+          : Response.json({ name: file.name, text: 'Parsed resume' })
+      })
+      expect(await read(file)).toEqual({ name: file.name, text: 'Parsed resume' })
+      expect(attempts).toHaveLength(2)
+      expect(attempts[1]! - attempts[0]!).toBeGreaterThanOrEqual(50)
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  test('bounds busy retries and never retries other failures or excessive Retry-After', async () => {
+    const random = spyOn(Math, 'random').mockReturnValue(0)
+    try {
+      for (const [status, code, retryAfter, expectedCalls] of [
+        [429, 'upload_capacity', '0', 9],
+        [429, 'upload_capacity', '120', 1],
+        [429, 'operation_capacity', '0', 1],
+        [422, 'invalid_file', '0', 1],
+        [503, 'service_unavailable', '0', 1],
+      ] as const) {
+        let calls = 0
+        const read = createResumeReader('/api/v1', async () => {
+          calls += 1
+          return Response.json(
+            { detail: { code } },
+            {
+              status,
+              headers: { 'Retry-After': retryAfter },
+            },
+          )
+        })
+        await rejects(read(new File(['resume'], 'resume.pdf')), { code })
+        expect(calls).toBe(expectedCalls)
+      }
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  test('cancellation and account changes stop an upload waiting to retry', async () => {
+    for (const accountChanged of [false, true]) {
+      const controller = new AbortController()
+      let calls = 0
+      let received!: () => void
+      const busy = new Promise<void>((resolve) => {
+        received = resolve
+      })
+      const read = createResumeReader('/api/v1', async () => {
+        calls += 1
+        received()
+        return Response.json(
+          { detail: { code: 'upload_capacity' } },
+          {
+            status: 429,
+            headers: { 'Retry-After': '10' },
+          },
+        )
+      })
+      const result = read(new File(['resume'], 'resume.pdf'), controller.signal)
+      const rejected = rejects(result, { name: 'AbortError' })
+      await busy
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      if (accountChanged) identityEvents.dispatchEvent(new Event('change'))
+      else controller.abort()
+      await rejected
+      expect(calls).toBe(1)
+    }
+  })
+
   test('reads TXT locally and normalizes BOM and line endings', async () => {
     const read = createResumeReader('/api/v1', () => {
       throw new Error('TXT must not be uploaded')

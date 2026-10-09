@@ -33,6 +33,13 @@ export function createSessionClient(
         { ...options(signal), path: { session_id: id }, body },
         vSessionResponse,
       ),
+    cancel: (id, body, signal) =>
+      client.request(
+        'post',
+        '/api/v1/sessions/{session_id}/cancel',
+        { ...options(signal), path: { session_id: id }, body },
+        vSessionResponse,
+      ),
     stop: (id, body, signal) =>
       client.request(
         'post',

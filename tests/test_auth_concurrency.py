@@ -43,7 +43,7 @@ def test_full_rate_limit_state_retains_existing_limits_until_expiry() -> None:
     assert set(auth.failures) == {"username:third"}
 
 
-@pytest.mark.parametrize("limit", [10, 60])
+@pytest.mark.parametrize("limit", [10, 300])
 def test_pending_logins_count_toward_username_and_ip_limits(limit: int) -> None:
     application = create_replay_app()
     with TestClient(application) as client:

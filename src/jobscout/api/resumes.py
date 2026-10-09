@@ -1,34 +1,107 @@
-"""File ingestion kept separate from session creation and workflow execution."""
+"""Bounded multipart ingestion and document extraction."""
 
-from fastapi import APIRouter, HTTPException, Request, UploadFile
+import asyncio
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile
+from starlette.formparsers import MultiPartException, MultiPartParser
 
+from jobscout.config import get_settings
 from jobscout.schemas.session import ResumeInput
-from jobscout.services.resume_service import (
-    MAX_RESUME_BYTES,
-    ResumeParseError,
-    parse_resume,
-    validate_resume_name,
-)
+from jobscout.services.resume_service import ResumeParseError, parse_resume, validate_resume_name
 
 router = APIRouter(prefix="/api/v1/resumes", tags=["resume"])
 
 
-@router.post("/parse", response_model=ResumeInput)
-async def parse_resume_upload(request: Request, file: UploadFile) -> ResumeInput:
+class ResumeLimits(BaseModel):
+    max_bytes: int
+    max_pdf_pages: int
+    max_text_characters: int
+
+
+@router.get("/limits", response_model=ResumeLimits)
+async def resume_limits() -> ResumeLimits:
+    settings = get_settings()
+    return ResumeLimits(
+        max_bytes=settings.resume_max_bytes,
+        max_pdf_pages=settings.resume_max_pdf_pages,
+        max_text_characters=settings.resume_max_text_characters,
+    )
+
+
+@router.post(
+    "/parse",
+    response_model=ResumeInput,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["file"],
+                        "properties": {"file": {"type": "string", "format": "binary"}},
+                    }
+                }
+            },
+        },
+    },
+)
+async def parse_resume_upload(request: Request) -> ResumeInput:
+    settings = get_settings()
+    if (
+        request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        != "multipart/form-data"
+    ):
+        raise HTTPException(422, {"code": "invalid_input"})
     try:
-        validate_resume_name(file.filename)
-        if file.size is not None and file.size > MAX_RESUME_BYTES:
-            raise ResumeParseError(
-                "file_too_large", "The file is too large. Choose a resume under 10 MB.", 413
-            )
-        async with request.app.state.resume_slots:
-            content = await file.read(MAX_RESUME_BYTES + 1)
-            return await run_in_threadpool(parse_resume, file.filename, content)
+        parser = MultiPartParser(request.headers, request.stream(), max_files=1, max_fields=0)
+        try:
+            form = await parser.parse()
+        except BaseException:
+            # Starlette closes partial files for malformed multipart data only. A
+            # disconnected or cancelled request must release the same spool files.
+            for temporary_file in parser._files_to_close_on_error:
+                temporary_file.close()
+            raise
+        try:
+            file = form.get("file")
+            if not isinstance(file, UploadFile):
+                raise HTTPException(422, {"code": "invalid_input"})
+            validate_resume_name(file.filename)
+            if file.size is not None and file.size > settings.resume_max_bytes:
+                raise ResumeParseError(
+                    "file_too_large", "The file exceeds the upload size limit.", 413
+                )
+            async with request.app.state.resume_slots:
+                content = await file.read(settings.resume_max_bytes + 1)
+                work = asyncio.create_task(run_in_threadpool(parse_resume, file.filename, content))
+                try:
+                    return await asyncio.shield(work)
+                except asyncio.CancelledError:
+                    # A parser thread cannot be cancelled; retain its slot until it ends.
+                    while not work.done():
+                        try:
+                            await asyncio.shield(work)
+                        except asyncio.CancelledError:
+                            continue
+                        except Exception:
+                            break
+                    if not work.cancelled():
+                        work.exception()
+                    raise
+        finally:
+            await form.close()
     except ResumeParseError as error:
         raise HTTPException(
-            status_code=error.status_code,
-            detail={"code": error.code, "message": str(error), "action": "edit_conditions"},
+            error.status_code,
+            {"code": error.code, "message": str(error), "action": "edit_conditions"},
         ) from error
-    finally:
-        await file.close()
+    except MultiPartException:
+        if getattr(request.state, "upload_timed_out", False):
+            raise HTTPException(408, {"code": "upload_timeout"}) from None
+        if getattr(request.state, "upload_too_large", False):
+            raise HTTPException(413, {"code": "request_too_large"}) from None
+        raise HTTPException(400, {"code": "invalid_input"}) from None

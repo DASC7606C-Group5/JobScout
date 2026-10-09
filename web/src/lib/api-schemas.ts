@@ -196,7 +196,7 @@ export const vSessionHistoryItem = v.object({
   session_id: v.string(),
   title: v.string(),
   location: v.string(),
-  outcome: v.picklist(['running', 'paused', 'completed', 'failed']),
+  outcome: v.picklist(['queued', 'running', 'paused', 'completed', 'failed', 'cancelled']),
   current_stage: v.string(),
   revision: v.pipe(v.number(), v.integer(), v.minValue(0)),
   created_at: v.pipe(v.string(), v.isoTimestamp()),
@@ -425,14 +425,19 @@ export const vHiddenJobReason = v.strictObject({
 })
 
 export const vSessionResponse: v.GenericSchema<SessionResponse> = v.strictObject({
+  snapshot_version: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  operation_id: v.nullable(v.string()),
+  queue_position: v.nullable(v.pipe(v.number(), v.integer(), v.minValue(1))),
+  enqueued_at: v.nullable(v.pipe(v.string(), v.isoTimestamp())),
+  expires_at: v.nullable(v.pipe(v.string(), v.isoTimestamp())),
   session_id: v.string(),
+  outcome: v.picklist(['queued', 'running', 'paused', 'completed', 'failed', 'cancelled']),
   operation_kind: v.picklist(['initial_search', 'follow_up']),
   job_feedback: v.array(vJobFeedback),
   hidden_job_ids: v.array(v.string()),
   hidden_job_reasons: v.array(vHiddenJobReason),
   result_preferences: vResultPreferences,
   result_order: v.array(v.string()),
-  outcome: v.picklist(['running', 'paused', 'completed', 'failed']),
   current_stage: v.string(),
   revision: v.pipe(v.number(), v.integer(), v.minValue(0)),
   profile: v.nullable(vUserProfile),
@@ -491,6 +496,7 @@ export const vUsage: v.GenericSchema<DailyUsage | DisabledUsage> = v.variant('en
     enabled: v.literal(true),
     remaining: nonnegativeInteger,
     used: nonnegativeInteger,
+    reserved: nonnegativeInteger,
     limit: nonnegativeInteger,
     server_remaining: nonnegativeInteger,
     day: v.string(),
@@ -499,4 +505,10 @@ export const vUsage: v.GenericSchema<DailyUsage | DisabledUsage> = v.variant('en
 ])
 export const vConnectionResult: v.GenericSchema<ConnectionResult> = v.object({
   ok: v.literal(true),
+})
+
+export const vResumeLimits = v.strictObject({
+  max_bytes: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  max_pdf_pages: v.pipe(v.number(), v.integer(), v.minValue(1)),
+  max_text_characters: v.pipe(v.number(), v.integer(), v.minValue(1)),
 })

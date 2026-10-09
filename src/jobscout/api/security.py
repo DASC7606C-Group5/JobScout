@@ -1,25 +1,26 @@
 """Same-origin API access and account identity without buffering event streams."""
 
+import asyncio
 import secrets
 from typing import cast
 
 from fastapi import HTTPException, Request
+from starlette.formparsers import MultiPartException
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from jobscout.api.auth import cookie_name
+from jobscout.config import get_settings
 from jobscout.services.auth_service import AuthService, auth_error
 from jobscout.services.identity import current_user_id
-from jobscout.services.resume_service import MAX_RESUME_BYTES
 
 MAX_API_BODY_BYTES = 1024 * 1024
 MAX_AUTH_BODY_BYTES = 16 * 1024
-MAX_UPLOAD_BODY_BYTES = MAX_RESUME_BYTES + 64 * 1024
 
 
 def request_body_limit(path: str) -> int:
     if path == "/api/v1/resumes/parse":
-        return MAX_UPLOAD_BODY_BYTES
+        return get_settings().resume_max_bytes + 64 * 1024
     if path.startswith("/api/v1/auth/"):
         return MAX_AUTH_BODY_BYTES
     return MAX_API_BODY_BYTES
@@ -48,6 +49,8 @@ class SecurityMiddleware:
         auth = cast(AuthService, request.app.state.auth)
         token = None
         identity = None
+        upload_reserved = False
+        upload_deadline = 0.0
         try:
             body_limit = request_body_limit(scope["path"])
             content_length = request.headers.get("content-length")
@@ -77,13 +80,34 @@ class SecurityMiddleware:
                     raise auth_error(403, "invalid_csrf_token")
 
             received_bytes = 0
+            if scope["path"] == "/api/v1/resumes/parse" and scope["method"] == "POST":
+                if request.app.state.upload_slots.locked():
+                    raise HTTPException(
+                        429, {"code": "upload_capacity"}, headers={"Retry-After": "10"}
+                    )
+                await request.app.state.upload_slots.acquire()
+                upload_reserved = True
+                upload_deadline = (
+                    asyncio.get_running_loop().time() + auth.settings.upload_timeout_seconds
+                )
 
             async def limited_receive() -> Message:
                 nonlocal received_bytes
-                message = await receive()
+                if upload_reserved:
+                    try:
+                        async with asyncio.timeout_at(upload_deadline):
+                            message = await receive()
+                    except TimeoutError:
+                        request.state.upload_timed_out = True
+                        raise MultiPartException("Upload timed out.") from None
+                else:
+                    message = await receive()
                 if message["type"] == "http.request":
                     received_bytes += len(message.get("body", b""))
                     if received_bytes > body_limit:
+                        if upload_reserved:
+                            request.state.upload_too_large = True
+                            raise MultiPartException("Upload is too large.")
                         raise request_too_large()
                 return message
 
@@ -105,9 +129,11 @@ class SecurityMiddleware:
             await JSONResponse(
                 {"detail": error.detail},
                 status_code=error.status_code,
-                headers={"Cache-Control": "no-store"},
+                headers={"Cache-Control": "no-store", **(error.headers or {})},
             )(scope, receive, send)
         finally:
+            if upload_reserved:
+                request.app.state.upload_slots.release()
             if identity:
                 auth.unlisten(identity)
             if token is not None:

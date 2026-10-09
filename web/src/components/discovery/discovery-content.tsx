@@ -1,10 +1,12 @@
 import { useScout } from '../../state/scout-context'
 import { useScoutSession } from '../../state/session-context'
+import { AsyncButton } from '../async-button'
 import { ClarificationForm } from '../clarification-form'
 import { ConversationHistory } from '../conversation-history'
 import { ProfileForm } from '../profile-form'
 import { ProfileSummary } from '../profile/profile-summary'
 import { SearchSummary } from '../search-summary'
+import { QueuedOperation } from './queued-operation'
 import { SearchExperience } from './search-experience'
 import { SearchLoading } from './search-status'
 
@@ -13,7 +15,8 @@ export function DiscoveryContent() {
 }
 
 function SessionContent() {
-  const { session, retry, edit, stop, stopping, feedback, busy } = useScoutSession()
+  const { session, retry, edit, stop, stopping, cancel, cancelling, feedback, busy } =
+    useScoutSession()
   const saved = useScout((state) => state.saved)
   const toggleSaved = useScout((state) => state.toggleSaved)
   if (!session) return <ProfileForm />
@@ -33,6 +36,24 @@ function SessionContent() {
     />
   )
   switch (session.outcome) {
+    case 'queued':
+      return <QueuedOperation session={session} onCancel={cancel} cancelling={cancelling} />
+    case 'cancelled':
+      return (
+        <div className="card border border-base-300 bg-base-100">
+          <div className="card-body">
+            <p>Your input is saved. Join the queue again or update your criteria.</p>
+            <div className="card-actions">
+              <AsyncButton type="button" className="btn btn-primary" onClick={retry}>
+                Join queue again
+              </AsyncButton>
+              <AsyncButton type="button" className="btn btn-ghost" onClick={edit}>
+                Edit criteria
+              </AsyncButton>
+            </div>
+          </div>
+        </div>
+      )
     case 'running':
       return session.run_id || session.operation_kind === 'follow_up' ? (
         searchExperience

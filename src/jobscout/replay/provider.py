@@ -134,7 +134,9 @@ class SyntheticProvider:
                     word in text.casefold()
                     for word in ("exclude", "don't want", "不想", "排除", "不喜欢")
                 ):
-                    output["exclusions"] = [{"description": str(answers[-1]["value"]) if answers else message}]
+                    output["exclusions"] = [
+                        {"description": str(answers[-1]["value"]) if answers else message}
+                    ]
                     if payload.get("feedback"):
                         output["feedback_reason"] = (
                             str(answers[-1]["value"]) if answers else message

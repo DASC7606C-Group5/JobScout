@@ -111,6 +111,7 @@ test('daily allowance accepts disabled development usage and rejects invalid pro
     enabled: true,
     remaining: 5,
     used: 2,
+    reserved: 0,
     limit: 7,
     server_remaining: 20,
     day: '2026-10-08',

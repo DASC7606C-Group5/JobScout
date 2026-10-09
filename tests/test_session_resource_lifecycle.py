@@ -7,9 +7,10 @@ from typing import Any
 import pytest
 from tortoise import Tortoise
 
-from jobscout.models import AcceptedRequest, SearchSession
+from jobscout.models import AcceptedRequest, SearchSession, SessionOperation
 from jobscout.schemas.profile import UserProfile
 from jobscout.schemas.session import SessionResumeRequest, SessionStopRequest
+from jobscout.services.identity import current_user_id
 from jobscout.services.session_service import SessionOperationError, _Session
 from tests.test_search_stop import ProgressGraph
 from tests.test_session_operations import (
@@ -29,7 +30,10 @@ class PreparedModels:
         self.uses_server = False
         self.settings = SimpleNamespace(concurrent_user_limit=10, concurrent_total_limit=10)
 
-    async def prepare(self, owner: str) -> PreparedModels:
+    async def snapshot(self, owner: str) -> tuple[dict[str, Any], bool]:
+        return {}, False
+
+    def restore(self, values: dict[str, Any], uses_server: bool) -> PreparedModels:
         return self
 
     async def aclose(self) -> None:
@@ -75,7 +79,7 @@ def test_failed_acceptance_releases_provider_and_restores_committed_state(
                             ),
                         )
                 assert raised.value is failure
-            assert models.closed
+            assert not models.closed  # No provider was created before admission committed.
             assert await manager.get(created.session_id) == before
             stored = await SearchSession.get(session_id=created.session_id)
             assert stored.revision == before.revision
@@ -129,7 +133,7 @@ def test_worker_setup_and_cleanup_failures_close_provider(
     asyncio.run(scenario())
 
 
-def test_shutdown_releases_provider_when_worker_has_not_started() -> None:
+def test_shutdown_releases_provider_and_rejects_new_work() -> None:
     async def scenario() -> None:
         graph = ControlledGraph()
         manager = await manager_for(graph, Memory())
@@ -139,7 +143,6 @@ def test_shutdown_releases_provider_when_worker_has_not_started() -> None:
         try:
             await manager.create(create_payload())
             await manager.close()
-            assert not graph.started.is_set()
             assert models.closed
             with pytest.raises(SessionOperationError) as error:
                 await manager.create(create_payload("after-close"))
@@ -170,7 +173,11 @@ def test_checkpoint_read_does_not_block_other_sessions_or_restore_deleted_sessio
             created = await manager.create(create_payload())
             pending = asyncio.create_task(manager.get(created.session_id))
             await graph.read_started.wait()
-            another = await asyncio.wait_for(manager.create(create_payload("other")), timeout=1)
+            identity = current_user_id.set("another-owner")
+            try:
+                another = await asyncio.wait_for(manager.create(create_payload("other")), timeout=1)
+            finally:
+                current_user_id.reset(identity)
             assert another.session_id != created.session_id
             await asyncio.wait_for(manager.delete(created.session_id), timeout=1)
             graph.read_release.set()
@@ -366,7 +373,7 @@ def test_shutdown_failure_still_closes_all_unstarted_providers(
             for session_id, models in [("first", first), ("second", second)]:
                 record = _Session(session_id, {}, thread_id=session_id)
                 manager.sessions[session_id] = record
-                manager._start(record, {}, models=models)
+                manager._start(record, {}, models=models, operation=SessionOperation())
             monkeypatch.setattr(graph, "aget_state", reject_checkpoint)
             with pytest.raises(ExceptionGroup) as error:
                 await manager.close()
@@ -423,23 +430,21 @@ def test_cancelling_an_edit_drains_the_previous_provider_cleanup(operation: str)
                 ),
             )
             await previous_models.close_started.wait()
-            await next_built.wait()
-            next_task = record.task
-            assert next_task is not None and next_task is not previous_task
+            assert not next_built.is_set()
+            assert record.task is previous_task
+            assert len(manager.tasks) == 1
+            assert (await manager.get(created.session_id)).outcome == "queued"
             cleanup = asyncio.create_task(
                 manager.close() if operation == "close" else manager.delete(created.session_id)
             )
 
-            async def wait_for_cancellation() -> None:
-                while not next_task.cancelling():
-                    await asyncio.sleep(0)
-
-            await asyncio.wait_for(wait_for_cancellation(), 1)
+            await asyncio.sleep(0)
             assert not cleanup.done()
             previous_models.close_release.set()
             await asyncio.wait_for(cleanup, 1)
-            assert previous_models.closed and next_models.closed
-            assert previous_task.done() and next_task.done()
+            assert previous_models.closed and not next_models.closed
+            assert previous_task.done()
+            assert not next_built.is_set()
         finally:
             previous_models.close_release.set()
             if cleanup is not None:
@@ -495,7 +500,7 @@ def test_shutdown_drains_previous_cleanup_before_replacement_worker_starts() -> 
             await manager.close()
             await release
             assert built_providers == [previous_models]
-            assert previous_models.closed and next_models.closed
+            assert previous_models.closed and not next_models.closed
             assert not record.previous_tasks
         finally:
             previous_models.close_release.set()

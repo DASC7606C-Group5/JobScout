@@ -8,8 +8,9 @@ from urllib.parse import urlsplit
 
 import httpx
 from aiolimiter import AsyncLimiter
-from cachetools import TLRUCache
 from tenacity import AsyncRetrying, stop_after_attempt, wait_incrementing
+
+from jobscout.services.runtime_resources import CachedResponse, runtime_resources
 
 from .models import RetrievalFailure
 from .retries import source_retry
@@ -58,11 +59,6 @@ class AsyncHttpWebClient:
         self.interval = interval
         self.cache_seconds = cache_seconds
         self.transport = transport
-        self._cache: TLRUCache[str, WebPage, datetime] = TLRUCache(
-            maxsize=128,
-            ttu=lambda _key, page, _now: page.fetched_at + timedelta(seconds=cache_seconds),
-            timer=lambda: datetime.now(UTC),
-        )
         self._limiters: dict[asyncio.AbstractEventLoop, dict[str, AsyncLimiter]] = {}
 
     async def _pace_requests(self, host: str) -> None:
@@ -86,24 +82,34 @@ class AsyncHttpWebClient:
         headers: dict[str, str] | None = None,
     ) -> WebPage:
         key = json.dumps([url, body, dict(httpx.Headers(headers))], sort_keys=True)
-        cached = self._cache.get(key)
+        public = not any(
+            name.lower() in {"authorization", "cookie", "x-api-key", "api-key"}
+            for name in (headers or {})
+        )
+        cache = runtime_resources().public_cache
+        cache_key = (
+            f"web:{id(self.transport) if self.transport else 'live'}:{self.cache_seconds}:{key}"
+        )
+        cached = cache.get(cache_key, datetime.now(UTC)) if public else None
         if cached is not None and cached.fetched_at <= datetime.now(UTC):
-            return WebPage(cached.text, cached.fetched_at, True)
+            return WebPage(cached.body.decode(cached.encoding), cached.fetched_at, True)
         host = urlsplit(url).netloc
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout, transport=self.transport, follow_redirects=False
-            ) as client:
-                async for attempt in AsyncRetrying(
-                    stop=stop_after_attempt(self.retries + 1),
-                    wait=wait_incrementing(start=1, increment=1),
-                    retry=source_retry,
-                    sleep=asyncio.sleep,
-                    reraise=True,
-                ):
-                    with attempt:
-                        await self._pace_requests(host)
-                        async with client.stream(
+            async for attempt in AsyncRetrying(
+                stop=stop_after_attempt(self.retries + 1),
+                wait=wait_incrementing(start=1, increment=1),
+                retry=source_retry,
+                sleep=asyncio.sleep,
+                reraise=True,
+            ):
+                with attempt:
+                    await self._pace_requests(host)
+                    async with (
+                        runtime_resources().retrieval,
+                        httpx.AsyncClient(
+                            timeout=self.timeout, transport=self.transport, follow_redirects=False
+                        ) as client,
+                        client.stream(
                             "POST" if body is not None else "GET",
                             url,
                             json=body,
@@ -112,34 +118,45 @@ class AsyncHttpWebClient:
                                 "Accept": "application/json,text/html",
                                 **(headers or {}),
                             },
-                        ) as response:
-                            if response.headers.get("cf-mitigated") == "challenge":
-                                raise RetrievalFailure(
-                                    "SEARCH_AUTH", "Source requires Cloudflare verification."
-                                )
-                            if response.status_code in {401, 403, 429}:
-                                raise RetrievalFailure(
-                                    "SEARCH_RATE_LIMIT"
-                                    if response.status_code == 429
-                                    else "SEARCH_AUTH",
-                                    "Source blocked access or requires verification.",
-                                )
-                            response.raise_for_status()
-                            chunks: list[bytes] = []
-                            size = 0
-                            async for chunk in response.aiter_bytes():
-                                size += len(chunk)
-                                if size > 4_000_000:
-                                    raise RetrievalFailure(
-                                        "SEARCH_RESPONSE_FORMAT", "Response exceeds 4 MB bound."
-                                    )
-                                chunks.append(chunk)
-                            page = WebPage(
-                                b"".join(chunks).decode(response.charset_encoding or "utf-8"),
-                                datetime.now(UTC),
+                        ) as response,
+                    ):
+                        if response.headers.get("cf-mitigated") == "challenge":
+                            raise RetrievalFailure(
+                                "SEARCH_AUTH", "Source requires Cloudflare verification."
                             )
-                        self._cache[key] = page
-                        return page
+                        if response.status_code in {401, 403, 429}:
+                            raise RetrievalFailure(
+                                "SEARCH_RATE_LIMIT"
+                                if response.status_code == 429
+                                else "SEARCH_AUTH",
+                                "Source blocked access or requires verification.",
+                            )
+                        response.raise_for_status()
+                        chunks: list[bytes] = []
+                        size = 0
+                        async for chunk in response.aiter_bytes():
+                            size += len(chunk)
+                            if size > 4_000_000:
+                                raise RetrievalFailure(
+                                    "SEARCH_RESPONSE_FORMAT", "Response exceeds 4 MB bound."
+                                )
+                            chunks.append(chunk)
+                        page = WebPage(
+                            b"".join(chunks).decode(response.charset_encoding or "utf-8"),
+                            datetime.now(UTC),
+                        )
+                    if public:
+                        cache.put(
+                            cache_key,
+                            CachedResponse(
+                                b"".join(chunks),
+                                page.fetched_at,
+                                page.fetched_at + timedelta(seconds=self.cache_seconds),
+                                response.charset_encoding or "utf-8",
+                            ),
+                            datetime.now(UTC),
+                        )
+                    return page
         except httpx.TimeoutException:
             raise RetrievalFailure("SEARCH_TIMEOUT", "Source request timed out.") from None
         except httpx.HTTPStatusError as exc:

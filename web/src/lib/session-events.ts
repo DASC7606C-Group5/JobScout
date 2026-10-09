@@ -46,7 +46,7 @@ export function subscribeToSession(
       handlers.onError(new ApplicantRequestError('invalid_response'))
       return
     }
-    if (data.outcome !== 'running') close()
+    if (data.outcome !== 'running' && data.outcome !== 'queued') close()
     handlers.onSnapshot(data)
   })
   source.onerror = () => {

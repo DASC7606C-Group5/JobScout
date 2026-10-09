@@ -11,9 +11,10 @@ from typing import Protocol
 import httpx
 from aiolimiter import AsyncLimiter
 from async_lru import alru_cache
-from cachetools import TLRUCache
 from pydantic import AwareDatetime, BaseModel, JsonValue, ValidationError
 from tenacity import AsyncRetrying, stop_after_attempt, wait_incrementing
+
+from jobscout.services.runtime_resources import CachedResponse, runtime_resources
 
 from .models import RetrievalFailure
 from .retries import source_retry
@@ -58,11 +59,6 @@ class HttpJsonClient:
         self.transport = transport
         self._reads: dict[asyncio.AbstractEventLoop, Callable[[str], Awaitable[Page]]] = {}
         self._remotive_limiters: dict[asyncio.AbstractEventLoop, AsyncLimiter] = {}
-        self._memory: TLRUCache[str, Page, datetime] = TLRUCache(
-            maxsize=128,
-            ttu=lambda _key, page, _now: page.fetched_at + timedelta(seconds=cache_seconds),
-            timer=lambda: datetime.now(UTC),
-        )
 
     async def _pace_remotive_requests(self) -> None:
         loop = asyncio.get_running_loop()
@@ -90,16 +86,28 @@ class HttpJsonClient:
     async def _get(self, url: str) -> Page:
         key = hashlib.sha256(url.encode()).hexdigest()
         path = self.cache_dir / f"{key}.json" if self.cache_dir else None
-        page = self._memory.get(key)
-        if page is None and path and path.exists():
+        cache = runtime_resources().public_cache
+        cache_key = (
+            f"json:{id(self.transport) if self.transport else 'live'}:{self.cache_seconds}:{key}"
+        )
+        cached = cache.get(cache_key, datetime.now(UTC)) if self._authorization is None else None
+        if cached:
+            return Page(payload=json.loads(cached.body), fetched_at=cached.fetched_at, cached=True)
+        if path and path.exists() and path.stat().st_size <= 9_000_000:
             try:
                 restored = Page.model_validate_json(path.read_text(encoding="utf-8"))
-                self._memory[key] = restored
-                page = self._memory.get(key)
+                expires = restored.fetched_at + timedelta(seconds=self.cache_seconds)
+                if restored.fetched_at <= datetime.now(UTC) < expires:
+                    cache.put(
+                        cache_key,
+                        CachedResponse(
+                            json.dumps(restored.payload).encode(), restored.fetched_at, expires
+                        ),
+                        datetime.now(UTC),
+                    )
+                    return restored.model_copy(update={"cached": True})
             except OSError, UnicodeError, ValidationError:
-                page = None
-        if page is not None and page.fetched_at <= datetime.now(UTC):
-            return page.model_copy(update={"cached": True})
+                pass
         headers = {
             "Accept": "application/json",
             "User-Agent": "JobScout-course-prototype/0.1",
@@ -107,54 +115,66 @@ class HttpJsonClient:
         if self._authorization:
             headers["Authorization"] = self._authorization
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout, transport=self.transport, follow_redirects=False
-            ) as client:
-                async for attempt in AsyncRetrying(
-                    stop=stop_after_attempt(self.retries + 1),
-                    wait=wait_incrementing(start=1, increment=1),
-                    retry=source_retry,
-                    sleep=self.sleep,
-                    reraise=True,
-                ):
-                    with attempt:
-                        if url.startswith("https://remotive.com/"):
-                            await self._pace_remotive_requests()
-                        async with client.stream("GET", url, headers=headers) as response:
-                            if response.status_code in {401, 403}:
-                                raise RetrievalFailure(
-                                    "SEARCH_AUTH", "Source rejected access (401/403)."
-                                )
-                            if response.status_code == 429:
-                                raise RetrievalFailure(
-                                    "SEARCH_RATE_LIMIT", "Source rate limit (429); retry later."
-                                )
-                            response.raise_for_status()
-                            chunks: list[bytes] = []
-                            size = 0
-                            async for chunk in response.aiter_bytes():
-                                size += len(chunk)
-                                if size > 8_000_000:
-                                    raise RetrievalFailure(
-                                        "SEARCH_RESPONSE_FORMAT", "Response exceeds 8 MB bound."
-                                    )
-                                chunks.append(chunk)
-                        try:
-                            page = Page(
-                                payload=json.loads(b"".join(chunks)), fetched_at=datetime.now(UTC)
-                            )
-                        except (ValueError, UnicodeError) as exc:
+            async for attempt in AsyncRetrying(
+                stop=stop_after_attempt(self.retries + 1),
+                wait=wait_incrementing(start=1, increment=1),
+                retry=source_retry,
+                sleep=self.sleep,
+                reraise=True,
+            ):
+                with attempt:
+                    if url.startswith("https://remotive.com/"):
+                        await self._pace_remotive_requests()
+                    async with (
+                        runtime_resources().retrieval,
+                        httpx.AsyncClient(
+                            timeout=self.timeout, transport=self.transport, follow_redirects=False
+                        ) as client,
+                        client.stream("GET", url, headers=headers) as response,
+                    ):
+                        if response.status_code in {401, 403}:
                             raise RetrievalFailure(
-                                "SEARCH_RESPONSE_FORMAT", "Expected a JSON object."
-                            ) from exc
-                        self._memory[key] = page
-                        if path:
-                            try:
-                                path.parent.mkdir(parents=True, exist_ok=True)
-                                path.write_text(page.model_dump_json(), encoding="utf-8")
-                            except OSError:
-                                pass
-                        return page
+                                "SEARCH_AUTH", "Source rejected access (401/403)."
+                            )
+                        if response.status_code == 429:
+                            raise RetrievalFailure(
+                                "SEARCH_RATE_LIMIT", "Source rate limit (429); retry later."
+                            )
+                        response.raise_for_status()
+                        chunks: list[bytes] = []
+                        size = 0
+                        async for chunk in response.aiter_bytes():
+                            size += len(chunk)
+                            if size > 8_000_000:
+                                raise RetrievalFailure(
+                                    "SEARCH_RESPONSE_FORMAT", "Response exceeds 8 MB bound."
+                                )
+                            chunks.append(chunk)
+                    try:
+                        page = Page(
+                            payload=json.loads(b"".join(chunks)), fetched_at=datetime.now(UTC)
+                        )
+                    except (ValueError, UnicodeError) as exc:
+                        raise RetrievalFailure(
+                            "SEARCH_RESPONSE_FORMAT", "Expected a JSON object."
+                        ) from exc
+                    if self._authorization is None:
+                        cache.put(
+                            cache_key,
+                            CachedResponse(
+                                b"".join(chunks),
+                                page.fetched_at,
+                                page.fetched_at + timedelta(seconds=self.cache_seconds),
+                            ),
+                            datetime.now(UTC),
+                        )
+                    if path:
+                        try:
+                            path.parent.mkdir(parents=True, exist_ok=True)
+                            path.write_text(page.model_dump_json(), encoding="utf-8")
+                        except OSError:
+                            pass
+                    return page
         except httpx.HTTPStatusError as exc:
             raise RetrievalFailure(
                 "SEARCH_HTTP", f"Source HTTP status {exc.response.status_code}."

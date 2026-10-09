@@ -1,4 +1,21 @@
 export interface paths {
+  '/api/v1/resumes/limits': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Resume Limits */
+    get: operations['resume_limits_api_v1_resumes_limits_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/api/v1/resumes/parse': {
     parameters: {
       query?: never
@@ -114,6 +131,23 @@ export interface paths {
     put?: never
     /** Stop Session */
     post: operations['stop_session_api_v1_sessions__session_id__stop_post']
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/api/v1/sessions/{session_id}/cancel': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Cancel Session */
+    post: operations['cancel_session_api_v1_sessions__session_id__cancel_post']
     delete?: never
     options?: never
     head?: never
@@ -455,11 +489,6 @@ export interface components {
       /** Preference */
       preference: string | null
     }
-    /** Body_parse_resume_upload_api_v1_resumes_parse_post */
-    Body_parse_resume_upload_api_v1_resumes_parse_post: {
-      /** File */
-      file: string
-    }
     /** ClarificationMessage */
     ClarificationMessage: {
       /** Question */
@@ -555,6 +584,8 @@ export interface components {
       remaining: number
       /** Used */
       used: number
+      /** Reserved */
+      reserved: number
       /** Limit */
       limit: number
       /** Server Remaining */
@@ -1150,6 +1181,15 @@ export interface components {
       /** Text */
       text: string
     }
+    /** ResumeLimits */
+    ResumeLimits: {
+      /** Max Bytes */
+      max_bytes: number
+      /** Max Pdf Pages */
+      max_pdf_pages: number
+      /** Max Text Characters */
+      max_text_characters: number
+    }
     /** ReviewIssue */
     ReviewIssue: {
       /**
@@ -1321,6 +1361,15 @@ export interface components {
        */
       search_limitations: string
     }
+    /** SessionCancelRequest */
+    SessionCancelRequest: {
+      /** Request Id */
+      request_id: string
+      /** Expected Revision */
+      expected_revision: number
+      /** Operation Id */
+      operation_id: string
+    }
     /** SessionCreateRequest */
     SessionCreateRequest: {
       /** Request Id */
@@ -1364,7 +1413,7 @@ export interface components {
        * Outcome
        * @enum {string}
        */
-      outcome: 'running' | 'paused' | 'completed' | 'failed'
+      outcome: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
       /** Current Stage */
       current_stage: string
       /** Revision */
@@ -1399,6 +1448,21 @@ export interface components {
       /** Session Id */
       session_id: string
       /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome: 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
+      /** Snapshot Version */
+      snapshot_version: number
+      /** Operation Id */
+      operation_id: string | null
+      /** Queue Position */
+      queue_position: number | null
+      /** Enqueued At */
+      enqueued_at: string | null
+      /** Expires At */
+      expires_at: string | null
+      /**
        * Operation Kind
        * @default initial_search
        * @enum {string}
@@ -1413,11 +1477,6 @@ export interface components {
       result_preferences: components['schemas']['ResultPreferences']
       /** Result Order */
       result_order: string[]
-      /**
-       * Outcome
-       * @enum {string}
-       */
-      outcome: 'running' | 'paused' | 'completed' | 'failed'
       /**
        * Current Stage
        * @default ingest
@@ -1637,6 +1696,26 @@ export interface components {
 }
 export type $defs = Record<string, never>
 export interface operations {
+  resume_limits_api_v1_resumes_limits_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['ResumeLimits']
+        }
+      }
+    }
+  }
   parse_resume_upload_api_v1_resumes_parse_post: {
     parameters: {
       query?: never
@@ -1646,7 +1725,10 @@ export interface operations {
     }
     requestBody: {
       content: {
-        'multipart/form-data': components['schemas']['Body_parse_resume_upload_api_v1_resumes_parse_post']
+        'multipart/form-data': {
+          /** Format: binary */
+          file: string
+        }
       }
     }
     responses: {
@@ -1657,15 +1739,6 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['ResumeInput']
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          'application/json': components['schemas']['HTTPValidationError']
         }
       }
     }
@@ -1895,6 +1968,41 @@ export interface operations {
     requestBody: {
       content: {
         'application/json': components['schemas']['SessionStopRequest']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['SessionResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  cancel_session_api_v1_sessions__session_id__cancel_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        session_id: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SessionCancelRequest']
       }
     }
     responses: {

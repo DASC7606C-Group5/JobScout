@@ -3,6 +3,25 @@ import type { ApplicantRecovery } from './contracts'
 type ErrorDefinition = { message: string; action: ApplicantRecovery }
 
 const errors = {
+  queue_full: { message: 'The waiting list is full. Try again shortly.', action: 'retry' },
+  queue_expired: {
+    message: 'The waiting period ended. Your input is saved; join the queue again.',
+    action: 'retry',
+  },
+  queue_cancelled: {
+    message: 'The queued operation was cancelled. Your input is saved.',
+    action: 'retry',
+  },
+  operation_already_started: {
+    message: 'The operation has already started or finished. Reload for its status.',
+    action: 'reload',
+  },
+  event_stream_capacity: {
+    message: 'Close another open search tab and reconnect.',
+    action: 'retry',
+  },
+  upload_capacity: { message: 'Uploads are busy. Try again shortly.', action: 'retry' },
+  upload_timeout: { message: 'The upload took too long. Try uploading again.', action: 'retry' },
   model_unavailable: {
     message: 'The model request failed. Your input is saved. Check Settings or retry.',
     action: 'retry',
@@ -117,7 +136,10 @@ const errors = {
     message: 'Upload a PDF, DOCX, or UTF-8 TXT resume.',
     action: 'edit_conditions',
   },
-  file_too_large: { message: 'Choose a resume under 10 MB.', action: 'edit_conditions' },
+  file_too_large: {
+    message: 'Choose a resume within the displayed upload size limit.',
+    action: 'edit_conditions',
+  },
   encrypted_file: {
     message: 'Remove the document password and upload again.',
     action: 'edit_conditions',
@@ -144,7 +166,7 @@ const errors = {
     action: 'edit_conditions',
   },
   text_too_long: {
-    message: 'Shorten your resume to 100,000 characters or fewer.',
+    message: 'Shorten your resume to allowed number of characters or fewer.',
     action: 'edit_conditions',
   },
   invalid_file: {

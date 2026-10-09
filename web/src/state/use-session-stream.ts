@@ -15,7 +15,7 @@ export function useSessionStream(
   const cache = useQueryClient()
   const sessionId = session?.session_id
   const enabled =
-    session?.outcome === 'running' &&
+    (session?.outcome === 'running' || session?.outcome === 'queued') &&
     !suspended &&
     !(queryError instanceof SessionHttpError && queryError.status < 500)
   const [attempt, setAttempt] = useState(0)

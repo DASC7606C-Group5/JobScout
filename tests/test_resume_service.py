@@ -8,10 +8,9 @@ from docx import Document
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
+from jobscout.config import get_settings
 from jobscout.services.resume_service import (
     MAX_PDF_UNCOMPRESSED_BYTES,
-    MAX_RESUME_BYTES,
-    MAX_RESUME_TEXT_LENGTH,
     ResumeParseError,
     parse_resume,
 )
@@ -125,8 +124,13 @@ def test_docx_rejects_wrong_zip_and_excessive_expansion() -> None:
         ("resume.txt", b"  \n", "empty_text", 422),
         ("resume.txt", b"\xff", "invalid_encoding", 422),
         ("resume.txt", b"bad\x00text", "invalid_text", 422),
-        ("resume.txt", b"x" * (MAX_RESUME_BYTES + 1), "file_too_large", 413),
-        ("resume.txt", b"x" * (MAX_RESUME_TEXT_LENGTH + 1), "text_too_long", 422),
+        ("resume.txt", b"x" * (get_settings().resume_max_bytes + 1), "file_too_large", 413),
+        (
+            "resume.txt",
+            b"x" * (get_settings().resume_max_text_characters + 1),
+            "text_too_long",
+            422,
+        ),
         ("resume.pdf", b"plain text with wrong extension", "invalid_file", 422),
         ("resume.pdf", b"%PDF-1.7\ninvalid", "invalid_file", 422),
     ],
@@ -182,7 +186,7 @@ def test_pdf_rejects_compressed_content_over_the_document_budget(pages: int) -> 
         page[NameObject("/Contents")] = stream.flate_encode()
     output = BytesIO()
     writer.write(output)
-    assert len(output.getvalue()) < MAX_RESUME_BYTES
+    assert len(output.getvalue()) < get_settings().resume_max_bytes
     with pytest.raises(ResumeParseError) as raised:
         parse_resume("compressed.pdf", output.getvalue())
     assert raised.value.code == "document_too_large"
@@ -190,7 +194,7 @@ def test_pdf_rejects_compressed_content_over_the_document_budget(pages: int) -> 
 
 def test_docx_rejects_excessive_extracted_text() -> None:
     document = Document()
-    document.add_paragraph("x" * MAX_RESUME_TEXT_LENGTH)
+    document.add_paragraph("x" * get_settings().resume_max_text_characters)
     document.add_paragraph("more text")
     output = BytesIO()
     document.save(output)

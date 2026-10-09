@@ -45,12 +45,12 @@ class WorkspaceService:
         self.sessions = sessions
         self.profile_cipher = profile_cipher or sessions.profile_cipher
 
-    def _scope(
+    async def _scope(
         self, session_id: str | None, session_revision: int | None, section: DraftSection | None
     ) -> str:
         if session_id is None:
             return "profile"
-        record = self.sessions._get(session_id)
+        record = await self.sessions._get(session_id)
         if record.revision != session_revision:
             raise SessionOperationError(
                 409, "The search has changed; reload before saving.", code="search_changed"
@@ -71,7 +71,7 @@ class WorkspaceService:
         section: DraftSection | None = None,
     ) -> DraftResponse:
         async with self.sessions.lock:
-            scope = self._scope(session_id, session_revision, section)
+            scope = await self._scope(session_id, session_revision, section)
             draft = await WorkspaceDraft.get_or_none(owner_id=owner_id(), scope=scope)
             if draft is not None and scope == "profile":
                 data = _decrypt_profile_draft(draft.data, self.profile_cipher)
@@ -106,7 +106,7 @@ class WorkspaceService:
         )
         fingerprint = _fingerprint(payload.model_dump(mode="json"))
         async with self.sessions.lock:
-            scope = self._scope(session_id, session_revision, section)
+            scope = await self._scope(session_id, session_revision, section)
             request_scope = f"draft:{scope}"
             previous = await AcceptedRequest.get_or_none(
                 owner_id=owner_id(), scope=request_scope, request_id=payload.request_id
@@ -176,7 +176,7 @@ class WorkspaceService:
         section: DraftSection | None = None,
     ) -> None:
         async with self.sessions.lock:
-            scope = self._scope(session_id, session_revision, section)
+            scope = await self._scope(session_id, session_revision, section)
             await WorkspaceDraft.filter(owner_id=owner_id(), scope=scope).delete()
 
     async def saved_jobs(self) -> SavedJobsResponse:
@@ -191,7 +191,7 @@ class WorkspaceService:
 
     async def save_job(self, job_id: str, payload: SaveJobRequest) -> RecommendationItem:
         async with self.sessions.lock:
-            record = self.sessions._get(payload.session_id)
+            record = await self.sessions._get(payload.session_id)
             if record.revision != payload.expected_revision:
                 raise SessionOperationError(
                     409, "The recommendation has changed. Reload it.", code="search_changed"

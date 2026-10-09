@@ -14,7 +14,7 @@ from tortoise import Tortoise
 
 from jobscout.database import tortoise_config
 from jobscout.graph.live import build_live_graph
-from jobscout.models import AcceptedRequest
+from jobscout.models import AcceptedRequest, DailyUsage, SessionOperation
 from jobscout.replay.app import create_replay_app
 from jobscout.replay.dataset import load_dataset
 from jobscout.replay.provider import SyntheticProvider
@@ -30,7 +30,7 @@ from jobscout.schemas.feedback import (
     SessionFollowUpRequest,
 )
 from jobscout.schemas.recommendation import RecommendationItem, RecommendationResult
-from jobscout.schemas.session import SessionResumeRequest, SessionStopRequest
+from jobscout.schemas.session import SessionCancelRequest, SessionResumeRequest, SessionStopRequest
 from jobscout.services.job_processing_service import process_jobs
 from jobscout.services.llm_service import ModelServiceError, ToolTurn
 from jobscout.services.location_service import get_location_catalog
@@ -44,6 +44,7 @@ from jobscout.services.result_feedback_service import (
 from jobscout.services.search_agent import SearchAgent
 from jobscout.services.session_service import SessionOperationError, SessionService, _Session
 from tests.auth_client import AuthenticatedClient
+from tests.test_operation_queue import QueueModels
 from tests.test_search_agent import Assessment, SnapshotSearch, profile, raw
 from tests.test_session_operations import ControlledGraph, Memory
 from tests.test_web_scaffold import settled
@@ -319,7 +320,6 @@ def test_reaction_rollback_and_category_exclusion_survives_undo(
                     ),
                 )
             assert await service.get("results") == saved
-            assert "failed-save" not in record.requests
             assert not await AcceptedRequest.filter(request_id="failed-save").exists()
 
     asyncio.run(check())
@@ -329,7 +329,7 @@ def test_follow_up_preflight_does_not_accept_or_append_input() -> None:
     class NoModels:
         settings = type("Limits", (), {"concurrent_user_limit": 2, "concurrent_total_limit": 2})()
 
-        async def prepare(self, owner: str) -> None:
+        async def snapshot(self, owner: str) -> tuple[dict[str, Any], bool]:
             raise ModelServiceError("model_configuration")
 
     async def check() -> None:
@@ -348,6 +348,75 @@ def test_follow_up_preflight_does_not_accept_or_append_input() -> None:
                 )
             assert await service.get("results") == before
             assert not await AcceptedRequest.filter(request_id="unprepared").exists()
+
+    asyncio.run(check())
+
+
+def test_queued_follow_up_reserves_cancels_and_retries_without_losing_results() -> None:
+    async def check() -> None:
+        graph = ControlledGraph()
+        async with service_for(graph) as service:
+            service.settings = service.settings.model_copy(
+                update={
+                    "production": True,
+                    "concurrent_total_limit": 1,
+                    "llm_semantic_api_key": "synthetic",
+                    "llm_decision_api_key": "synthetic",
+                }
+            )
+            models = QueueModels(service.settings)
+            service.model_settings = models
+            service.graph_factory = lambda _: graph
+            service.testing_users.add("busy-user")
+            before = await service.get("results")
+            request = FollowUpMessageRequest(
+                request_id="queued-question",
+                expected_revision=before.revision,
+                action="message",
+                message="Is the salary stated?",
+            )
+            queued = await service.follow_up("results", request)
+            assert queued.outcome == "queued" and queued.operation_kind == "follow_up"
+            assert queued.recommendation == before.recommendation
+            assert models.created == graph.calls == 0
+            assert (await service.follow_up("results", request)).operation_id == queued.operation_id
+            usage = await DailyUsage.get(owner_id="__all__", day=models.day())
+            assert (usage.operations, usage.reserved) == (0, 1)
+            assert queued.operation_id is not None
+            cancelled = await service.cancel(
+                "results",
+                SessionCancelRequest(
+                    request_id="cancel-question",
+                    expected_revision=queued.revision,
+                    operation_id=queued.operation_id,
+                ),
+            )
+            assert cancelled.outcome == "cancelled" and cancelled.retryable
+            assert cancelled.recommendation == before.recommendation
+            usage = await DailyUsage.get(owner_id="__all__", day=models.day())
+            assert (usage.operations, usage.reserved) == (0, 0)
+            retried = await service.resume(
+                "results",
+                SessionResumeRequest(
+                    request_id="retry-question",
+                    expected_revision=cancelled.revision,
+                    action="retry",
+                ),
+            )
+            assert retried.outcome == "queued" and retried.operation_id != queued.operation_id
+            assert [item.text for item in retried.conversation] == [request.message]
+            service.testing_users.clear()
+            service.wake.set()
+            await asyncio.wait_for(graph.started.wait(), 2)
+            usage = await DailyUsage.get(owner_id="__all__", day=models.day())
+            assert (usage.operations, usage.reserved) == (1, 0)
+            graph.release.set()
+            completed = await finish(service)
+            assert completed.outcome == "completed"
+            assert completed.recommendation == before.recommendation
+            assert models.created == models.closed == graph.calls == 1
+            operation = await SessionOperation.get(operation_id=retried.operation_id)
+            assert operation.status == "succeeded" and operation.encrypted_models == ""
 
     asyncio.run(check())
 
@@ -1420,7 +1489,7 @@ def test_normalized_employment_exclusion_uses_existing_condition_without_a_model
     asyncio.run(check())
 
 
-def test_follow_up_provider_is_closed_on_acceptance_failure_and_completion(
+def test_follow_up_provider_is_created_after_admission_and_closed_after_completion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from types import SimpleNamespace
@@ -1433,11 +1502,16 @@ def test_follow_up_provider_is_closed_on_acceptance_failure_and_completion(
 
     class Settings:
         settings = SimpleNamespace(concurrent_user_limit=2, concurrent_total_limit=2)
+        created = 0
 
         def __init__(self, provider: Provider) -> None:
             self.provider = provider
 
-        async def prepare(self, owner: str) -> Any:
+        async def snapshot(self, owner: str) -> tuple[dict[str, Any], bool]:
+            return {}, False
+
+        def restore(self, values: dict[str, Any], uses_server: bool) -> Any:
+            self.created += 1
             return SimpleNamespace(provider=self.provider, uses_server=False)
 
     async def check() -> None:
@@ -1445,7 +1519,8 @@ def test_follow_up_provider_is_closed_on_acceptance_failure_and_completion(
         saver = InMemorySaver()
         graph = build_live_graph(saver, provider, SnapshotSearch())
         async with service_for(graph) as service:
-            service.model_settings = Settings(provider)
+            models = Settings(provider)
+            service.model_settings = models
             service.graph_factory = lambda model: build_live_graph(saver, model, SnapshotSearch())
             persist = service._persist
 
@@ -1462,12 +1537,12 @@ def test_follow_up_provider_is_closed_on_acceptance_failure_and_completion(
             monkeypatch.setattr(service, "_persist", fail)
             with pytest.raises(RuntimeError, match="acceptance storage failed"):
                 await service.follow_up("results", request)
-            assert provider.closed == 1
+            assert models.created == provider.closed == 0
             assert await service.get("results") == before
             monkeypatch.setattr(service, "_persist", persist)
             await service.follow_up("results", request)
             assert (await finish(service)).outcome == "completed"
-            assert provider.closed == 2
+            assert models.created == provider.closed == 1
             assert service.sessions["results"].operation_models is None
 
     asyncio.run(check())

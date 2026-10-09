@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { SessionHttpError } from '../lib/api-client'
 import type {
+  CancelSessionRequest,
   CreateSessionRequest,
   ResumeSessionRequest,
   ResumeSubmission,
@@ -25,6 +26,7 @@ type Command = (
   | { kind: 'answer'; sessionId: string; request: ResumeSessionRequest }
   | { kind: 'stop'; sessionId: string; request: StopSessionRequest }
   | { kind: 'delete'; sessionId: string }
+  | { kind: 'cancel'; sessionId: string; request: CancelSessionRequest }
   | { kind: 'feedback'; sessionId: string; request: FeedbackRequest }
   | { kind: 'follow_up'; sessionId: string; request: FollowUpRequest }
 ) & { origin: object }
@@ -70,6 +72,8 @@ async function submitCommand(client: SessionClient, command: Command) {
       return client.start(command.input)
     case 'answer':
       return client.answer(command.sessionId, command.request)
+    case 'cancel':
+      return client.cancel(command.sessionId, command.request)
     case 'stop':
       return client.stop(command.sessionId, command.request)
     case 'feedback':
@@ -79,6 +83,25 @@ async function submitCommand(client: SessionClient, command: Command) {
     case 'delete':
       await client.delete(command.sessionId)
       return null
+  }
+}
+
+function sessionAvailability(
+  session: ScoutSession | null,
+  preparing: boolean,
+  mutating: boolean,
+  loading: boolean,
+) {
+  const pending = preparing || mutating || loading
+  return {
+    pending,
+    busy: pending || session?.outcome === 'running' || session?.outcome === 'queued',
+    canEdit:
+      session !== null &&
+      !preparing &&
+      !mutating &&
+      session.outcome !== 'queued' &&
+      (session.outcome !== 'running' || Boolean(session.run_id)),
   }
 }
 
@@ -125,6 +148,7 @@ export function useSessionWorkflow(
         onSessionDeleted?.(command.sessionId)
       }
       void cache.invalidateQueries({ queryKey: historyKey })
+      void cache.invalidateQueries({ queryKey: ['model-usage'] })
     },
     onError: (error, command) => {
       if (error instanceof SessionHttpError && error.status === 409 && command.kind !== 'start') {
@@ -149,18 +173,18 @@ export function useSessionWorkflow(
   })
   const session = query.data ?? null
   const stream = useSessionStream(client, session, command.pending, query.error)
-  const pending = preparing === origin || command.pending || query.isFetching
-  const busy = pending || session?.outcome === 'running'
-  const canEdit =
-    session !== null &&
-    preparing !== origin &&
-    !command.pending &&
-    (session?.outcome !== 'running' || Boolean(session.run_id))
+  const { pending, busy, canEdit } = sessionAvailability(
+    session,
+    preparing === origin,
+    command.pending,
+    query.isFetching,
+  )
   const error = command.error ?? stream.error
   const recovery = recoveryFor(error)
   const outcome = session?.outcome
   useEffect(() => {
-    if (sessionId && outcome && outcome !== 'running')
+    if (sessionId && outcome) void cache.invalidateQueries({ queryKey: ['model-usage'] })
+    if (sessionId && outcome && outcome !== 'running' && outcome !== 'queued')
       void cache.invalidateQueries({ queryKey: historyKey })
   }, [cache, sessionId, outcome])
 
@@ -300,12 +324,31 @@ export function useSessionWorkflow(
     })
   }
 
+  function cancel() {
+    if (!session?.operation_id || session.outcome !== 'queued' || command.pending) return
+    return execute({
+      kind: 'cancel',
+      origin,
+      sessionId: session.session_id,
+      request: {
+        request_id: crypto.randomUUID(),
+        expected_revision: session.revision,
+        operation_id: session.operation_id,
+      },
+    })
+  }
+
   function retry() {
     if (pending) return
     if (recovery === 'refresh' || stream.error) return refresh()
     else if (recovery === 'correct') mutation.reset()
     else if (command.error && previous.current.has(key)) return execute(previous.current.get(key)!)
-    else if (session?.outcome === 'failed' && session.retryable) return answer({ action: 'retry' })
+    else if (
+      session &&
+      (session.outcome === 'failed' || session.outcome === 'cancelled') &&
+      session.retryable
+    )
+      return answer({ action: 'retry' })
   }
 
   function deleteSession(id = sessionId) {
@@ -324,6 +367,8 @@ export function useSessionWorkflow(
     start,
     answer,
     stop,
+    cancel,
+    cancelling: command.pending && mutation.variables?.kind === 'cancel',
     feedback,
     followUp,
     stopping: command.pending && mutation.variables?.kind === 'stop',

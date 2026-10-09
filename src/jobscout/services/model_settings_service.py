@@ -11,7 +11,7 @@ from tortoise.backends.base.client import BaseDBAsyncClient
 from tortoise.transactions import in_transaction
 
 from jobscout.config import Settings
-from jobscout.models import DailyUsage, PersonalModel
+from jobscout.models import DailyUsage, PersonalModel, SessionOperation
 from jobscout.services.auth_service import auth_error
 from jobscout.services.llm_service import ModelRouter, get_llm_provider
 
@@ -145,6 +145,17 @@ class ModelSettingsService:
     async def prepare(
         self, owner: str, roles: tuple[Role, ...] = ROLES, *, allow_server: bool = True
     ) -> OperationModels:
+        values, uses_server = await self.snapshot(owner, roles, allow_server=allow_server)
+        return self.restore(values, uses_server)
+
+    def restore(self, values: dict[str, Any], uses_server: bool) -> OperationModels:
+        return OperationModels(
+            get_llm_provider(self.settings.model_copy(update=values)), uses_server
+        )
+
+    async def snapshot(
+        self, owner: str, roles: tuple[Role, ...] = ROLES, *, allow_server: bool = True
+    ) -> tuple[dict[str, Any], bool]:
         active = self.settings.model_copy(deep=True)
         rows = await PersonalModel.filter(owner_id=owner, role__in=roles)
         uses_server = any(role not in {row.role for row in rows} for role in roles)
@@ -166,42 +177,70 @@ class ModelSettingsService:
             setattr(active, f"llm_{row.role}_api_key", key)
         if any(not getattr(active, f"llm_{role}_api_key").strip() for role in roles):
             raise auth_error(422, "model_key_required")
-        return OperationModels(get_llm_provider(active), uses_server)
+        return {
+            name: getattr(active, name)
+            for name in type(active).model_fields
+            if name.startswith("llm_")
+        }, uses_server
 
     @staticmethod
     def day() -> str:
         return datetime.now(timezone(timedelta(hours=8))).date().isoformat()
 
-    async def charge(self, owner: str, connection: BaseDBAsyncClient) -> None:
+    async def reserve(self, owner: str, connection: BaseDBAsyncClient) -> str | None:
         if not self.settings.production:
-            return
+            return None
         day = self.day()
         for account, limit in [
             (owner, self.settings.server_daily_user_limit),
             ("__all__", self.settings.server_daily_total_limit),
         ]:
             row, _ = await DailyUsage.get_or_create(owner_id=account, day=day, using_db=connection)
-            if row.operations >= limit:
+            if row.operations + row.reserved >= limit:
                 raise auth_error(429, "server_daily_limit")
-            row.operations += 1
-            await row.save(using_db=connection, update_fields=["operations"])
+            row.reserved += 1
+            await row.save(using_db=connection, update_fields=["reserved"])
+        return day
+
+    @staticmethod
+    async def settle(
+        operation: SessionOperation, connection: BaseDBAsyncClient, *, started: bool
+    ) -> None:
+        if operation.quota_status != "reserved":
+            return
+        for account in (operation.owner_id, "__all__"):
+            row = (
+                await DailyUsage.filter(owner_id=account, day=operation.quota_day)
+                .using_db(connection)
+                .get()
+            )
+            row.reserved -= 1
+            if row.reserved < 0:
+                raise ValueError("The operation's reserved allowance is missing.")
+            if started:
+                row.operations += 1
+            await row.save(using_db=connection, update_fields=["reserved", "operations"])
+        operation.quota_status = "charged" if started else "released"
 
     async def usage(self, owner: str) -> dict[str, Any]:
         if not self.settings.production:
             return {"enabled": False}
         day = self.day()
         counts = {
-            row.owner_id: row.operations
+            row.owner_id: (row.operations, row.reserved)
             for row in await DailyUsage.filter(day=day, owner_id__in=[owner, "__all__"])
         }
         return {
             "enabled": True,
             "day": day,
             "timezone": "Asia/Hong_Kong",
-            "used": counts.get(owner, 0),
+            "used": counts.get(owner, (0, 0))[0],
+            "reserved": counts.get(owner, (0, 0))[1],
             "limit": self.settings.server_daily_user_limit,
-            "remaining": max(0, self.settings.server_daily_user_limit - counts.get(owner, 0)),
+            "remaining": max(
+                0, self.settings.server_daily_user_limit - sum(counts.get(owner, (0, 0)))
+            ),
             "server_remaining": max(
-                0, self.settings.server_daily_total_limit - counts.get("__all__", 0)
+                0, self.settings.server_daily_total_limit - sum(counts.get("__all__", (0, 0)))
             ),
         }

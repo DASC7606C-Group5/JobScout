@@ -88,7 +88,7 @@ def test_personal_connection_works_and_clearing_it_disables_testing(
         structured.assert_awaited_once()
 
 
-def test_capacity_rejection_closes_models_without_releasing_another_test(
+def test_capacity_rejection_creates_no_models_and_preserves_another_test(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     application = create_replay_app()
@@ -106,4 +106,5 @@ def test_capacity_rejection_closes_models_without_releasing_another_test(
         assert response.json()["detail"]["code"] == "operation_capacity"
         assert application.state.sessions.testing_users == {account["user_id"]}
         router.semantic.structured.assert_not_awaited()
-        router.aclose.assert_awaited_once()
+        prepared.assert_not_awaited()
+        router.aclose.assert_not_awaited()
