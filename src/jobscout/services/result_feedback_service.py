@@ -163,8 +163,16 @@ class ResultFeedbackService:
                 parsed = ProfilePreferences.model_validate(condition)
                 decision: str | None = None
                 quote = ""
-                locations = [*parsed.locations.included, *parsed.locations.excluded]
-                employment = [*parsed.employment.included, *parsed.employment.excluded]
+                # Included places/types describe what to keep. Rules with exceptions
+                # need the complete original wording, not a union of both sets.
+                if (
+                    parsed.locations.included
+                    or parsed.employment.included
+                    or parsed.work_arrangement.included
+                ):
+                    continue
+                locations = parsed.locations.excluded
+                employment = parsed.employment.excluded
                 if locations:
                     actual = catalog.find(job.location)
                     if len(actual) == 1:

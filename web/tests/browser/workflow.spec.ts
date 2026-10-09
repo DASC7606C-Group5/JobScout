@@ -1917,18 +1917,28 @@ test('feedback toggles, hides the selected neighbor and restores only direct dis
   await expect(
     page.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true }),
   ).toHaveCount(0)
+  await page
+    .getByRole('status')
+    .filter({ hasText: 'Job hidden' })
+    .getByRole('button', { name: 'Undo', exact: true })
+    .click()
+  await expect(
+    page.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true }).click()
+  await page.getByRole('button', { name: 'Not for me', exact: true }).click()
   await page.reload()
   await expect(
     page.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true }),
   ).toHaveCount(0)
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('2 jobs')
-  await page.getByText('Hidden jobs (1) · Exclusion rules (0)', { exact: true }).click()
-  await page
-    .getByRole('button', { name: 'Undo Not for me: Full Stack Engineer', exact: true })
-    .click()
+  await page.getByRole('button', { name: 'Hidden jobs', exact: true }).click()
+  await page.getByRole('button', { name: 'Show job', exact: true }).click()
+  await page.getByRole('button', { name: 'All jobs', exact: true }).click()
   await expect(
     page.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true }),
   ).toBeVisible()
+  await page.getByRole('button', { name: 'View job: Frontend Developer', exact: true }).click()
   await page.getByRole('button', { name: 'Not for me', exact: true }).click()
   await expect(page).toHaveURL(/job=test-job-2/)
   expect(writes.at(-1)).toMatchObject({ job_id: 'test-job-3', reaction: 'not_interested' })
@@ -1959,11 +1969,12 @@ test('follow-up interpretation and streaming search retain jobs across reload an
   })
   await page.goto('/searches/session-1?job=test-job-2')
   const list = page.getByRole('region', { name: 'Job list', exact: true })
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click()
   await page
     .getByRole('textbox', { name: 'Question or preference' })
     .fill('Why is this job suitable? Is overtime stated?')
-  await page.getByRole('button', { name: 'Send', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled()
   await expect(list.getByRole('button')).toHaveCount(3)
   expect(writes[0]).toMatchObject({
     action: 'message',
@@ -1977,10 +1988,17 @@ test('follow-up interpretation and streaming search retain jobs across reload an
   session.outcome = 'completed'
   session.current_stage = 'completed'
   state.publish(session)
-  await expect(page.getByRole('button', { name: 'Find similar', exact: true })).toBeEnabled()
-  await page.getByRole('button', { name: 'Find similar', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled()
-  expect(writes[1]).toMatchObject({ action: 'find_similar', job_id: 'test-job-2' })
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click()
+  await page
+    .getByRole('textbox', { name: 'Question or preference' })
+    .fill('Find more jobs similar to this one.')
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled()
+  expect(writes[1]).toMatchObject({
+    action: 'message',
+    job_id: 'test-job-2',
+    message: 'Find more jobs similar to this one.',
+  })
   await expect(list.getByRole('button')).toHaveCount(3)
   session.current_stage = 'search'
   session.run_id = 'additional-run'
@@ -2012,7 +2030,8 @@ test('follow-up interpretation and streaming search retain jobs across reload an
   await expect(list.getByRole('button', { name: /^View job:/ })).toHaveCount(4)
   session.outcome = 'completed'
   state.publish(session)
-  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Question or preference' })).toBeEnabled()
   await page.reload()
   await expect(list.getByRole('button', { name: /^View job:/ })).toHaveCount(4)
 })
@@ -2128,21 +2147,23 @@ test('all-hidden results show reasons and undoing direct feedback leaves rule ex
   await expect(
     page.getByRole('heading', { name: 'No matching jobs found yet', exact: true }),
   ).toHaveCount(0)
-  await page.getByText('Hidden jobs (3) · Exclusion rules (1)', { exact: true }).click()
-  await expect(page.getByRole('region', { name: 'Exclusion rules' })).toContainText(
+  await page.getByRole('button', { name: 'Search criteria', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Search criteria details' })).toContainText(
     'Exclude roles with React responsibilities',
   )
-  const hidden = page.getByRole('list', { name: 'Hidden jobs', exact: true })
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Hidden jobs', exact: true }).click()
+  const hidden = page.getByRole('region', { name: 'Job list', exact: true })
   await expect(hidden).toContainText('Full Stack Engineer')
-  await page
-    .getByRole('button', { name: 'Undo Not for me: Full Stack Engineer', exact: true })
-    .click()
+  await page.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true }).click()
+  await page.getByRole('button', { name: 'Show job', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Show job', exact: true })).toHaveCount(0)
   await expect(
-    page.getByRole('button', { name: 'Undo Not for me: Full Stack Engineer', exact: true }),
-  ).toHaveCount(0)
-  await expect(
-    page.getByRole('heading', { name: 'All jobs are hidden', exact: true }),
+    hidden.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true }),
   ).toBeVisible()
+  await expect(page.getByRole('article', { name: 'Job details' })).toContainText(
+    'Exclude roles with React responsibilities',
+  )
   await page.reload()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('0 jobs')
   session.result_preferences.exclusions = []
@@ -2150,9 +2171,158 @@ test('all-hidden results show reasons and undoing direct feedback leaves rule ex
   session.hidden_job_reasons = []
   state.publish(session)
   await page.reload()
+  await page.getByRole('button', { name: 'All jobs', exact: true }).click()
   await expect(
     page.getByRole('region', { name: 'Job list', exact: true }).getByRole('button'),
   ).toHaveCount(3)
+})
+
+test('conversation keeps its job reference and draft while browsing and retrying', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const session = resultSession()
+  session.job_feedback = [
+    {
+      job_id: 'test-job-2',
+      reaction: 'interested',
+      reason: null,
+      updated_at: '2026-10-09T00:00:00Z',
+    },
+  ]
+  session.conversation = [
+    {
+      message_id: 'reply-1',
+      job_id: null,
+      role: 'assistant',
+      text: 'These jobs match your experience with React and Python. What would you like to explore?',
+      responses: [],
+      question_ids: [],
+      created_at: '2026-10-09T00:00:00Z',
+    },
+  ]
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  const writes: FollowUpRequest[] = []
+  await page.route('**/sessions/session-1/follow-up', async (route) => {
+    writes.push(route.request().postDataJSON() as FollowUpRequest)
+    await route.fulfill({
+      status: 503,
+      json: { detail: { code: 'service_unavailable', message: 'Try again.' } },
+    })
+  })
+  await page.goto('/searches/session-1?job=test-job-2')
+  const list = page.getByRole('region', { name: 'Job list', exact: true })
+  const before = await list.boundingBox()
+  await page.screenshot({ path: testInfo.outputPath('results.png') })
+  const launcher = page.getByRole('button', {
+    name: 'Open conversation',
+    exact: true,
+    includeHidden: true,
+  })
+  await launcher.click()
+  await expect(launcher).toBeHidden()
+  const dialog = page.getByRole('dialog', { name: 'Search conversation' })
+  const input = dialog.getByRole('textbox', { name: 'Question or preference' })
+  await expect(dialog.getByRole('log')).toContainText(session.conversation[0]!.text)
+  await input.fill('Find similar jobs with more backend work.')
+  await page.getByRole('button', { name: 'View job: Frontend Developer', exact: true }).click()
+  await expect(dialog).toContainText('About: Full Stack Engineer')
+  await expect(input).toHaveValue('Find similar jobs with more backend work.')
+  expect(await list.boundingBox()).toEqual(before)
+  await expect(dialog.getByRole('button', { name: 'Send message' })).toBeEnabled()
+  await page.screenshot({
+    path: testInfo.outputPath('conversation-desktop.png'),
+    animations: 'disabled',
+  })
+  await dialog.getByRole('button', { name: 'Close conversation panel' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Open conversation', exact: true })).toBeFocused()
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click()
+  await expect(input).toHaveValue('Find similar jobs with more backend work.')
+  await dialog.getByRole('button', { name: 'Send message' }).click()
+  await expect(page.getByRole('alert').filter({ hasText: 'Try again' })).toBeVisible()
+  expect(writes[0]).toMatchObject({
+    action: 'message',
+    job_id: 'test-job-2',
+    message: 'Find similar jobs with more backend work.',
+  })
+  await expect(input).toHaveValue('Find similar jobs with more backend work.')
+  await page.getByRole('button', { name: 'Dismiss notification' }).click()
+  await dialog.getByRole('button', { name: 'Use selected job' }).click()
+  await expect(dialog).toContainText('About: Frontend Developer')
+  await dialog.getByRole('button', { name: 'Remove job reference' }).click()
+  await dialog.getByRole('button', { name: 'Send message' }).click()
+  await expect.poll(() => writes.length).toBe(2)
+  expect(writes[1]).toMatchObject({ job_id: null })
+})
+
+test('mobile conversation contains keyboard focus and leaves the result selection intact', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const session = resultSession()
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  await page.goto('/searches/session-1?job=test-job-2')
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Search conversation' })
+  await expect(
+    page.getByRole('button', { name: 'Open conversation', exact: true, includeHidden: true }),
+  ).toBeHidden()
+  await dialog
+    .getByRole('textbox', { name: 'Question or preference' })
+    .fill('Is remote work mentioned?')
+  await dialog.getByRole('button', { name: 'Send message' }).focus()
+  await page.keyboard.press('Tab')
+  expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true)
+  await expect(dialog.getByRole('button', { name: 'Send message' })).toBeInViewport()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  )
+  await expect(dialog.getByRole('button', { name: 'Send message' })).toBeEnabled()
+  await page.screenshot({
+    path: testInfo.outputPath('conversation-mobile.png'),
+    animations: 'disabled',
+  })
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(page).toHaveURL(/job=test-job-2/)
+  await expect(page.getByRole('button', { name: 'Open conversation', exact: true })).toBeFocused()
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click()
+  await expect(dialog.getByRole('textbox', { name: 'Question or preference' })).toHaveValue(
+    'Is remote work mentioned?',
+  )
+})
+
+test('conversation defaults to the displayed job after ranking and visibility changes', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const session = resultSession()
+  session.result_order = ['test-job-3', 'test-job-2', 'test-job-1']
+  session.hidden_job_ids = ['test-job-1']
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  await page.goto('/searches/session-1')
+  const detail = page.getByRole('article', { name: 'Job details' })
+  await expect(
+    detail.getByRole('heading', { name: 'Frontend Developer', exact: true }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Search conversation' })
+  await expect(dialog).toContainText('About: Frontend Developer')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Hidden jobs', exact: true }).click()
+  await expect(detail.getByRole('heading', { name: 'React Engineer', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Use selected job' }).click()
+  await expect(dialog).toContainText('About: React Engineer')
+  await dialog.getByRole('button', { name: 'Remove job reference' }).click()
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: 'Open conversation', exact: true }).click()
+  await expect(dialog.getByRole('button', { name: 'Remove job reference' })).toHaveCount(0)
+  await expect(dialog).toContainText('About this search')
 })
 
 test('result panes scroll independently and restore reading positions by job identity', async ({
@@ -2179,6 +2349,7 @@ test('result panes scroll independently and restore reading positions by job ide
   const list = page.getByRole('region', { name: 'Job list', exact: true })
   const later = page.getByRole('button', { name: 'View job: Engineer 9', exact: true })
   await later.scrollIntoViewIfNeeded()
+  await later.hover()
   await expect(detail.getByRole('heading', { name: 'Engineer 1', exact: true })).toBeInViewport()
   const pageScroll = await page.evaluate(() => window.scrollY)
   expect(pageScroll).toBe(0)

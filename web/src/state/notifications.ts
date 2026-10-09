@@ -8,7 +8,7 @@ type NotificationAction =
 export interface Notification {
   id: string
   message: string
-  tone: 'error' | 'warning'
+  tone: 'error' | 'warning' | 'info'
   actions?: NotificationAction[] | undefined
   duration?: number
 }

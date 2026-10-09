@@ -15,8 +15,8 @@ function notify(notification: Notification) {
   toast.custom(
     (id) => (
       <div
-        role="alert"
-        className={`alert w-full items-start alert-soft text-sm shadow-lg ${notification.tone === 'error' ? 'alert-error' : 'alert-warning'}`}
+        role={notification.tone === 'info' ? 'status' : 'alert'}
+        className={`alert w-full items-start alert-soft text-sm shadow-lg ${notification.tone === 'error' ? 'alert-error' : notification.tone === 'warning' ? 'alert-warning' : 'border border-base-300 bg-base-100 text-base-content'}`}
       >
         <Icon name="info" size={19} />
         <div className="min-w-0">

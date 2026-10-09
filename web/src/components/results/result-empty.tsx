@@ -26,7 +26,7 @@ export function ResultEmpty({
         {savedOnly
           ? 'Save jobs that interest you to compare them here.'
           : hiddenCount
-            ? `${hiddenCount} ${hiddenCount === 1 ? 'job is' : 'jobs are'} still saved in this search. Open Hidden jobs above to undo Not for me or review your exclusion rules.`
+            ? `${hiddenCount} ${hiddenCount === 1 ? 'job is' : 'jobs are'} still available in this search. Choose Hidden above to review or show them again.`
             : 'Try another type of job or broaden your location preferences.'}
       </p>
       {!hiddenCount && (

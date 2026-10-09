@@ -5,6 +5,7 @@ import { useScoutSession } from '../../state/session-context'
 import { JourneyAside } from '../journey-aside'
 import { PageHeading } from '../layout/page-heading'
 import { StepTransition } from '../layout/step-transition'
+import { ResultConversation } from '../result-conversation'
 import { DiscoveryContent } from './discovery-content'
 import { SearchCriteria } from './search-criteria'
 import { WorkflowSteps } from './workflow-steps'
@@ -38,6 +39,7 @@ function transitionStep(session: ScoutSession | null) {
 
 function discoveryTitle(session: ScoutSession | null) {
   if (!session) return headings.initial
+  if (session.current_stage === 'follow_up_clarify') return 'Continuing with your results'
   if (session.outcome === 'completed') {
     const hidden = new Set(session.hidden_job_ids)
     const count = [
@@ -66,6 +68,7 @@ function DiscoveryHeading({ focused }: { focused: boolean }) {
             profile={session.profile}
             canEdit={canEdit}
             onEdit={edit}
+            resultPreferences={session.result_preferences}
           />
         )}
       </div>
@@ -94,6 +97,7 @@ export function DiscoveryPage() {
           {!focused && <JourneyAside />}
         </div>
       </StepTransition>
+      {session?.recommendation && <ResultConversation key={session.session_id} session={session} />}
     </div>
   )
 }

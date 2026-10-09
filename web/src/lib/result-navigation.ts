@@ -1,6 +1,7 @@
 import type { RecommendationItem } from './contracts'
 
 export interface ResultSearch {
+  visibility?: 'hidden' | undefined
   job?: string | undefined
   direction?: string | undefined
   freshness?: 'active' | 'unknown' | 'expired' | undefined
@@ -29,6 +30,7 @@ function searchText(value: unknown) {
 
 export function resultSearch(value: Record<string, unknown>): ResultSearch {
   return {
+    visibility: value.visibility === 'hidden' ? 'hidden' : undefined,
     job: searchText(value.job),
     direction: searchText(value.direction),
     freshness:
@@ -84,6 +86,17 @@ export function visibleJobs(items: RecommendationItem[], search: ResultSearch) {
     default:
       return filtered
   }
+}
+
+export function orderResults(items: RecommendationItem[], resultOrder: string[]) {
+  const order = new Map(resultOrder.map((id, index) => [id, index]))
+  return [...items].sort((left, right) => {
+    const leftOrder = order.get(left.job.job_id)
+    const rightOrder = order.get(right.job.job_id)
+    if (leftOrder !== undefined || rightOrder !== undefined)
+      return (leftOrder ?? Number.MAX_SAFE_INTEGER) - (rightOrder ?? Number.MAX_SAFE_INTEGER)
+    return Number(left.review_status !== 'reviewed') - Number(right.review_status !== 'reviewed')
+  })
 }
 
 function postedDate(value: string | null) {

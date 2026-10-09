@@ -895,34 +895,29 @@ def build_live_graph(
         preferences = ResultPreferences.model_validate(state.get("result_preferences", {}))
         profile = state.get("profile")
         assert profile is not None
+        answers = [*pending.get("answers", [])] if answering else []
+        answer_messages = [*pending.get("answer_messages", [])] if answering else []
+        if answering:
+            for answer in accepted.get("answers", []):
+                question = next(q for q in questions if q.question_id == answer["question_id"])
+                values = answer["value"] if isinstance(answer["value"], list) else [answer["value"]]
+                answers.append(
+                    {
+                        **answer,
+                        "question": question.question,
+                        "selected_option_labels": [
+                            option.label for option in question.options if option.id in values
+                        ],
+                    }
+                )
+            if accepted.get("message"):
+                answer_messages.append(accepted["message"])
         interpretation = await result_conversation.interpret(
             {
                 "task": "result_conversation",
                 "request": request,
-                "answer_message": accepted.get("message", "") if answering else "",
-                "answers": [
-                    {
-                        **answer,
-                        "question": next(
-                            q.question for q in questions if q.question_id == answer["question_id"]
-                        ),
-                        "selected_option_labels": [
-                            option.label
-                            for question in questions
-                            if question.question_id == answer["question_id"]
-                            for option in question.options
-                            if option.id
-                            in (
-                                answer["value"]
-                                if isinstance(answer["value"], list)
-                                else [answer["value"]]
-                            )
-                        ],
-                    }
-                    for answer in accepted.get("answers", [])
-                ]
-                if answering
-                else [],
+                "answer_message": "\n".join(answer_messages),
+                "answers": answers,
                 "reference_job": reference.model_dump(mode="json") if reference else None,
                 "feedback": next(
                     (
@@ -956,6 +951,8 @@ def build_live_graph(
                 "outcome": "paused",
                 "pending_follow_up": {
                     "request": request,
+                    "answers": answers,
+                    "answer_messages": answer_messages,
                     "user_message_id": pending.get(
                         "user_message_id", f"message:{request['request_id']}"
                     ),

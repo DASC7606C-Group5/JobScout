@@ -26,7 +26,7 @@ export function useResultSelection(
     !savedOnly &&
     search.job &&
     opened?.job.job_id === search.job &&
-    !hiddenJobIds.includes(search.job)
+    hiddenJobIds.includes(search.job) === (search.visibility === 'hidden')
       ? opened
       : null
   const selected = current ?? retained ?? filtered[0]
@@ -87,6 +87,10 @@ export function useResultSelection(
   }, [detailOpen, search.job])
 
   function filterTo(next: ResultSearch) {
+    if (next.visibility !== search.visibility) {
+      changeSearch({ ...next, job: undefined })
+      return
+    }
     const nextSelected = selectionAfterFilter(jobs, selected?.job.job_id, visibleJobs(jobs, next))
     const showDetail = detailOpen || window.matchMedia('(min-width: 1100px)').matches
     changeSearch({ ...next, job: showDetail ? nextSelected : undefined })

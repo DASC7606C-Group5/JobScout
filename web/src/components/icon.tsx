@@ -9,6 +9,7 @@ import {
   PanelLeftClose,
   Trash2,
   ArrowRight,
+  ArrowUp,
   Upload,
   FileText,
   MapPin,
@@ -23,6 +24,9 @@ import {
   Clock,
   Footprints,
   Leaf,
+  MessageCircle,
+  EyeOff,
+  Heart,
 } from 'lucide-react'
 import type { CSSProperties } from 'react'
 
@@ -38,6 +42,7 @@ const icons = {
   panel: PanelLeftClose,
   trash: Trash2,
   arrow: ArrowRight,
+  send: ArrowUp,
   upload: Upload,
   file: FileText,
   pin: MapPin,
@@ -51,6 +56,9 @@ const icons = {
   clock: Clock,
   footsteps: Footprints,
   leaf: Leaf,
+  message: MessageCircle,
+  hidden: EyeOff,
+  heart: Heart,
 } as const
 
 export function Icon({

@@ -33,6 +33,7 @@ from jobscout.schemas.recommendation import RecommendationItem, RecommendationRe
 from jobscout.schemas.session import SessionResumeRequest, SessionStopRequest
 from jobscout.services.job_processing_service import process_jobs
 from jobscout.services.llm_service import ModelServiceError, ToolTurn
+from jobscout.services.location_service import get_location_catalog
 from jobscout.services.notice_service import finalize_recommendation
 from jobscout.services.result_feedback_service import (
     ResultFeedbackService,
@@ -568,6 +569,178 @@ def test_choice_and_note_resume_supplementary_search_without_changing_original_r
                 message.text for message in completed.conversation if message.role == "user"
             ] == [request.message, answer.message]
             assert await service.follow_up("results", answer) == completed
+
+    asyncio.run(check())
+
+
+def test_multiple_clarifications_preserve_earlier_answers_choices_and_notes() -> None:
+    class Provider(RecordingProvider):
+        async def structured[T: BaseModel](
+            self, schema: type[T], messages: list[dict[str, str]], *, deadline: float | None = None
+        ) -> T:
+            if schema.__name__ != "ResultInterpretation":
+                return await super().structured(schema, messages, deadline=deadline)
+            data = json.loads(messages[-1]["content"])
+            answers = data["answers"]
+            if len(answers) < 2:
+                return schema.model_validate(
+                    {
+                        "reply": "Please clarify your preferences.",
+                        "questions": [
+                            {
+                                "field": "result_preference",
+                                "question": "Which hours?" if not answers else "Which arrangement?",
+                                "reason": "The preference needs more detail.",
+                                "control_type": "text" if not answers else "single_choice",
+                                "options": []
+                                if not answers
+                                else [{"id": "remote", "label": "Remote work"}],
+                            }
+                        ],
+                    }
+                )
+            return schema.model_validate(
+                {
+                    "reply": "Your preferences have been updated.",
+                    "preferred_features": [
+                        {"feature": answers[0]["value"], "source_text": answers[0]["value"]},
+                        {
+                            "feature": answers[1]["selected_option_labels"][0],
+                            "source_text": answers[1]["selected_option_labels"][0],
+                        },
+                        {"feature": "No weekends", "source_text": "No weekends"},
+                    ],
+                }
+            )
+
+    async def check() -> None:
+        graph = build_live_graph(InMemorySaver(), Provider())
+        async with service_for(graph) as service:
+            await service.follow_up(
+                "results",
+                FollowUpMessageRequest(
+                    request_id="multi-round",
+                    expected_revision=1,
+                    action="message",
+                    message="I prefer flexible roles.",
+                ),
+            )
+            first = await finish(service)
+            await service.follow_up(
+                "results",
+                FollowUpAnswerRequest(
+                    request_id="hours",
+                    expected_revision=first.revision,
+                    action="answer",
+                    answers=[
+                        QuestionAnswer(
+                            question_id=first.clarification_questions[0].question_id,
+                            value="Start after 10 AM",
+                        )
+                    ],
+                    message="No weekends",
+                ),
+            )
+            second = await finish(service)
+            assert second.outcome == "paused"
+            await service.follow_up(
+                "results",
+                FollowUpAnswerRequest(
+                    request_id="arrangement",
+                    expected_revision=second.revision,
+                    action="answer",
+                    answers=[
+                        QuestionAnswer(
+                            question_id=second.clarification_questions[0].question_id,
+                            value="remote",
+                        )
+                    ],
+                ),
+            )
+            completed = await finish(service)
+            assert completed.outcome == "completed"
+            assert completed.result_preferences.preferred_features == [
+                "Start after 10 AM",
+                "Remote work",
+                "No weekends",
+            ]
+            assert completed.errors == []
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("condition_kind", ["included", "mixed", "location_exception"])
+def test_exclusions_with_included_types_keep_the_original_rule_meaning(condition_kind: str) -> None:
+    class Provider(RecordingProvider):
+        async def structured[T: BaseModel](
+            self, schema: type[T], messages: list[dict[str, str]], *, deadline: float | None = None
+        ) -> T:
+            if schema.__name__ != "ExclusionMatches":
+                return await super().structured(schema, messages, deadline=deadline)
+            return schema.model_validate(
+                {
+                    "matches": [
+                        {
+                            "job_id": "full-time",
+                            "exclusion_id": "types",
+                            "decision": "does_not_match",
+                            "quotes": ["full-time"],
+                        },
+                        {
+                            "job_id": "internship",
+                            "exclusion_id": "types",
+                            "decision": "matches",
+                            "quotes": ["internship"],
+                        },
+                    ]
+                }
+            )
+
+    async def check() -> None:
+        jobs = [
+            result()
+            .jobs[0]
+            .job.model_copy(
+                update={"job_id": kind, "employment_type": kind, "location": "Hong Kong"}
+            )
+            for kind in ("full-time", "internship")
+        ]
+        description = (
+            "Exclude Hong Kong jobs other than full-time"
+            if condition_kind == "location_exception"
+            else "Exclude jobs other than full-time"
+        )
+        condition: dict[str, Any] = {
+            "employment": {
+                "included": ["full-time"],
+                "excluded": ["internship"] if condition_kind == "mixed" else [],
+            }
+        }
+        if condition_kind == "location_exception":
+            condition["locations"] = {
+                "excluded": [get_location_catalog().find("Hong Kong")[0].model_dump()]
+            }
+        preferences = ResultPreferences(
+            exclusions=[
+                ResultExclusion(
+                    exclusion_id="types",
+                    description=description,
+                    user_message_id="message",
+                )
+            ]
+        )
+        blocked, cache = await ResultFeedbackService(Provider()).classify(
+            jobs,
+            preferences,
+            {},
+            deadline=asyncio.get_running_loop().time() + 10,
+            conditions={"types": condition},
+        )
+        assert blocked == {"internship"}
+        assert (
+            cache[match_key(jobs[0], "types", preferences.exclusions[0].description)]["decision"]
+            == "does_not_match"
+        )
 
     asyncio.run(check())
 

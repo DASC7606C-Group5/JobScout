@@ -1,7 +1,6 @@
 import { useId, useRef } from 'react'
 
 import type { ScoutSession } from '../../lib/contracts'
-import { ConversationHistory } from '../conversation-history'
 import { Icon } from '../icon'
 import { SourceOutcomes } from '../results/source-outcomes'
 
@@ -11,11 +10,10 @@ export function SearchRecord({ session, compact }: { session: ScoutSession; comp
   const content = (
     <div className="space-y-5">
       <SourceOutcomes outcomes={session.source_outcomes} />
-      <ConversationHistory session={session} collapsed />
     </div>
   )
   if (!compact) return <div className="mt-6">{content}</div>
-  if (!session.source_outcomes.length && !session.conversation.length) return null
+  if (!session.source_outcomes.length) return null
   return (
     <>
       <button

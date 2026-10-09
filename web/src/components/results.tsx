@@ -1,3 +1,4 @@
+import { useSearch } from '@tanstack/react-router'
 import { useMemo, type ReactNode } from 'react'
 
 import { uniqueNotices } from '../lib/applicant-notices'
@@ -9,11 +10,11 @@ import type {
   RecommendationResult,
 } from '../lib/contracts'
 import { generatedLabel } from '../lib/job-display'
+import { orderResults } from '../lib/result-navigation'
 import { useResultSelection } from '../state/use-result-selection'
 import { Icon } from './icon'
 import { JobCard } from './job-card'
 import { JobDetail } from './job-detail'
-import { HiddenResults } from './results/hidden-results'
 import { ResultEmpty } from './results/result-empty'
 import { ResultFilters } from './results/result-filters'
 
@@ -54,6 +55,8 @@ export function Results({
   hiddenJobReasons?: HiddenJobReason[]
   exclusions?: ResultExclusion[]
 }) {
+  const search = useSearch({ strict: false })
+  const showingHidden = !savedOnly && search.visibility === 'hidden'
   const hidden = new Set(hiddenJobIds)
   const hiddenJobs = savedOnly
     ? []
@@ -62,20 +65,12 @@ export function Results({
       )
   const jobs = useMemo(() => {
     const hidden = new Set(hiddenJobIds)
-    const order = new Map(resultOrder.map((id, index) => [id, index]))
     const source = savedOnly ? saved : [...(result?.jobs ?? []), ...(result?.pending_jobs ?? [])]
-    return source
-      .filter(({ job }) => savedOnly || !hidden.has(job.job_id))
-      .sort((left, right) => {
-        const leftOrder = order.get(left.job.job_id)
-        const rightOrder = order.get(right.job.job_id)
-        if (leftOrder !== undefined || rightOrder !== undefined)
-          return (leftOrder ?? Number.MAX_SAFE_INTEGER) - (rightOrder ?? Number.MAX_SAFE_INTEGER)
-        return (
-          Number(left.review_status !== 'reviewed') - Number(right.review_status !== 'reviewed')
-        )
-      })
-  }, [hiddenJobIds, result, resultOrder, savedOnly, saved])
+    return orderResults(
+      source.filter(({ job }) => savedOnly || hidden.has(job.job_id) === showingHidden),
+      resultOrder,
+    )
+  }, [hiddenJobIds, result, resultOrder, savedOnly, saved, showingHidden])
   const selection = useResultSelection(jobs, savedOnly, onToggle, hiddenJobIds)
   const jobNotices = uniqueNotices(
     [...(result ? result.notices : []), ...notices].filter((notice) => notice.scope === 'job'),
@@ -85,17 +80,16 @@ export function Results({
       aria-label={savedOnly ? 'Saved jobs' : 'Recommended jobs'}
       className={jobs.length ? 'results-workspace' : undefined}
     >
-      <FilterControls jobs={jobs} selection={selection} />
-      {!savedOnly && (
-        <HiddenResults
-          jobs={hiddenJobs}
-          reasons={hiddenJobReasons}
-          exclusions={exclusions}
-          feedbackByJob={feedbackByJob}
-          disabled={feedbackDisabled || feedbackPending}
-          {...(onFeedback ? { onFeedback } : {})}
-        />
-      )}
+      <FilterControls
+        jobs={jobs}
+        selection={selection}
+        hiddenCount={hiddenJobs.length}
+        visibleCount={
+          savedOnly
+            ? saved.length
+            : (result?.jobs.length ?? 0) + (result?.pending_jobs.length ?? 0) - hiddenJobs.length
+        }
+      />
       <ResultItems
         hasJobs={jobs.length > 0}
         savedOnly={savedOnly}
@@ -105,6 +99,9 @@ export function Results({
         notices={jobNotices}
         reviewActive={reviewActive}
         hiddenCount={hiddenJobs.length}
+        showingHidden={showingHidden}
+        hiddenJobReasons={hiddenJobReasons}
+        exclusions={exclusions}
         feedbackDisabled={feedbackDisabled}
         {...(onFeedback ? { onFeedback } : {})}
         {...(feedbackPending ? { feedbackPending } : {})}
@@ -136,8 +133,18 @@ function ResultFooter({
   )
 }
 
-function FilterControls({ jobs, selection }: { jobs: RecommendationItem[]; selection: Selection }) {
-  if (!jobs.length) return null
+function FilterControls({
+  jobs,
+  selection,
+  hiddenCount,
+  visibleCount,
+}: {
+  jobs: RecommendationItem[]
+  selection: Selection
+  hiddenCount: number
+  visibleCount: number
+}) {
+  if (!jobs.length && !hiddenCount && !selection.search.visibility) return null
   const { search, filtered, detailOpen, filterTo } = selection
   const directions = [
     'All',
@@ -151,6 +158,8 @@ function FilterControls({ jobs, selection }: { jobs: RecommendationItem[]; selec
         search={search}
         onChange={filterTo}
         filteredCount={filtered.length}
+        hiddenCount={hiddenCount}
+        visibleCount={visibleCount}
       />
     </div>
   )
@@ -169,6 +178,9 @@ function ResultItems({
   feedbackByJob,
   hiddenCount,
   feedbackDisabled,
+  showingHidden,
+  hiddenJobReasons,
+  exclusions,
 }: {
   hasJobs: boolean
   savedOnly: boolean
@@ -182,6 +194,9 @@ function ResultItems({
   feedbackDisabled: boolean
   hiddenCount: number
   feedbackByJob: Record<string, 'interested' | 'not_interested'>
+  showingHidden: boolean
+  hiddenJobReasons: HiddenJobReason[]
+  exclusions: ResultExclusion[]
 }) {
   const {
     selected,
@@ -195,6 +210,12 @@ function ResultItems({
     back,
     toggle,
   } = selection
+  if (!hasJobs && showingHidden)
+    return (
+      <p className="py-12 text-center text-sm text-base-content/65">
+        No hidden jobs. Choose All jobs to return to your results.
+      </p>
+    )
   if (!hasJobs && !detailOpen)
     return <ResultEmpty savedOnly={savedOnly} onEdit={onEdit} hiddenCount={hiddenCount} />
   if (!selected)
@@ -256,6 +277,14 @@ function ResultItems({
             : {})}
           {...(feedbackPending ? { feedbackPending } : {})}
           feedbackDisabled={feedbackDisabled}
+          hidden={showingHidden}
+          exclusionDescriptions={hiddenJobReasons
+            .filter((reason) => reason.job_id === selected.job.job_id && reason.kind === 'excluded')
+            .flatMap((reason) =>
+              exclusions
+                .filter((rule) => rule.exclusion_id === reason.exclusion_id)
+                .map((rule) => rule.description),
+            )}
           {...(feedbackByJob[selected.job.job_id]
             ? { reaction: feedbackByJob[selected.job.job_id] }
             : {})}
