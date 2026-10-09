@@ -49,14 +49,14 @@ Before committing, run all backend checks, plus `bun test` and `bun check` for t
 
 Both members of each group jointly handle coding and testing. One member in each group acts as the Report Liaison and the other as the Presentation Liaison, organizing the group's work for the final report and the presentation/demo while both remain involved in technical discussions and coding.
 
-| Group | Coding responsibilities |
-| --- | --- |
-| 1: Frontend and Interaction | Develop the HTML input interface, resume upload, text input, clarification interaction, loading states, and Top 5 result display; call the backend interface. |
-| 2: User Profile and Information Confirmation | Process resumes and descriptions, extract education, skills, internships, and projects, output `UserProfile`, check essential information, identify conflicts, and generate clarification content. |
-| 3: Overall Workflow | Use LangGraph to manage the JobScout workflow, session state, and node order, pause/resume the process, and call and connect the modules developed by other groups. |
-| 4: Job Retrieval | Integrate job APIs/public sources, generate search conditions for different directions, search separately, and output raw job data. |
-| 5: Job Understanding and Data Quality | Extract responsibilities and skills, standardize job fields, merge duplicate postings, preserve source links, and check freshness. |
-| 6: Matching and Recommendation | Compare profiles with job requirements, generate skill-gap and preparation advice, integrate postings, select Top 5, and output `RecommendationResult`. |
+| Group | Members | Coding responsibilities |
+| --- | --- | --- |
+| 1: Frontend and Interaction | 龙良茂 (Long Liangmao), 张凯森 (Zhang Kaisen) | Develop the HTML input interface, resume upload, text input, clarification interaction, loading states, and Top 5 result display; call the backend interface. |
+| 2: User Profile and Information Confirmation | 王寒正 (Wang Hanzheng), 赵钧翊 (Zhao Junyi) | Process resumes and descriptions, extract education, skills, internships, and projects, output `UserProfile`, check essential information, identify conflicts, and generate clarification content. |
+| 3: Overall Workflow | 施雨君 (Shi Yujun), 赫锦竹 (He Jinzhu) | Use LangGraph to manage the JobScout workflow, session state, and node order, pause/resume the process, and call and connect the modules developed by other groups. |
+| 4: Job Retrieval | 陈泉睿 (Chen Quanrui), 李浚萁 (Li Junqi) | Integrate job APIs/public sources, generate search conditions for different directions, search separately, and output raw job data. |
+| 5: Job Understanding and Data Quality | 朱俊舟 (Zhu Junzhou), 罗书航 (Luo Shuhang) | Extract responsibilities and skills, standardize job fields, merge duplicate postings, preserve source links, and check freshness. |
+| 6: Matching and Recommendation | 肖隽 (Xiao Jun), 卜轩 (Bu Xuan) | Compare profiles with job requirements, generate skill-gap and preparation advice, integrate postings, select Top 5, and output `RecommendationResult`. |
 
 ## Documentation
 
