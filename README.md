@@ -27,7 +27,7 @@ bun dev
 
 Open the URL printed in the terminal. By default, it is [http://localhost:3000](http://localhost:3000).
 
-See [.env.example](.env.example) for an example of the backend's local configuration. To make live model calls, set the server-side `LLM_API_KEY`.
+See [.env.example](.env.example) for an example of the backend's local configuration. To make live model calls, set the server-side `LLM_SEMANTIC_API_KEY` and `LLM_DECISION_API_KEY`.
 
 If the backend is running at a different address, copy [`web/.env.example`](web/.env.example) to `web/.env.local`, update `API_PROXY_TARGET`, and restart Vite.
 
@@ -51,12 +51,12 @@ Both members of each group jointly handle coding and testing. One member in each
 
 | Group | Members | Coding responsibilities |
 | --- | --- | --- |
-| 1: Frontend and Interaction | 龙良茂 (Long Liangmao, Foah), 张凯森 (Zhang Kaisen) | Develop the HTML input interface, resume upload, text input, clarification interaction, loading states, and Top 5 result display; call the backend interface. |
-| 2: User Profile and Information Confirmation | 王寒正 (Wang Hanzheng), 赵钧翊 (Zhao Junyi) | Process resumes and descriptions, extract education, skills, internships, and projects, output `UserProfile`, check essential information, identify conflicts, and generate clarification content. |
-| 3: Overall Workflow | 施雨君 (Shi Yujun), 赫锦竹 (He Jinzhu) | Use LangGraph to manage the JobScout workflow, session state, and node order, pause/resume the process, and call and connect the modules developed by other groups. |
-| 4: Job Retrieval | 陈泉睿 (Chen Quanrui), 李浚萁 (Li Junqi) | Integrate job APIs/public sources, generate search conditions for different directions, search separately, and output raw job data. |
-| 5: Job Understanding and Data Quality | 朱俊舟 (Zhu Junzhou), 罗书航 (Luo Shuhang) | Extract responsibilities and skills, standardize job fields, merge duplicate postings, preserve source links, and check freshness. |
-| 6: Matching and Recommendation | 肖隽 (Xiao Jun), 卜轩 (Bu Xuan) | Compare profiles with job requirements, generate skill-gap and preparation advice, integrate postings, select Top 5, and output `RecommendationResult`. |
+| 1: Frontend and Interaction | 龙良茂 (Long Liangmao, Foah), 张凯森 (Zhang Kaisen) | Build the React interface for resume upload, profile editing, clarification, search confirmation, live progress, job results with a user-selected limit of 5–20, saved jobs, feedback, and settings; connect these views to the backend API. |
+| 2: User Profile and Information Confirmation | 王寒正 (Wang Hanzheng), 赵钧翊 (Zhao Junyi) | Parse resumes and descriptions, extract education, skills, internships, and projects into `UserProfile`, interpret preferences, identify missing or conflicting information, generate clarification questions, and apply user corrections. |
+| 3: Overall Workflow | 施雨君 (Shi Yujun), 赫锦竹 (He Jinzhu) | Connect the modules through LangGraph; manage search confirmation, pause/resume, session persistence, operation queues, progress updates, stopping, and recovery; coordinate the agent's search and assessment actions. |
+| 4: Job Retrieval | 陈泉睿 (Chen Quanrui), 李浚萁 (Li Junqi) | Connect supported job sources, translate search requests into source-specific queries, retrieve listings and fuller descriptions, and handle pagination, caching, and source failures; return raw job data for processing. |
+| 5: Job Understanding and Data Quality | 朱俊舟 (Zhu Junzhou), 罗书航 (Luo Shuhang) | Standardize job records, merge duplicate postings, preserve source links and quotations, check freshness, and extract individual job requirements for matching. |
+| 6: Matching and Recommendation | 肖隽 (Xiao Jun), 卜轩 (Bu Xuan) | Compare applicant background with job requirements, validate supporting quotations, calculate six-dimensional scores, rank results up to the user-selected limit of 5–20, provide preparation advice, and handle result preferences and follow-up recommendations; output `RecommendationResult`. |
 
 ## Documentation
 
