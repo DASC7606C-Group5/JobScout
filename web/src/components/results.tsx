@@ -1,12 +1,19 @@
 import { useMemo, type ReactNode } from 'react'
 
 import { uniqueNotices } from '../lib/applicant-notices'
-import type { ApplicantNotice, RecommendationItem, RecommendationResult } from '../lib/contracts'
+import type {
+  ApplicantNotice,
+  HiddenJobReason,
+  ResultExclusion,
+  RecommendationItem,
+  RecommendationResult,
+} from '../lib/contracts'
 import { generatedLabel } from '../lib/job-display'
 import { useResultSelection } from '../state/use-result-selection'
 import { Icon } from './icon'
 import { JobCard } from './job-card'
 import { JobDetail } from './job-detail'
+import { HiddenResults } from './results/hidden-results'
 import { ResultEmpty } from './results/result-empty'
 import { ResultFilters } from './results/result-filters'
 
@@ -23,9 +30,12 @@ export function Results({
   footerActions,
   onFeedback,
   feedbackPending = false,
+  feedbackDisabled = false,
   hiddenJobIds = [],
   resultOrder = [],
   feedbackByJob = {},
+  hiddenJobReasons = [],
+  exclusions = [],
 }: {
   result: RecommendationResult | null
   saved: RecommendationItem[]
@@ -35,12 +45,21 @@ export function Results({
   notices?: ApplicantNotice[]
   reviewActive?: boolean
   footerActions?: ReactNode
-  onFeedback?: (jobId: string, reaction: 'interested' | 'not_interested') => unknown
+  onFeedback?: (jobId: string, reaction: 'interested' | 'not_interested' | null) => unknown
   feedbackPending?: boolean
+  feedbackDisabled?: boolean
   hiddenJobIds?: string[]
   resultOrder?: string[]
   feedbackByJob?: Record<string, 'interested' | 'not_interested'>
+  hiddenJobReasons?: HiddenJobReason[]
+  exclusions?: ResultExclusion[]
 }) {
+  const hidden = new Set(hiddenJobIds)
+  const hiddenJobs = savedOnly
+    ? []
+    : [...(result?.jobs ?? []), ...(result?.pending_jobs ?? [])].filter(({ job }) =>
+        hidden.has(job.job_id),
+      )
   const jobs = useMemo(() => {
     const hidden = new Set(hiddenJobIds)
     const order = new Map(resultOrder.map((id, index) => [id, index]))
@@ -57,7 +76,7 @@ export function Results({
         )
       })
   }, [hiddenJobIds, result, resultOrder, savedOnly, saved])
-  const selection = useResultSelection(jobs, savedOnly, onToggle)
+  const selection = useResultSelection(jobs, savedOnly, onToggle, hiddenJobIds)
   const jobNotices = uniqueNotices(
     [...(result ? result.notices : []), ...notices].filter((notice) => notice.scope === 'job'),
   )
@@ -67,6 +86,16 @@ export function Results({
       className={jobs.length ? 'results-workspace' : undefined}
     >
       <FilterControls jobs={jobs} selection={selection} />
+      {!savedOnly && (
+        <HiddenResults
+          jobs={hiddenJobs}
+          reasons={hiddenJobReasons}
+          exclusions={exclusions}
+          feedbackByJob={feedbackByJob}
+          disabled={feedbackDisabled || feedbackPending}
+          {...(onFeedback ? { onFeedback } : {})}
+        />
+      )}
       <ResultItems
         hasJobs={jobs.length > 0}
         savedOnly={savedOnly}
@@ -75,24 +104,35 @@ export function Results({
         onEdit={onEdit}
         notices={jobNotices}
         reviewActive={reviewActive}
+        hiddenCount={hiddenJobs.length}
+        feedbackDisabled={feedbackDisabled}
         {...(onFeedback ? { onFeedback } : {})}
         {...(feedbackPending ? { feedbackPending } : {})}
         feedbackByJob={feedbackByJob}
       />
-      {((!savedOnly && result) || footerActions) && (
-        <footer className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-1 pt-2">
-          {!savedOnly && result && (
-            <p className="flex items-center gap-1.5 text-xs text-base-content/60">
-              <Icon name="clock" size={13} />
-              Updated {generatedLabel(result.generated_at)} · Hong Kong time
-            </p>
-          )}
-          {footerActions && (
-            <div className="flex flex-wrap items-center gap-1">{footerActions}</div>
-          )}
-        </footer>
-      )}
+      <ResultFooter result={savedOnly ? null : result} actions={footerActions} />
     </section>
+  )
+}
+
+function ResultFooter({
+  result,
+  actions,
+}: {
+  result: RecommendationResult | null
+  actions: ReactNode
+}) {
+  if (!result && !actions) return null
+  return (
+    <footer className="mt-3 flex shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-1 pt-2">
+      {result && (
+        <p className="flex items-center gap-1.5 text-xs text-base-content/60">
+          <Icon name="clock" size={13} />
+          Updated {generatedLabel(result.generated_at)} · Hong Kong time
+        </p>
+      )}
+      {actions && <div className="flex flex-wrap items-center gap-1">{actions}</div>}
+    </footer>
   )
 }
 
@@ -127,6 +167,8 @@ function ResultItems({
   onFeedback,
   feedbackPending,
   feedbackByJob,
+  hiddenCount,
+  feedbackDisabled,
 }: {
   hasJobs: boolean
   savedOnly: boolean
@@ -135,8 +177,10 @@ function ResultItems({
   onEdit: () => unknown
   notices: ApplicantNotice[]
   reviewActive: boolean
-  onFeedback?: (jobId: string, reaction: 'interested' | 'not_interested') => unknown
+  onFeedback?: (jobId: string, reaction: 'interested' | 'not_interested' | null) => unknown
   feedbackPending?: boolean
+  feedbackDisabled: boolean
+  hiddenCount: number
   feedbackByJob: Record<string, 'interested' | 'not_interested'>
 }) {
   const {
@@ -151,7 +195,8 @@ function ResultItems({
     back,
     toggle,
   } = selection
-  if (!hasJobs && !detailOpen) return <ResultEmpty savedOnly={savedOnly} onEdit={onEdit} />
+  if (!hasJobs && !detailOpen)
+    return <ResultEmpty savedOnly={savedOnly} onEdit={onEdit} hiddenCount={hiddenCount} />
   if (!selected)
     return (
       <div className="rounded-box border border-dashed border-base-300 py-12 text-center">
@@ -205,11 +250,12 @@ function ResultItems({
           onBack={back}
           {...(onFeedback
             ? {
-                feedback: (reaction: 'interested' | 'not_interested') =>
+                feedback: (reaction: 'interested' | 'not_interested' | null) =>
                   onFeedback(selected.job.job_id, reaction),
               }
             : {})}
           {...(feedbackPending ? { feedbackPending } : {})}
+          feedbackDisabled={feedbackDisabled}
           {...(feedbackByJob[selected.job.job_id]
             ? { reaction: feedbackByJob[selected.job.job_id] }
             : {})}

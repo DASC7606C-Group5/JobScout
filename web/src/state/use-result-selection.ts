@@ -13,6 +13,7 @@ export function useResultSelection(
   jobs: RecommendationItem[],
   savedOnly: boolean,
   onToggle: (item: RecommendationItem) => boolean | Promise<boolean> | void,
+  hiddenJobIds: string[] = [],
 ) {
   const navigate = useNavigate()
   const router = useRouter()
@@ -25,7 +26,7 @@ export function useResultSelection(
     !savedOnly &&
     search.job &&
     opened?.job.job_id === search.job &&
-    jobs.some(({ job }) => job.job_id === search.job)
+    !hiddenJobIds.includes(search.job)
       ? opened
       : null
   const selected = current ?? retained ?? filtered[0]
@@ -48,18 +49,28 @@ export function useResultSelection(
   const listScroll = useRef(0)
   const openedFromList = useRef(false)
   const invalidSelection = Boolean(search.job && !current && !retained)
+  const previousFiltered = useRef(filtered)
 
   function changeSearch(next: ResultSearch, replace = true) {
     void navigate({ to: '.', search: next, replace, resetScroll: false })
   }
   useEffect(() => {
-    if (invalidSelection)
+    if (invalidSelection) {
+      const wasVisible = previousFiltered.current.some(({ job }) => job.job_id === search.job)
       void navigate({
         to: '.',
-        search: { ...search, job: filtered[0]?.job.job_id },
+        search: {
+          ...search,
+          job:
+            wasVisible || window.matchMedia('(min-width: 1100px)').matches
+              ? selectionAfterFilter(previousFiltered.current, search.job, filtered)
+              : undefined,
+        },
         replace: true,
         resetScroll: false,
       })
+    }
+    previousFiltered.current = filtered
   }, [filtered, invalidSelection, navigate, savedOnly, search])
 
   useEffect(() => {

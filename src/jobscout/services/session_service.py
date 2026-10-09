@@ -78,6 +78,7 @@ class _Session:
     previous_tasks: set[asyncio.Task[None]] = field(default_factory=set)
     operation_models: Any = None
     checkpoint_read_id: int = 0
+    published_response: SessionResponse | None = None
     requests: dict[str, str] = field(default_factory=dict)
     deleted: bool = False
     thread_id: str = ""
@@ -192,6 +193,8 @@ class SessionService:
                 self.subscribers.pop(session_id, None)
 
     def _notify(self, record: _Session) -> None:
+        if not record.deleted and not self.closing:
+            record.published_response = self._response(record).model_copy(deep=True)
         listeners = self.subscribers.get(record.session_id)
         if not listeners:
             return
@@ -222,6 +225,7 @@ class SessionService:
                 updated_at=stored.updated_at,
             )
             self.sessions[record.session_id] = record
+            record.published_response = self._response(record).model_copy(deep=True)
             if record.deleted:
                 try:
                     await self._finish_delete(record)
@@ -246,6 +250,7 @@ class SessionService:
             if record.outcome in {"paused", "completed"}:
                 record.state.pop("accepted_resume", None)
             await self._persist(record)
+            record.published_response = self._response(record).model_copy(deep=True)
         for accepted in await AcceptedRequest.filter(
             Q(scope="create") | Q(scope__startswith="resume:") | Q(scope__startswith="stop:")
         ):
@@ -387,6 +392,7 @@ class SessionService:
             self.sessions[session_id] = record
             self.creation_requests[(owner_id(), payload.request_id)] = (fingerprint, session_id)
             self._start(record, state, models=models)
+            record.published_response = self._response(record).model_copy(deep=True)
             return self._response(record)
 
     async def resume(self, session_id: str, payload: SessionResumeRequest) -> SessionResponse:
@@ -832,10 +838,25 @@ class SessionService:
                 )
 
     async def get(self, session_id: str) -> SessionResponse:
+        record = self._get(session_id)
+        if record.published_response is None:
+            record.published_response = self._response(record).model_copy(deep=True)
+        try:
+            async with asyncio.timeout(1):
+                return await self._read_current(session_id)
+        except TimeoutError:
+            # The graph writer and workspace persistence may both be busy. Return only
+            # the last published snapshot, including the normal owner/deletion checks.
+            record = self._get(session_id)
+            assert record.published_response is not None
+            return record.published_response.model_copy(deep=True)
+
+    async def _read_current(self, session_id: str) -> SessionResponse:
         async with self.lock:
             record = self._get(session_id)
             if record.outcome != "running":
-                return self._response(record)
+                record.published_response = self._response(record).model_copy(deep=True)
+                return record.published_response.model_copy(deep=True)
             thread_id, revision = record.thread_id, record.revision
             record.checkpoint_read_id += 1
             read_id = record.checkpoint_read_id
@@ -856,6 +877,7 @@ class SessionService:
                 try:
                     if record.state != previous_state:
                         await self._persist(record)
+                        record.published_response = self._response(record).model_copy(deep=True)
                 except BaseException:
                     record.state = previous_state
                     raise
@@ -958,6 +980,7 @@ class SessionService:
                 record.state.get("recommendation"),
                 RecommendationResult.model_validate(incoming["recommendation"]),
                 record.state.get("result_order", []),
+                baseline_job_ids=record.state.get("follow_up_baseline_job_ids"),
             )
         elif (
             record.state.get("recommendation") is not None
@@ -1016,6 +1039,7 @@ class SessionService:
                         record.state.get("recommendation"),
                         result,
                         record.state.get("result_order", []),
+                        baseline_job_ids=record.state.get("follow_up_baseline_job_ids"),
                     )
                 else:
                     record.state["recommendation"] = result

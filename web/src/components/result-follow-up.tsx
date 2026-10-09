@@ -5,7 +5,7 @@ import { useScoutSession } from '../state/session-context'
 import { Icon } from './icon'
 
 export function ResultFollowUp({ jobId }: { jobId?: string | null }) {
-  const { followUp, busy, pending } = useScoutSession()
+  const { followUp, busy, pending, session } = useScoutSession()
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const submit = (action: FollowUpRequest['action']) => {
@@ -33,6 +33,7 @@ export function ResultFollowUp({ jobId }: { jobId?: string | null }) {
         Ask for a change or find roles similar to the selected job.
       </p>
       <textarea
+        aria-label="Question or preference"
         className="textarea mt-3 min-h-24 w-full border border-base-300 bg-base-200/25 text-base leading-6 sm:text-sm"
         value={message}
         onChange={(event) => setMessage(event.target.value)}
@@ -40,6 +41,13 @@ export function ResultFollowUp({ jobId }: { jobId?: string | null }) {
         disabled={busy}
         placeholder="For example: show more roles with flexible hours"
       />
+      {session?.outcome === 'running' && (
+        <output className="mt-2 block text-sm text-base-content/65">
+          {session.current_stage === 'follow_up_interpret'
+            ? 'Understanding your question or preferences…'
+            : 'Finding and reviewing additional jobs…'}
+        </output>
+      )}
       {error && (
         <p className="mt-2 text-sm text-error" role="alert">
           {error}

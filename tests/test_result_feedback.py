@@ -1,10 +1,11 @@
 """Session feedback and follow-up regressions use offline model and search substitutes."""
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
@@ -22,6 +23,7 @@ from jobscout.schemas.feedback import (
     FindSimilarRequest,
     FollowUpAnswerRequest,
     FollowUpMessageRequest,
+    JobFeedback,
     ResultExclusion,
     ResultPreferences,
     SessionFeedbackRequest,
@@ -31,6 +33,7 @@ from jobscout.schemas.recommendation import RecommendationItem, RecommendationRe
 from jobscout.schemas.session import SessionResumeRequest, SessionStopRequest
 from jobscout.services.job_processing_service import process_jobs
 from jobscout.services.llm_service import ModelServiceError, ToolTurn
+from jobscout.services.notice_service import finalize_recommendation
 from jobscout.services.result_feedback_service import (
     ResultFeedbackService,
     match_key,
@@ -157,6 +160,110 @@ def test_reaction_has_no_model_side_effects_and_restores_after_restart() -> None
                     "results", payload.model_copy(update={"request_id": "stale"})
                 )
             assert error.value.code == "search_changed"
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("reaction", ["interested", "not_interested"])
+def test_reaction_context_and_hidden_jobs_survive_questions_and_supplementary_search(
+    reaction: Literal["interested", "not_interested"],
+) -> None:
+    class Provider(RecordingProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.interpretations: list[dict[str, Any]] = []
+
+        async def structured[T: BaseModel](
+            self, schema: type[T], messages: list[dict[str, str]], *, deadline: float | None = None
+        ) -> T:
+            if schema.__name__ == "ResultInterpretation":
+                self.interpretations.append(json.loads(messages[-1]["content"]))
+            return await super().structured(schema, messages, deadline=deadline)
+
+    async def check() -> None:
+        provider = Provider()
+        search = SnapshotSearch(7)
+        graph = build_live_graph(
+            InMemorySaver(), provider, search, assessment_factory=lambda _: FollowUpAssessment()
+        )
+        async with service_for(graph) as service:
+            before = await service.get("results")
+            assert before.recommendation is not None
+            job_id = before.recommendation.jobs[0].job.job_id
+            saved = await service.feedback(
+                "results",
+                SessionFeedbackRequest(
+                    request_id="reaction",
+                    expected_revision=before.revision,
+                    job_id=job_id,
+                    reaction=reaction,
+                ),
+            )
+            hidden = [job_id] if reaction == "not_interested" else []
+            assert saved.hidden_job_ids == hidden
+            assert saved.recommendation == before.recommendation
+            assert saved.profile == before.profile
+            assert saved.result_preferences == before.result_preferences
+            assert saved.conversation == before.conversation
+            assert provider.schemas == [] and search.requests == []
+            reference_id = before.recommendation.jobs[1 if hidden else 0].job.job_id
+            await service.follow_up(
+                "results",
+                FollowUpMessageRequest(
+                    request_id="question",
+                    expected_revision=saved.revision,
+                    action="message",
+                    job_id=reference_id,
+                    message="Does this job mention overtime?",
+                ),
+            )
+            answered = await finish(service)
+            assert answered.outcome == "completed" and search.requests == []
+            context = provider.interpretations[-1]
+            assert context["reference_job"]["job"]["job_id"] == reference_id
+            assert context["feedback"] == (
+                saved.job_feedback[0].model_dump(mode="json") if not hidden else None
+            )
+            assert answered.job_feedback == saved.job_feedback
+            assert answered.hidden_job_ids == hidden
+            assert answered.recommendation == before.recommendation
+            assert answered.profile == before.profile
+            assert answered.result_preferences == before.result_preferences
+            await service.follow_up(
+                "results",
+                FindSimilarRequest(
+                    request_id="similar",
+                    expected_revision=answered.revision,
+                    action="find_similar",
+                    job_id=reference_id,
+                ),
+            )
+            completed = await finish(service)
+            assert completed.outcome == "completed" and search.requests
+            assert completed.job_feedback == saved.job_feedback
+            assert completed.hidden_job_ids == hidden
+            assert completed.profile == before.profile
+            assert completed.result_preferences == before.result_preferences
+            assert completed.recommendation is not None
+            final_jobs = {item.job.job_id: item for item in completed.recommendation.jobs}
+            assert set(final_jobs) == {item.job.job_id for item in result(7).jobs}
+            assert completed.result_order[:2] == before.result_order
+            for item in before.recommendation.jobs:
+                assert final_jobs[item.job.job_id].model_dump(exclude={"job"}) == item.model_dump(
+                    exclude={"job"}
+                )
+            assert await service.get("results") == completed
+            cleared = await service.feedback(
+                "results",
+                SessionFeedbackRequest(
+                    request_id="undo",
+                    expected_revision=completed.revision,
+                    job_id=job_id,
+                    reaction=None,
+                ),
+            )
+            assert cleared.job_feedback == [] and cleared.hidden_job_ids == []
+            assert cleared.recommendation == completed.recommendation
 
     asyncio.run(check())
 
@@ -361,6 +468,110 @@ def test_ambiguous_reason_pauses_and_answer_resumes_original_request(skip: bool)
     asyncio.run(check())
 
 
+def test_choice_and_note_resume_supplementary_search_without_changing_original_results() -> None:
+    class Provider(RecordingProvider):
+        def __init__(self) -> None:
+            super().__init__()
+            self.interpretations: list[dict[str, Any]] = []
+
+        async def structured[T: BaseModel](
+            self, schema: type[T], messages: list[dict[str, str]], *, deadline: float | None = None
+        ) -> T:
+            if schema.__name__ != "ResultInterpretation":
+                return await super().structured(schema, messages, deadline=deadline)
+            data = json.loads(messages[-1]["content"])
+            self.interpretations.append(data)
+            if not data["answers"]:
+                return schema.model_validate(
+                    {
+                        "reply": "Clarify the working hours you want.",
+                        "questions": [
+                            {
+                                "field": "result_preference",
+                                "question": "Which working hours should we search for?",
+                                "reason": "Flexible hours can mean different schedules.",
+                                "control_type": "single_choice",
+                                "options": [
+                                    {"id": "flexible", "label": "Flexible start and finish times"},
+                                    {"id": "part-time", "label": "Part-time hours"},
+                                ],
+                            }
+                        ],
+                    }
+                )
+            return schema.model_validate(
+                {
+                    "reply": "Searching for more roles with flexible start and finish times.",
+                    "search_requested": True,
+                    "preferred_features": [
+                        {
+                            "feature": "Flexible start and finish times",
+                            "source_text": "Flexible start and finish times",
+                        },
+                        {"feature": "No evening shifts", "source_text": data["answer_message"]},
+                    ],
+                }
+            )
+
+    async def check() -> None:
+        provider = Provider()
+        search = SnapshotSearch(7)
+        graph = build_live_graph(
+            InMemorySaver(), provider, search, assessment_factory=lambda _: FollowUpAssessment()
+        )
+        async with service_for(graph) as service:
+            before = await service.get("results")
+            assert before.recommendation is not None
+            job_id = before.recommendation.jobs[0].job.job_id
+            request = FollowUpMessageRequest(
+                request_id="flexible-search",
+                expected_revision=1,
+                action="message",
+                job_id=job_id,
+                message="show more roles with flexible hours",
+            )
+            await service.follow_up("results", request)
+            paused = await finish(service)
+            assert paused.outcome == "paused" and search.requests == []
+            question_id = paused.clarification_questions[0].question_id
+            answer = FollowUpAnswerRequest(
+                request_id="flexible-answer",
+                expected_revision=paused.revision,
+                action="answer",
+                answers=[QuestionAnswer(question_id=question_id, value="flexible")],
+                message="No evening shifts",
+            )
+            await service.follow_up("results", answer)
+            completed = await finish(service)
+            assert completed.outcome == "completed" and search.requests
+            assert completed.clarification_questions == []
+            assert provider.interpretations[-1]["request"] == request.model_dump(mode="json")
+            assert provider.interpretations[-1]["answers"][0]["selected_option_labels"] == [
+                "Flexible start and finish times"
+            ]
+            assert completed.result_preferences.preferred_features == [
+                "Flexible start and finish times",
+                "No evening shifts",
+            ]
+            assert completed.profile == before.profile
+            assert completed.recommendation is not None
+            final_jobs = {item.job.job_id: item for item in completed.recommendation.jobs}
+            for item in before.recommendation.jobs:
+                final_item = final_jobs[item.job.job_id]
+                assert final_item.model_dump(
+                    exclude={"job": {"source_documents"}}
+                ) == item.model_dump(exclude={"job": {"source_documents"}})
+                for document in item.job.source_documents:
+                    assert document in final_item.job.source_documents
+            assert len(final_jobs) == 7
+            assert [
+                message.text for message in completed.conversation if message.role == "user"
+            ] == [request.message, answer.message]
+            assert await service.follow_up("results", answer) == completed
+
+    asyncio.run(check())
+
+
 def test_merge_keeps_stable_id_sources_and_order_across_pending_review_and_25_jobs() -> None:
     previous = result(20)
     first = previous.jobs.pop(0)
@@ -387,6 +598,183 @@ def test_merge_keeps_stable_id_sources_and_order_across_pending_review_and_25_jo
     assert "alternate-source" not in next_order
     assert "https://other.example/job" in merged.jobs[0].job.source_links
     assert merged.jobs[0].job.job_id == first.job.job_id
+
+
+@pytest.mark.parametrize("path", ["progress", "checkpoint"])
+def test_changing_shortlists_cannot_append_more_than_five_jobs_to_a_session(path: str) -> None:
+    async def check() -> None:
+        async with service_for(ControlledGraph()) as service:
+            record = service.sessions["results"]
+            baseline = finalize_recommendation(result(12))
+            baseline_ids = [item.job.job_id for item in baseline.jobs]
+            record.state.update(
+                recommendation=baseline,
+                result_order=baseline_ids,
+                follow_up_baseline_job_ids=baseline_ids,
+                operation_kind="follow_up",
+                run_id="cap-run",
+                current_stage="follow_up_search",
+            )
+            record.outcome = "running"
+            record.active_run_id = "cap-run"
+            candidates = result(24).jobs
+            selected_ids = {item.job.job_id for item in candidates[12:17]}
+            for sequence, indices in enumerate((range(12, 17), range(15, 20), range(19, 24)), 1):
+                snapshot = baseline.model_copy(
+                    update={"jobs": [candidates[index] for index in indices]}
+                )
+                update = {
+                    "recommendation": snapshot,
+                    "progress_seq": sequence,
+                    "run_id": "cap-run",
+                    "progress": {"sequence": sequence},
+                }
+                if path == "progress":
+                    await service._progress(record, "cap-run", record.revision, update)
+                else:
+                    service._merge_snapshot(record, update)
+                response = service._response(record)
+                assert set(response.result_order) - set(baseline_ids) == selected_ids
+                assert response.result_order[:12] == baseline_ids
+                assert response.recommendation is not None
+                preserved = {item.job.job_id: item for item in response.recommendation.jobs}
+                for item in baseline.jobs:
+                    assert preserved[item.job.job_id] == item
+            updated = candidates[12].model_copy(
+                update={"recommendation_reason": "Completed review"}
+            )
+            service._merge_snapshot(
+                record,
+                {
+                    "run_id": "cap-run",
+                    "progress_seq": 4,
+                    "recommendation": baseline.model_copy(
+                        update={"jobs": [updated, candidates[23]]}
+                    ),
+                },
+            )
+            assert (
+                record.state["recommendation"].jobs[12].recommendation_reason == "Completed review"
+            )
+            assert len(record.state["result_order"]) == 17
+            record.outcome = "completed"
+            record.state["current_stage"] = "completed"
+            await service._persist(record)
+            saved = await service.get("results")
+            reopened = SessionService(ControlledGraph(), Memory())
+            await reopened.open()
+            assert await reopened.get("results") == saved
+            await reopened.close()
+
+    asyncio.run(check())
+
+
+def test_retry_does_not_free_new_job_slots_when_published_jobs_are_hidden() -> None:
+    async def check() -> None:
+        search = SnapshotSearch(24)
+        graph = build_live_graph(InMemorySaver(), RecordingProvider(), search)
+        async with service_for(graph) as service:
+            record = service.sessions["results"]
+            original = result(2)
+            expanded = result(7)
+            hidden_id = expanded.jobs[2].job.job_id
+            request = FindSimilarRequest(
+                request_id="full-round",
+                expected_revision=1,
+                action="find_similar",
+                job_id=original.jobs[0].job.job_id,
+            )
+            record.state.update(
+                recommendation=expanded,
+                operation_kind="follow_up",
+                current_stage="failed",
+                accepted_follow_up=request.model_dump(mode="json"),
+                follow_up_search_ready=True,
+                follow_up_baseline_job_ids=[item.job.job_id for item in original.jobs],
+                job_feedback=[
+                    JobFeedback(
+                        job_id=hidden_id, reaction="not_interested", updated_at=datetime.now(UTC)
+                    )
+                ],
+                retryable=True,
+            )
+            record.outcome = "failed"
+            refresh_hidden(record.state)
+            await service.resume(
+                "results",
+                SessionResumeRequest(
+                    request_id="retry-full-round",
+                    expected_revision=1,
+                    action="retry",
+                ),
+            )
+            completed = await finish(service)
+            assert completed.outcome == "completed" and search.requests == []
+            assert completed.result_order == [item.job.job_id for item in expanded.jobs]
+            assert completed.hidden_job_ids == [hidden_id]
+
+    asyncio.run(check())
+
+
+def test_supplementary_search_retains_published_jobs_when_review_ranking_changes() -> None:
+    class ChangingAssessment(Assessment):
+        async def assess(self, *args: Any, **kwargs: Any) -> RecommendationResult:
+            assessed = await super().assess(*args, **kwargs)
+            return assessed.model_copy(
+                update={
+                    "jobs": [
+                        item.model_copy(
+                            update={
+                                "recommendation_fit": "unlikely"
+                                if item.job.title
+                                in {f"Data Analyst {index}" for index in range(2, 7)}
+                                else "recommended"
+                            }
+                        )
+                        for item in assessed.jobs
+                    ]
+                }
+            )
+
+    async def check() -> None:
+        original = result(2)
+        snapshots: list[dict[str, Any]] = []
+
+        async def progress(update: dict[str, Any]) -> None:
+            snapshots.append(update)
+
+        agent = SearchAgent(SyntheticProvider(), SnapshotSearch(24), ChangingAssessment())
+        final = await agent.run(
+            profile(),
+            {},
+            "results",
+            deadline=asyncio.get_running_loop().time() + 10,
+            history=original,
+            reference_job=original.jobs[0].job,
+            additional_result_count=5,
+            on_progress=progress,
+        )
+        old_ids = {item.job.job_id for item in original.jobs}
+        published_ids: set[str] = set()
+        for snapshot in snapshots:
+            recommendation = snapshot["recommendation"]
+            current_ids = {
+                item.job.job_id for item in recommendation.jobs + recommendation.pending_jobs
+            } - old_ids
+            assert published_ids <= current_ids
+            published_ids |= current_ids
+            assert len(published_ids) <= 5
+        recommendation = final["recommendation"]
+        final_items = recommendation.jobs + recommendation.pending_jobs
+        assert {item.job.job_id for item in final_items} - old_ids == published_ids
+        assert len(published_ids) == 5
+        assert all(
+            item.review_status == "reviewed"
+            for item in final_items
+            if item.job.job_id in published_ids
+        )
+
+    asyncio.run(check())
 
 
 def test_supplementary_search_deduplicates_history_without_changing_initial_limit() -> None:
@@ -512,7 +900,7 @@ def test_feedback_and_follow_up_http_contract_permissions_and_generated_schema()
                 "request_id": "bad-action",
                 "expected_revision": reaction.json()["revision"],
                 "action": "answer",
-                "message": "not an answer",
+                "profile_updates": {},
             },
         )
         assert bad.status_code == 422 and bad.json()["detail"]["code"] == "invalid_follow_up_input"
@@ -766,7 +1154,7 @@ def test_explicit_exclusions_filter_existing_and_new_jobs_and_cancellation_keeps
             )
             completed = await finish(service)
             assert completed.outcome == "completed"
-            assert len(completed.hidden_job_ids) == 2
+            assert completed.hidden_job_ids == [first.job_id]
             assert completed.recommendation is not None
             kept = completed.recommendation.jobs + completed.recommendation.pending_jobs
             assert all(

@@ -109,7 +109,10 @@ export function useSessionWorkflow(
         cache.setQueryData<ScoutSession>(sessionKey(session.session_id), (previous) =>
           latestSessionSnapshot(previous, session),
         )
-      if (command.kind === 'answer')
+      if (
+        command.kind === 'answer' ||
+        (command.kind === 'follow_up' && command.request.action === 'answer')
+      )
         discardSessionDrafts(command.sessionId, command.request.expected_revision)
       if (command.kind === 'start' && session && command.origin === activeOrigin.current)
         onSessionCreated?.(session.session_id)
@@ -229,6 +232,17 @@ export function useSessionWorkflow(
 
   async function answer(submission: Partial<ResumeSubmission>) {
     if (!session || (submission.action === 'edit_conditions' ? !canEdit : busy)) return
+    if (
+      session.current_stage === 'follow_up_clarify' &&
+      (!submission.action || submission.action === 'answer')
+    ) {
+      return followUp({
+        action: 'answer',
+        answers: submission.answers ?? [],
+        skipped_question_ids: submission.skipped_question_ids ?? [],
+        message: submission.message ?? '',
+      })
+    }
     return prepare({
       kind: 'answer',
       origin,

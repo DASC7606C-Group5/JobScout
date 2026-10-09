@@ -93,6 +93,8 @@ class SearchAgent:
         self.unimproved_reviews = 0
         self.finished = False
         self.activity_entries: dict[str, SearchActivity] = {}
+        self.supplementary_search = False
+        self.published_result_ids: list[str] = []
         self.excluded_ids: set[str] = set()
 
     async def run(
@@ -125,6 +127,8 @@ class SearchAgent:
         }
         self.history_by_id = {item.job.job_id: item for item in self.history_items.values()}
         self.history_updates: dict[str, RecommendationItem] = {}
+        self.supplementary_search = history is not None
+        self.published_result_ids = []
         self.feedback_service = ResultFeedbackService(self.provider)
         self.profile_documents = dict(profile_documents)
         self.session_id = session_id
@@ -802,6 +806,7 @@ class SearchAgent:
             item.analysis_status != "unavailable"
             and item.recommendation_fit in {"recommended", "possible"}
             and item.job.job_id not in self.excluded_ids
+            and (not self.supplementary_search or item.job.job_id in self.published_result_ids)
             for item in self.matched.values()
         )
 
@@ -868,7 +873,7 @@ class SearchAgent:
         }
 
     def result(self, reason: str | None = None, *, final: bool = False) -> RecommendationResult:
-        selected = self.ranked([*self.matched.values(), *self.pending.values()])
+        selected = self.selected_results()
 
         def displayed(items: list[RecommendationItem]) -> list[RecommendationItem]:
             return [
@@ -909,6 +914,10 @@ class SearchAgent:
                     item
                     for item in [*self.matched.values(), *self.pending.values()]
                     if item.job.job_id in self.excluded_ids
+                    and (
+                        not self.supplementary_search
+                        or item.job.job_id in self.published_result_ids
+                    )
                 ],
                 introduction=self.finish_message(reason) if reason else "",
             )
@@ -1006,8 +1015,22 @@ class SearchAgent:
             key=recommendation_key,
         )[: self.target]
 
+    def selected_results(self) -> list[RecommendationItem]:
+        items = [*self.matched.values(), *self.pending.values()]
+        if not self.supplementary_search:
+            return self.ranked(items)
+        by_id = {item.job.job_id: item for item in items}
+        for item in self.ranked(items):
+            if len(self.published_result_ids) >= self.target:
+                break
+            if item.job.job_id not in self.published_result_ids:
+                self.published_result_ids.append(item.job.job_id)
+        return self.ranked(
+            [by_id[job_id] for job_id in self.published_result_ids if job_id in by_id]
+        )
+
     def progress(self) -> dict[str, Any]:
-        selected = self.ranked([*self.matched.values(), *self.pending.values()])
+        selected = self.selected_results()
         return {
             "sequence": self.progress_seq,
             "discovered_count": len(self.jobs),
@@ -1023,7 +1046,9 @@ class SearchAgent:
     def activity(self) -> list[SearchActivity]:
         """Expose screening facts without private model diagnostics or the result cap."""
         excluded = eligibility_exclusions(self.profile, list(self.jobs.values()))
-        shortlisted = {item.job.job_id for item in self.ranked(list(self.matched.values()))}
+        shortlisted = {
+            item.job.job_id for item in self.selected_results() if item.job.job_id in self.matched
+        }
         activity: list[SearchActivity] = []
         for job in self.jobs.values():
             item = self.matched.get(job.job_id) or self.pending.get(job.job_id)
@@ -1115,7 +1140,7 @@ class SearchAgent:
             )
 
     def finish_message(self, reason: str | None) -> str:
-        selected = self.ranked([*self.matched.values(), *self.pending.values()])
+        selected = self.selected_results()
         count = len(selected)
         promising = sum(
             item.analysis_status != "unavailable"

@@ -22,6 +22,7 @@ export function JobDetail({
   reviewActive = false,
   feedback,
   feedbackPending = false,
+  feedbackDisabled = false,
   reaction,
 }: {
   item: RecommendationItem
@@ -33,8 +34,9 @@ export function JobDetail({
   scrollRef?: Ref<HTMLElement>
   onScroll?: UIEventHandler<HTMLElement>
   reviewActive?: boolean
-  feedback?: (reaction: 'interested' | 'not_interested') => unknown
+  feedback?: (reaction: 'interested' | 'not_interested' | null) => unknown
   feedbackPending?: boolean
+  feedbackDisabled?: boolean
   reaction?: 'interested' | 'not_interested'
 }) {
   const { job } = item
@@ -101,8 +103,8 @@ export function JobDetail({
               type="button"
               className={`btn join-item btn-sm ${reaction === 'interested' ? 'btn-secondary' : ''}`}
               aria-pressed={reaction === 'interested'}
-              disabled={feedbackPending}
-              onClick={() => feedback('interested')}
+              disabled={feedbackPending || feedbackDisabled}
+              onClick={() => feedback(reaction === 'interested' ? null : 'interested')}
             >
               Interested
             </button>
@@ -110,7 +112,7 @@ export function JobDetail({
               type="button"
               className={`btn join-item btn-sm ${reaction === 'not_interested' ? 'btn-secondary' : ''}`}
               aria-pressed={reaction === 'not_interested'}
-              disabled={feedbackPending}
+              disabled={feedbackPending || feedbackDisabled}
               onClick={() => feedback('not_interested')}
             >
               Not for me
@@ -118,6 +120,11 @@ export function JobDetail({
           </div>
         )}
       </div>
+      {feedback && feedbackDisabled && (
+        <p className="px-4 pt-2 text-xs text-base-content/65 sm:px-5">
+          Feedback is available when processing finishes.
+        </p>
+      )}
       <section
         ref={scrollRef}
         onScroll={onScroll}

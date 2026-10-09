@@ -44,9 +44,9 @@ from jobscout.services.notice_service import (
 from jobscout.services.profile_service import dedupe
 from jobscout.services.result_conversation_service import ResultConversationService
 from jobscout.services.result_feedback_service import (
+    SUPPLEMENTARY_RESULT_LIMIT,
     ResultFeedbackService,
     merge_results,
-    refresh_hidden,
 )
 from jobscout.services.search_agent import SearchAgent, SearchService
 
@@ -759,19 +759,15 @@ def build_live_graph(
             "result_exclusion_conditions": state.get("result_exclusion_conditions", {}),
         }
         if follow_up:
-            hidden_state: dict[str, Any] = dict(state)
-            refresh_hidden(hidden_state)
             existing_ids = (
-                {
-                    item.job.job_id
-                    for item in [*history.jobs, *history.pending_jobs]
-                    if item.job.job_id not in hidden_state["hidden_job_ids"]
-                }
+                {item.job.job_id for item in [*history.jobs, *history.pending_jobs]}
                 if history
                 else set()
             )
             additional_count = max(
-                0, 5 - len(existing_ids - set(state.get("follow_up_baseline_job_ids", [])))
+                0,
+                SUPPLEMENTARY_RESULT_LIMIT
+                - len(existing_ids - set(state.get("follow_up_baseline_job_ids", []))),
             )
             if additional_count == 0:
                 return {
@@ -840,7 +836,10 @@ def build_live_graph(
         )
         if state.get("operation_kind") == "follow_up":
             update["recommendation"], update["result_order"] = merge_results(
-                state.get("recommendation"), result, state.get("result_order", [])
+                state.get("recommendation"),
+                result,
+                state.get("result_order", []),
+                baseline_job_ids=state.get("follow_up_baseline_job_ids"),
             )
             if update["stop_reason"] == "error":
                 update.update(
@@ -900,6 +899,7 @@ def build_live_graph(
             {
                 "task": "result_conversation",
                 "request": request,
+                "answer_message": accepted.get("message", "") if answering else "",
                 "answers": [
                     {
                         **answer,

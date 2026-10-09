@@ -16,6 +16,8 @@ from jobscout.services.location_service import get_location_catalog, within
 from jobscout.services.notice_service import dedupe_notices
 from jobscout.services.prompts import RESULT_EXCLUSION_PROMPT
 
+SUPPLEMENTARY_RESULT_LIMIT = 5
+
 
 class ExclusionMatch(FeedbackModel):
     job_id: str
@@ -53,6 +55,8 @@ def merge_results(
     previous: RecommendationResult | None,
     incoming: RecommendationResult,
     order: list[str],
+    *,
+    baseline_job_ids: list[str] | None = None,
 ) -> tuple[RecommendationResult, list[str]]:
     items = list(previous.jobs + previous.pending_jobs) if previous else []
     by_id = {item.job.job_id: item for item in items}
@@ -60,10 +64,19 @@ def merge_results(
     incoming_reviewed = {item.job.job_id for item in incoming.jobs}
     identities = {job_identity(item.job): item.job.job_id for item in items}
     next_order = list(dict.fromkeys([*order, *(item.job.job_id for item in items)]))
+    remaining = (
+        max(0, SUPPLEMENTARY_RESULT_LIMIT - len(set(by_id) - set(baseline_job_ids)))
+        if baseline_job_ids is not None
+        else None
+    )
     for item in [*incoming.jobs, *incoming.pending_jobs]:
         job = item.job
         stable_id = job.job_id if job.job_id in by_id else identities.get(job_identity(job))
         if stable_id is None:
+            if remaining is not None:
+                if remaining == 0:
+                    continue
+                remaining -= 1
             stable_id = job.job_id
             by_id[stable_id] = item.model_copy(deep=True)
             identities[job_identity(job)] = stable_id

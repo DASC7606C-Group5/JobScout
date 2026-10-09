@@ -63,6 +63,7 @@ export type FollowUpRequest =
       action: 'answer'
       answers: QuestionAnswer[]
       skipped_question_ids?: string[]
+      message?: string
     }
 export type ResultConversationMessage = ConversationMessage & { job_id: string | null }
 export type FollowUpSubmission =

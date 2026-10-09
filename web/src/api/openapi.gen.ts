@@ -642,6 +642,11 @@ export interface components {
       answers?: components['schemas']['QuestionAnswer'][]
       /** Skipped Question Ids */
       skipped_question_ids?: string[]
+      /**
+       * Message
+       * @default
+       */
+      message?: string
     }
     /** FollowUpMessageRequest */
     FollowUpMessageRequest: {

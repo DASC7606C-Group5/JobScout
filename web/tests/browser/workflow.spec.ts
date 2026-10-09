@@ -10,6 +10,8 @@ import type {
   ScoutSession,
   StopSessionRequest,
   SearchOptions,
+  FeedbackRequest,
+  FollowUpRequest,
 } from '../../src/lib/contracts'
 import {
   createMatchScoreFixture,
@@ -928,10 +930,10 @@ test('final results preserve an open job and saved selection from an early previ
   state.publish(improved)
   await expect(
     page.getByRole('button', { name: 'View job: Better Engineer', exact: true }),
-  ).toHaveCount(0)
-  await expect(
-    page.getByRole('button', { name: 'View job: Engineer 0', exact: true }),
   ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'View job: Engineer 0', exact: true })).toHaveCount(
+    0,
+  )
   await expect(
     page.getByRole('heading', { name: 'Engineer 0', exact: true, level: 2 }),
   ).toBeVisible()
@@ -1857,6 +1859,301 @@ function resultSession() {
     },
   })
 }
+
+test('feedback toggles, hides the selected neighbor and restores only direct dislikes', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  const session = resultSession()
+  session.result_order = session.recommendation!.jobs.map(({ job }) => job.job_id)
+  const baseline = structuredClone(session.recommendation)
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  const writes: FeedbackRequest[] = []
+  const followUps: unknown[] = []
+  await page.route('**/sessions/session-1/follow-up', async (route) => {
+    followUps.push(route.request().postDataJSON())
+    await route.fulfill({ status: 500 })
+  })
+  await page.route('**/sessions/session-1/feedback', async (route) => {
+    const body = route.request().postDataJSON() as FeedbackRequest
+    writes.push(body)
+    expect(body.expected_revision).toBe(session.revision)
+    session.revision += 1
+    session.job_feedback = session.job_feedback.filter((entry) => entry.job_id !== body.job_id)
+    if (body.reaction)
+      session.job_feedback.push({
+        job_id: body.job_id,
+        reaction: body.reaction,
+        reason: null,
+        updated_at: '2026-10-09T00:00:00Z',
+      })
+    session.hidden_job_ids = session.job_feedback
+      .filter((entry) => entry.reaction === 'not_interested')
+      .map((entry) => entry.job_id)
+    session.hidden_job_reasons = session.hidden_job_ids.map((job_id) => ({
+      job_id,
+      kind: 'not_interested',
+      exclusion_id: null,
+    }))
+    state.publish(session)
+    await route.fulfill({ json: session })
+  })
+  await page.goto('/searches/session-1?job=test-job-1')
+  const interested = page.getByRole('button', { name: 'Interested', exact: true })
+  await interested.click()
+  await expect(interested).toHaveAttribute('aria-pressed', 'true')
+  await page.reload()
+  await expect(interested).toHaveAttribute('aria-pressed', 'true')
+  await interested.click()
+  await expect(interested).toHaveAttribute('aria-pressed', 'false')
+  expect(writes.map(({ job_id, reaction }) => ({ job_id, reaction }))).toEqual([
+    { job_id: 'test-job-1', reaction: 'interested' },
+    { job_id: 'test-job-1', reaction: null },
+  ])
+  await page.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true }).click()
+  await page.getByRole('button', { name: 'Not for me', exact: true }).click()
+  await expect(page).toHaveURL(/job=test-job-3/)
+  await expect(
+    page.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true }),
+  ).toHaveCount(0)
+  await page.reload()
+  await expect(
+    page.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true }),
+  ).toHaveCount(0)
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('2 jobs')
+  await page.getByText('Hidden jobs (1) · Exclusion rules (0)', { exact: true }).click()
+  await page
+    .getByRole('button', { name: 'Undo Not for me: Full Stack Engineer', exact: true })
+    .click()
+  await expect(
+    page.getByRole('button', { name: 'View job: Full Stack Engineer', exact: true }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Not for me', exact: true }).click()
+  await expect(page).toHaveURL(/job=test-job-2/)
+  expect(writes.at(-1)).toMatchObject({ job_id: 'test-job-3', reaction: 'not_interested' })
+  expect(session.recommendation).toEqual(baseline)
+  expect(followUps).toEqual([])
+})
+
+test('follow-up interpretation and streaming search retain jobs across reload and stopping', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  const session = resultSession()
+  session.result_order = session.recommendation!.jobs.map(({ job }) => job.job_id)
+  const baseline = structuredClone(session.recommendation!.jobs)
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  const writes: FollowUpRequest[] = []
+  await page.route('**/sessions/session-1/follow-up', async (route) => {
+    const body = route.request().postDataJSON() as FollowUpRequest
+    writes.push(body)
+    session.revision += 1
+    session.outcome = 'running'
+    session.operation_kind = 'follow_up'
+    session.current_stage = 'follow_up_interpret'
+    session.run_id = null
+    state.publish(session)
+    await route.fulfill({ status: 202, json: session })
+  })
+  await page.goto('/searches/session-1?job=test-job-2')
+  const list = page.getByRole('region', { name: 'Job list', exact: true })
+  await page
+    .getByRole('textbox', { name: 'Question or preference' })
+    .fill('Why is this job suitable? Is overtime stated?')
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled()
+  await expect(list.getByRole('button')).toHaveCount(3)
+  expect(writes[0]).toMatchObject({
+    action: 'message',
+    job_id: 'test-job-2',
+    message: 'Why is this job suitable? Is overtime stated?',
+  })
+  await expect(page.getByRole('button', { name: 'Interested', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Not for me', exact: true })).toBeDisabled()
+  await page.reload()
+  await expect(list.getByRole('button')).toHaveCount(3)
+  session.outcome = 'completed'
+  session.current_stage = 'completed'
+  state.publish(session)
+  await expect(page.getByRole('button', { name: 'Find similar', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Find similar', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled()
+  expect(writes[1]).toMatchObject({ action: 'find_similar', job_id: 'test-job-2' })
+  await expect(list.getByRole('button')).toHaveCount(3)
+  session.current_stage = 'search'
+  session.run_id = 'additional-run'
+  const added = createRecommendationFixture()
+  added.job.job_id = 'added-job'
+  added.job.title = 'Additional Engineer'
+  added.review_status = 'queued'
+  session.recommendation!.pending_jobs.push(added)
+  session.result_order.push(added.job.job_id)
+  session.progress.sequence += 1
+  state.publish(session)
+  await expect(
+    list.getByRole('button', { name: 'View job: Additional Engineer', exact: true }),
+  ).toBeVisible()
+  expect(session.recommendation!.jobs).toEqual(baseline)
+  await page.reload()
+  await expect(list.getByRole('button', { name: /^View job:/ })).toHaveCount(4)
+  await page.route('**/sessions/session-1/stop', async (route) => {
+    expect(route.request().postDataJSON()).toMatchObject({
+      run_id: 'additional-run',
+      expected_revision: session.revision,
+    })
+    session.progress.retrieval_stopped = true
+    session.stop_reason = 'user_stopped'
+    state.publish(session)
+    await route.fulfill({ json: session })
+  })
+  await page.getByRole('button', { name: 'Finish search', exact: true }).click()
+  await expect(list.getByRole('button', { name: /^View job:/ })).toHaveCount(4)
+  session.outcome = 'completed'
+  state.publish(session)
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled()
+  await page.reload()
+  await expect(list.getByRole('button', { name: /^View job:/ })).toHaveCount(4)
+})
+
+for (const skip of [false, true]) {
+  test(`supplementary clarification ${skip ? 'skip' : 'choice'} resumes through follow-up after reload`, async ({
+    page,
+  }) => {
+    const session = resultSession()
+    session.outcome = 'paused'
+    session.operation_kind = 'follow_up'
+    session.current_stage = 'follow_up_clarify'
+    session.run_id = null
+    session.search_summary = null
+    session.clarification_questions = [makeQuestion('flexible-hours', 'single_choice', false)]
+    const baseline = structuredClone(session.recommendation)
+    const state = await mockSessions(page, session)
+    state.seedSession(session)
+    const writes: FollowUpRequest[] = []
+    await page.route('**/sessions/session-1/resume', async (route) => {
+      throw new Error(`Supplementary answers must not use /resume: ${route.request().postData()}`)
+    })
+    await page.route('**/sessions/session-1/follow-up', async (route) => {
+      const body = route.request().postDataJSON() as FollowUpRequest
+      writes.push(body)
+      session.revision += 1
+      session.outcome = 'running'
+      session.current_stage = 'follow_up_interpret'
+      session.clarification_questions = []
+      state.publish(session)
+      await route.fulfill({ status: 202, json: session })
+    })
+    await page.goto('/searches/session-1')
+    if (skip) await page.getByRole('checkbox', { name: 'Skip this question' }).check()
+    else await page.getByRole('radio', { name: 'Option two', exact: true }).check()
+    await page
+      .getByRole('textbox', { name: 'Add a note or correction' })
+      .fill('Keep the existing work arrangement.')
+    await openHistory(page)
+    await page.getByRole('link', { name: 'Saved jobs', exact: true }).click()
+    await returnToSearch(page)
+    if (skip) await expect(page.getByRole('checkbox', { name: 'Skip this question' })).toBeChecked()
+    else await expect(page.getByRole('radio', { name: 'Option two', exact: true })).toBeChecked()
+    await page.getByRole('button', { name: 'Send and continue', exact: true }).click()
+    await expect(
+      page.getByRole('region', { name: 'Job list', exact: true }).getByRole('button'),
+    ).toHaveCount(3)
+    expect(writes).toHaveLength(1)
+    expect(writes[0]).toMatchObject({
+      action: 'answer',
+      expected_revision: 1,
+      answers: skip ? [] : [{ question_id: 'flexible-hours', value: 'two-id' }],
+      skipped_question_ids: skip ? ['flexible-hours'] : [],
+      message: 'Keep the existing work arrangement.',
+    })
+    expect(writes[0]).not.toHaveProperty('profile_updates')
+    expect(state.requests).toEqual([])
+    expect(session.recommendation).toEqual(baseline)
+    await page.reload()
+    await expect(
+      page.getByRole('region', { name: 'Job list', exact: true }).getByRole('button'),
+    ).toHaveCount(3)
+  })
+}
+
+test('all-hidden results show reasons and undoing direct feedback leaves rule exclusions hidden', async ({
+  page,
+}) => {
+  const session = resultSession()
+  session.hidden_job_ids = session.recommendation!.jobs.map(({ job }) => job.job_id)
+  session.result_preferences.exclusions = [
+    {
+      exclusion_id: 'rule-react',
+      description: 'Exclude roles with React responsibilities',
+      user_message_id: 'exclude-message',
+    },
+  ]
+  session.hidden_job_reasons = session.hidden_job_ids.map((job_id) => ({
+    job_id,
+    kind: 'excluded',
+    exclusion_id: 'rule-react',
+  }))
+  session.hidden_job_reasons.push({
+    job_id: 'test-job-2',
+    kind: 'not_interested',
+    exclusion_id: null,
+  })
+  session.job_feedback = [
+    {
+      job_id: 'test-job-2',
+      reaction: 'not_interested',
+      reason: null,
+      updated_at: '2026-10-09T00:00:00Z',
+    },
+  ]
+  const state = await mockSessions(page, session)
+  state.seedSession(session)
+  await page.route('**/sessions/session-1/feedback', async (route) => {
+    expect(route.request().postDataJSON()).toMatchObject({ job_id: 'test-job-2', reaction: null })
+    session.revision += 1
+    session.job_feedback = []
+    session.hidden_job_reasons = session.hidden_job_reasons.filter(
+      ({ kind }) => kind !== 'not_interested',
+    )
+    state.publish(session)
+    await route.fulfill({ json: session })
+  })
+  await page.goto('/searches/session-1')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('0 jobs')
+  await expect(
+    page.getByRole('heading', { name: 'All jobs are hidden', exact: true }),
+  ).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'No matching jobs found yet', exact: true }),
+  ).toHaveCount(0)
+  await page.getByText('Hidden jobs (3) · Exclusion rules (1)', { exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Exclusion rules' })).toContainText(
+    'Exclude roles with React responsibilities',
+  )
+  const hidden = page.getByRole('list', { name: 'Hidden jobs', exact: true })
+  await expect(hidden).toContainText('Full Stack Engineer')
+  await page
+    .getByRole('button', { name: 'Undo Not for me: Full Stack Engineer', exact: true })
+    .click()
+  await expect(
+    page.getByRole('button', { name: 'Undo Not for me: Full Stack Engineer', exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('heading', { name: 'All jobs are hidden', exact: true }),
+  ).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('0 jobs')
+  session.result_preferences.exclusions = []
+  session.hidden_job_ids = []
+  session.hidden_job_reasons = []
+  state.publish(session)
+  await page.reload()
+  await expect(
+    page.getByRole('region', { name: 'Job list', exact: true }).getByRole('button'),
+  ).toHaveCount(3)
+})
 
 test('result panes scroll independently and restore reading positions by job identity', async ({
   page,

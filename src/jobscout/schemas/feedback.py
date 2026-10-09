@@ -63,6 +63,7 @@ class FollowUpAnswerRequest(ResultRequest):
     action: Literal["answer"]
     answers: list[QuestionAnswer] = Field(default_factory=list)
     skipped_question_ids: list[str] = Field(default_factory=list)
+    message: str = ""
 
 
 type SessionFollowUpRequest = Annotated[

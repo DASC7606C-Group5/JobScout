@@ -55,6 +55,7 @@ class ResultConversationService:
         )
         texts = [
             data["request"].get("message", ""),
+            data.get("answer_message", ""),
             *(
                 label
                 for answer in data.get("answers", [])

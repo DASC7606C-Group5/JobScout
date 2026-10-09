@@ -13,7 +13,7 @@ export function DiscoveryContent() {
 }
 
 function SessionContent() {
-  const { session, retry, edit, stop, stopping, feedback } = useScoutSession()
+  const { session, retry, edit, stop, stopping, feedback, busy } = useScoutSession()
   const saved = useScout((state) => state.saved)
   const toggleSaved = useScout((state) => state.toggleSaved)
   if (!session) return <ProfileForm />
@@ -29,11 +29,16 @@ function SessionContent() {
       onEdit={edit}
       onRetry={retry}
       onFeedback={feedback}
+      feedbackDisabled={busy || session.outcome !== 'completed'}
     />
   )
   switch (session.outcome) {
     case 'running':
-      return session.run_id ? searchExperience : <SearchLoading session={session} />
+      return session.run_id || session.operation_kind === 'follow_up' ? (
+        searchExperience
+      ) : (
+        <SearchLoading session={session} />
+      )
     case 'paused':
       return (
         <>
