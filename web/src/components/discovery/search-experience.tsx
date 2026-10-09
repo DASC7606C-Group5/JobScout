@@ -75,7 +75,7 @@ export function SearchExperience({
         />
       )}
       {showResults && (
-        <div className="results-layout search-results-enter">
+        <div className="results-layout">
           <SearchMatches
             session={session}
             result={session.recommendation}

@@ -120,11 +120,6 @@ export function JobDetail({
           </div>
         )}
       </div>
-      {feedback && feedbackDisabled && (
-        <p className="px-4 pt-2 text-xs text-base-content/65 sm:px-5">
-          Feedback is available when processing finishes.
-        </p>
-      )}
       <section
         ref={scrollRef}
         onScroll={onScroll}
