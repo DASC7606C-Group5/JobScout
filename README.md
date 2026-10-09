@@ -51,7 +51,7 @@ Both members of each group jointly handle coding and testing. One member in each
 
 | Group | Members | Coding responsibilities |
 | --- | --- | --- |
-| 1: Frontend and Interaction | 龙良茂 (Long Liangmao, Foah), 张凯森 (Zhang Kaisen) | Build the React interface for resume upload, profile editing, clarification, search confirmation, live progress, job results with a user-selected limit of 5–20, saved jobs, feedback, and settings; connect these views to the backend API. |
+| 1: Frontend and Interaction | 龙良茂 (Long Liangmao, Foah), 张凯森 (Zhang Kaisen) | Build the React interface for resume upload, profile editing, clarification, search confirmation, live progress, job results with a user-selected limit of 5–20, saved jobs, feedback, and settings; connect these views to the backend API. Integrate the modules developed by all groups. |
 | 2: User Profile and Information Confirmation | 王寒正 (Wang Hanzheng), 赵钧翊 (Zhao Junyi) | Parse resumes and descriptions, extract education, skills, internships, and projects into `UserProfile`, interpret preferences, identify missing or conflicting information, generate clarification questions, and apply user corrections. |
 | 3: Overall Workflow | 施雨君 (Shi Yujun), 赫锦竹 (He Jinzhu) | Connect the modules through LangGraph; manage search confirmation, pause/resume, session persistence, operation queues, progress updates, stopping, and recovery; coordinate the agent's search and assessment actions. |
 | 4: Job Retrieval | 陈泉睿 (Chen Quanrui), 李浚萁 (Li Junqi) | Connect supported job sources, translate search requests into source-specific queries, retrieve listings and fuller descriptions, and handle pagination, caching, and source failures; return raw job data for processing. |
