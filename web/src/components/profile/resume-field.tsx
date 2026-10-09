@@ -79,10 +79,10 @@ export function ResumeField({
               }}
               render={({ field, fieldState }) => (
                 <>
-                  <label className="flex cursor-pointer items-start gap-3 rounded-field border border-base-300 bg-base-200/45 px-4 py-3">
+                  <label className="flex cursor-pointer items-center gap-3 rounded-field border border-base-300 bg-base-200/45 px-4 py-3">
                     <input
                       type="checkbox"
-                      className="checkbox mt-0.5 shrink-0 rounded-full checkbox-primary"
+                      className="checkbox shrink-0 rounded-full checkbox-primary"
                       name={field.name}
                       aria-invalid={fieldState.invalid}
                       checked={field.value}
