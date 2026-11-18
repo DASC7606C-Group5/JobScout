@@ -1,11 +1,9 @@
 # Repository guidance
 
-- Follow explicit user instructions over these repository defaults, and apply more specific project instructions where relevant. Use judgment for routine choices; ask only when missing information could materially change the result.
-- Read project files and documentation as the task requires. Keep architecture, implementation, workflow, and deployment details in relevant files under `docs/`. Keep README files focused on the overview, prerequisites, quick start, common commands, and links to detailed docs. Update feature docs when behavior changes; update a README only when its overview, setup, common usage, or documentation links change.
-- Complete the requested change and the validation relevant to it before handing it back. Keep project documentation and code in English.
+- Keep project documentation and code in English. Detailed guidance belongs in `docs/`. READMEs cover overview, prerequisites, quick start, common commands, and documentation links.
+- Update existing documentation made inaccurate by a behavior change. Create new documentation only when requested.
 - For frontend UI changes, follow the existing daisyUI design and patterns.
 - Don't retain legacy or backward compatibility code; only keep database or data‑migration components if required.
-- Don’t produce documentation unless the user explicitly requests it.
 
 ## Plain language
 
